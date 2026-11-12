@@ -54,7 +54,7 @@ void fragment() {
 	// Toprak yol: cakilli, kenari girintili
 	float pv = a.r + (n2 - 0.5) * 0.35;
 	col = mix(col, grass_c * 0.8, smoothstep(0.05, 0.35, pv) * 0.5);
-	vec3 path = mix(path_a, path_b, n2) * (0.85 + 0.2 * n3) * (0.9 + 0.2 * step(0.72, n4));
+	vec3 path = mix(path_a, path_b, n2) * (0.88 + 0.16 * n3) * (0.96 + 0.08 * n4);
 	col = mix(col, path, smoothstep(0.4, 0.6, pv));
 
 	col = mix(col, sand * (0.9 + 0.12 * n3 + 0.06 * n4), smoothstep(0.3, 0.7, a.b + (n2 - 0.5) * 0.3));

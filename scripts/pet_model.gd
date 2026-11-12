@@ -12,13 +12,18 @@ const Z := Vector3.BACK
 const KINDS := {
 	"kopek": {"model": "res://assets/models/kopek.glb", "size": 0.95, "hat": Vector3(0, 0.665, 0.32), "hat_scale": 0.8,
 		"mouth": Vector3(-0.02, 0.43, 0.5), "neck": Vector3(0, 0.43, 0.2), "neck_r": 0.15, "shoulder": Vector3(0, 0.3, 0.16),
-		"wag": 1.0, "step": 1.0},
-	"kedi": {"model": "res://assets/models/kedi.glb", "size": 0.55, "hat": Vector3(0, 0.655, 0.33), "hat_scale": 0.7,
+		"wag": 1.0, "step": 1.0, "face": Vector3(0, 0.555, 0.415), "face_w": 0.085, "back": Vector3(0, 0.46, -0.05),
+		"paws": {"fl2": Vector3(-0.1, 0.04, 0.19), "fr2": Vector3(0.11, 0.04, 0.175), "bl2": Vector3(-0.11, 0.04, -0.31), "br2": Vector3(0.09, 0.04, -0.335)}},
+	"kedi": {"model": "res://assets/models/kedi.glb", "size": 0.62, "hat": Vector3(0, 0.655, 0.33), "hat_scale": 0.7,
 		"mouth": Vector3(0, 0.42, 0.5), "neck": Vector3(-0.02, 0.42, 0.22), "neck_r": 0.15, "shoulder": Vector3(-0.04, 0.28, 0.16),
-		"wag": 0.25, "step": 1.25},
+		"wag": 0.25, "step": 1.25, "face": Vector3(0, 0.545, 0.455), "face_w": 0.08, "back": Vector3(-0.04, 0.45, -0.05),
+		"paws": {"fl2": Vector3(-0.135, 0.04, 0.21), "fr2": Vector3(0.035, 0.04, 0.23), "bl2": Vector3(-0.14, 0.04, -0.3), "br2": Vector3(0.08, 0.04, -0.265)}},
 }
 
 var kind := "kopek"
+# Yeniden olusturmada isleyici uyarisi vermemesi icin malzemeler canli tutulur
+static var _keep: Array = []
+
 var speed := 0.0
 var excited := false
 var pose := "stand"   # stand, sit, lie, sleep, eat
@@ -28,6 +33,10 @@ var size_mul := 1.0
 var mouth: Node3D
 var hat_socket: Node3D
 var neck_socket: Node3D
+var face_socket: Node3D
+var back_socket: Node3D
+var paw_sockets: Array[Node3D] = []
+var tint := Color.WHITE
 var look_at_point = null   # Vector3 ya da null: basi bu noktaya cevirir
 
 var sitting: bool:
@@ -66,11 +75,17 @@ func _ready() -> void:
 		m.rim_enabled = true
 		m.rim = 0.2
 		m.rim_tint = 0.7
+		m.albedo_color = tint
 		mi.set_surface_override_material(0, m)
+		_keep.append(m)
 	mouth = _attach("head", _cfg["mouth"])
 	hat_socket = _attach("head", _cfg["hat"])
 	hat_socket.scale = Vector3.ONE * _cfg["hat_scale"]
 	neck_socket = _attach("chest", _cfg["neck"])
+	face_socket = _attach("head", _cfg["face"])
+	back_socket = _attach("chest", _cfg["back"])
+	for b in _cfg["paws"]:
+		paw_sockets.append(_attach(b, _cfg["paws"][b]))
 	set_stage(stage)
 
 
@@ -100,7 +115,7 @@ func _turn(bone: String, turns: Array) -> void:
 ## Buyume evresi: tek model, oranlar degisir (yavruda buyuk bas).
 func set_stage(s: int) -> void:
 	stage = clampi(s, 0, 2)
-	scale = Vector3.ONE * _cfg["size"] * size_mul * [0.6, 0.8, 1.0][stage]
+	scale = Vector3.ONE * _cfg["size"] * size_mul * [0.7, 0.85, 1.0][stage]
 	_skel.set_bone_pose_scale(_bones["head"], Vector3.ONE * [1.25, 1.12, 1.0][stage])
 
 

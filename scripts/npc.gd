@@ -9,6 +9,7 @@ var roam_center := Vector2.ZERO
 var roam_radius := 5.0
 var follow: Node3D
 var walk_speed := 1.3
+var short_pause := false
 
 var _target := Vector2.ZERO
 var _idx := 0
@@ -42,7 +43,7 @@ func _next() -> void:
 			_target = roam_center + Vector2(cos(a), sin(a)) * randf() * roam_radius
 			if ParkMap.water_sd(_target) > 1.0:
 				break
-		_pause = randf_range(0.5, 4.0)
+		_pause = randf_range(0.1, 0.6) if short_pause else randf_range(0.5, 4.0)
 
 
 func _process(dt: float) -> void:
