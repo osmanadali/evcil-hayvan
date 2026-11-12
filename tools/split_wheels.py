@@ -90,13 +90,17 @@ for i, (c_al, c_z, r, s_lo, s_hi) in enumerate(wheels):
             for la, lb in zip(f.loops, nf.loops):
                 lb[uv_dst].uv = la[uv_src].uv
     bmesh.ops.delete(bm, geom=faces, context='FACES_ONLY')
+    # Teker merkezi: ayrilan noktalarin sinir kutusunun ortasi (yaricap tahmininden daha dogru; yalpalamaz)
+    co = np.array([v.co[:] for v in nb.verts])
+    mid = (co.min(0) + co.max(0)) / 2
+    c_al, c_z = float(mid[along]), float(mid[2])
     me = bpy.data.meshes.new('wheel')
     nb.to_mesh(me)
     for m in mesh.data.materials:
         me.materials.append(m)
     center = Vector((0.0, 0.0, c_z))
     center[along] = c_al
-    center[side] = (s_lo + s_hi) / 2
+    center[side] = float(mid[side])
     me.transform(__import__('mathutils').Matrix.Translation(-center))
     ob = bpy.data.objects.new('wheel_%s_%d' % ('xy'[side], i), me)
     ob.location = center

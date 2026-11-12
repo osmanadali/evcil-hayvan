@@ -18,7 +18,7 @@ const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
 
-const WALK_SPEED := 4.2
+const WALK_SPEED := 5.0
 const CAM_DIST := 7.2
 const SKY_TURN := 2.5          # gokyuzu donusu (radyan)
 const SUN_ELEVATION := 47.9   # gokyuzu gorselindeki gunes: yukseklik ve yatay aci (derece)
@@ -580,7 +580,9 @@ func _input(e: InputEvent) -> void:
 	if _mode == "play" and not ui.is_blocking() and not map_screen.visible:
 		match k.keycode:
 			KEY_E, KEY_F:
-				if _ride != null:
+				if _taxi != null:
+					_leave_taxi(false)
+				elif _ride != null:
 					if absf(_drive_speed) < 2.0:
 						_exit_ride()
 				elif ui._context.visible:
@@ -598,8 +600,7 @@ func _input(e: InputEvent) -> void:
 			KEY_C:
 				_on_photo("enter")
 			KEY_V:
-				if _ride != null:
-					_fps = not _fps
+				_toggle_fps()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -626,7 +627,7 @@ func _keyboard_stick() -> void:
 			_kb_stick = false
 		return
 	var run := Input.is_physical_key_pressed(KEY_SHIFT) or _ride != null
-	ui.stick = v.normalized() * (1.0 if run else 0.55)
+	ui.stick = v.normalized() * (1.0 if run else 0.3)
 	_kb_stick = true
 
 
@@ -652,7 +653,10 @@ func _pointer_move(rel: Vector2) -> void:
 		_photo["pitch"] = clampf(_photo["pitch"] + rel.y * 0.006, 0.03, 1.2)
 	elif _mode == "play":
 		_cam_yaw -= rel.x * 0.006
-		_cam_pitch = clampf(_cam_pitch + rel.y * 0.004, 0.1, 1.15)
+		if _ride != null and _fps:
+			_fps_pitch = clampf(_fps_pitch - rel.y * 0.004, -0.8, 0.55)
+		else:
+			_cam_pitch = clampf(_cam_pitch + rel.y * 0.004, 0.1, 1.15)
 
 
 func _pointer_up(pos: Vector2) -> void:
@@ -743,6 +747,10 @@ func _on_command(cmd: String) -> void:
 			_exit_home()
 		"drive":
 			_enter_ride()
+		"taxi":
+			var tx := _nearest_taxi()
+			if tx:
+				_board_taxi(tx)
 		"exit":
 			_exit_ride()
 		"pet":
@@ -848,6 +856,7 @@ var _drive_speed := 0.0
 var _last_speed := 0.0
 var _steer := 0.0
 var _fps := false          # surerken birinci sahis kamera
+var _fps_pitch := 0.0
 var _cockpit: Node3D
 var _cam_btn: Button
 var minimap: Control
@@ -855,18 +864,30 @@ var _nav := Vector2.INF       # navigasyon hedefi
 var _nav_t := 0.0
 var _exit_btn: Button
 var _engine: AudioStreamPlayer
+var _cam_last := Transform3D()
+var _cam_blend := 0.0      # > 0: kamera gecisi yumusatiliyor
+var _rider_pet: Node3D     # iki tekerlide arkada oturan hayvan
+var _taxi: Node3D          # yolcu olarak binilen taksi / dolmus
+var _taxi_path := PackedVector2Array()
+var _taxi_i := 0
+var _taxi_speed := 0.0
+var _taxi_fare := 0
 
-
-## Binilebilen araclar: araba, scooter, bisiklet. Ayarlar: en yuksek hiz, ivme, dingil araligi, carpisma yaricapi,
-## binince karakter gizlenir mi, sele konumu (karakterin kayma payi), motor sesi.
+## Arac ayarlari: en yuksek hiz (m/sn), ivme, fren, direksiyon donus hizi, en buyuk teker acisi, dingil arasi,
+## carpisma yaricapi, surucu gizlenir mi, sele (yukseklik, arac merkezine gore arkada), one egilme,
+## gidon tutaclari, arkadaki hayvanin yeri, motor sesi perdesi.
 const RIDES := {
-	"araba": {"max": 14.0, "acc": 5.0, "base": 2.6, "r": 1.15, "hide": true, "seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
-	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, 0.8, 0.22), "lean": 0.5, "engine": 1.6, "ad": "Scooter'a Bin",
-		"grip": Vector3(0.27, 0.99, -0.38)},
-	"motosiklet": {"max": 17.0, "acc": 5.5, "base": 1.4, "r": 0.55, "hide": false, "seat": Vector3(0, 0.8, 0.12), "lean": 0.62, "engine": 1.35, "ad": "Motosiklete Bin",
-		"grip": Vector3(0.36, 0.98, -0.47)},
-	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, 0.97, 0.16), "lean": 0.6, "engine": 0.0, "ad": "Bisiklete Bin",
-		"grip": Vector3(0.3, 1.02, -0.36)},
+	"araba": {"max": 15.0, "acc": 3.4, "brake": 9.0, "steer": 1.6, "lock": 0.55, "base": 2.6, "r": 1.15, "hide": true,
+		"seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
+	"scooter": {"max": 11.0, "acc": 2.2, "brake": 7.0, "steer": 1.2, "lock": 0.45, "base": 1.3, "r": 0.5, "hide": false,
+		"seat": Vector3(0, 0.8, 0.26), "lean": 0.5, "engine": 1.6, "ad": "Scooter'a Bin",
+		"grip": Vector3(0.25, 1.0, -0.36), "pet": Vector3(0, 0.84, 0.66)},
+	"motosiklet": {"max": 16.0, "acc": 2.8, "brake": 8.0, "steer": 1.0, "lock": 0.4, "base": 1.45, "r": 0.55, "hide": false,
+		"seat": Vector3(0, 0.8, 0.3), "lean": 0.78, "engine": 1.35, "ad": "Motosiklete Bin",
+		"grip": Vector3(0.34, 1.0, -0.44), "pet": Vector3(0, 0.9, 0.72)},
+	"bisiklet": {"max": 6.5, "acc": 1.5, "brake": 6.0, "steer": 1.3, "lock": 0.5, "base": 1.1, "r": 0.45, "hide": false,
+		"seat": Vector3(0, 0.97, 0.2), "lean": 0.6, "engine": 0.0, "ad": "Bisiklete Bin",
+		"grip": Vector3(0.3, 1.02, -0.36), "pet": Vector3(0, 0.82, 0.58)},
 }
 
 
@@ -933,27 +954,61 @@ func _place_ride(v: Node3D, p: Vector2, yaw: float) -> void:
 	_rides.append(v)
 
 
-func _enter_ride() -> void:
+## Yakindaki binilebilir arac: kendi araclarimiz ya da trafikteki herhangi bir araba (taksi ve dolmus haric).
+func _nearest_rideable() -> Node3D:
 	var o := _owner_pos()
+	var best: Node3D = null
 	var best_d := 1e9
 	for r in _rides:
 		var dd := o.distance_to(Vector2(r.position.x, r.position.z))
 		if dd < (3.6 if r.get_meta("kind") == "araba" else 2.2) and dd < best_d:
 			best_d = dd
-			_ride = r
-	if _ride == null:
+			best = r
+	if best == null:
+		for c in _cars:
+			if _car_model(c) in ["taksi", "dolmus"]:
+				continue
+			var dd := o.distance_to(Vector2(c.position.x, c.position.z))
+			if dd < 3.4 and dd < best_d:
+				best_d = dd
+				best = c
+	return best
+
+
+func _car_model(c: Node3D) -> String:
+	if c.get_child_count() > 0 and c.get_child(0).has_meta("model"):
+		return c.get_child(0).get_meta("model")
+	return "araba"
+
+
+## Trafikteki arabayi binilebilir araca cevirir (GTA gibi).
+func _take_traffic_car(c: Node3D) -> void:
+	c.set_process(false)
+	_cars.erase(c)
+	c.set_meta("kind", "araba")
+	if c.get_child_count() > 0 and c.get_child(0).has_meta("wheels"):
+		c.set_meta("wheels", c.get_child(0).get_meta("wheels"))
+	_rides.append(c)
+
+
+func _enter_ride() -> void:
+	var r := _nearest_rideable()
+	if r == null:
 		return
+	if not r in _rides:
+		_take_traffic_car(r)
+	_ride = r
 	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	_drive_speed = 0.0
+	_last_speed = 0.0
+	_steer = 0.0
 	_moving = false
 	_queue.clear()
 	_marker.visible = false
 	owner_model.speed = 0.0
+	_board_pets(not cfg["hide"], cfg.get("pet", Vector3.ZERO))
 	if cfg["hide"]:
 		owner_model.visible = false
-		for k in agents:
-			agents[k].visible = false
-			agents[k].set_process(false)
 	else:
 		owner_model.riding = _ride.get_meta("kind")
 		owner_model.ride_lean = float(cfg.get("lean", -1.0))
@@ -963,14 +1018,15 @@ func _enter_ride() -> void:
 	if _engine and cfg["engine"] > 0.0:
 		_engine.play()
 	ui._actions.visible = false
+	var touch := DisplayServer.is_touchscreen_available()
 	if _cam_btn == null:
-		_cam_btn = UiKit.button(ui.hud, "", "camera", func(): _fps = not _fps, ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
+		_cam_btn = UiKit.button(ui.hud, "", "camera", func(): _toggle_fps(), ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
 		_cam_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 		_cam_btn.offset_left = -330
 		_cam_btn.offset_top = -126
 		_cam_btn.offset_right = -262
 		_cam_btn.offset_bottom = -58
-	_cam_btn.visible = true
+	_cam_btn.visible = touch
 	if _exit_btn == null:
 		_exit_btn = UiKit.button(ui.hud, "", "come", func():
 			if absf(_drive_speed) < 2.0:
@@ -980,8 +1036,40 @@ func _enter_ride() -> void:
 		_exit_btn.offset_top = -206
 		_exit_btn.offset_right = -262
 		_exit_btn.offset_bottom = -138
-	_exit_btn.visible = true
-	ui.toast("Sol çubuk: gaz, fren, direksiyon · kamera düğmesi (V): içeriden sür")
+	_exit_btn.visible = touch      # bilgisayarda E tusu
+	_cam_blend = 0.6
+	if touch:
+		ui.toast("Çubuk: gaz, fren, direksiyon · kamera düğmesi: içeriden sür")
+	else:
+		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · E in")
+
+
+## Hayvanlar araca biner: arabada iceride (gorunmez), iki tekerlide aktif hayvan arkada oturur.
+func _board_pets(rear_seat: bool, seat: Vector3) -> void:
+	_rider_pet = null
+	for k in agents:
+		var a: Node3D = agents[k]
+		a.set_process(false)
+		a.visible = false
+		if rear_seat and k == state.d["active"] and _rider_pet == null:
+			_rider_pet = a
+			a.visible = true
+			a.model.pose = "sit"
+			a.model.speed = 0.0
+			a.set_meta("seat", seat)
+
+
+func _unboard_pets(at: Vector2) -> void:
+	var i := 0
+	for k in agents:
+		var a: Node3D = agents[k]
+		a.visible = true
+		a.set_process(true)
+		a.rotation = Vector3.ZERO
+		a.place(at + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
+		a.command("come")
+		i += 1
+	_rider_pet = null
 
 
 func _exit_ride() -> void:
@@ -1002,33 +1090,45 @@ func _exit_ride() -> void:
 		_exit_btn.visible = false
 	_fps = false
 	cam.near = 0.05
+	cam.fov = 60.0
 	if _cockpit:
 		_cockpit.queue_free()
 		_cockpit = null
-	var hidden: bool = RIDES[_ride.get_meta("kind")]["hide"]
+	_set_body_visible(_ride, true)
 	_ride.rotation.z = 0.0
+	_ride.rotation.x = 0.0
 	_ride = null
 	_drive_speed = 0.0
 	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
+	owner_node.rotation = Vector3(0, owner_node.rotation.y, 0)
 	owner_model.visible = true
 	owner_model.riding = ""
 	owner_model.grips = []
 	owner_model.position = Vector3.ZERO
-	if hidden:
-		var i := 0
-		for k in agents:
-			agents[k].visible = true
-			agents[k].set_process(true)
-			agents[k].place(out + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
-			i += 1
+	_unboard_pets(out)
+	_cam_blend = 0.6
 	if _engine:
 		_engine.stop()
+
+
+func _toggle_fps() -> void:
+	if _ride == null:
+		return
+	_fps = not _fps
+	_fps_pitch = 0.0
+	_cam_blend = 0.5
+	if not _fps:
+		_set_body_visible(_ride, true)
+		if _cockpit:
+			_cockpit.visible = false
+		cam.near = 0.05
+		cam.fov = 60.0
 
 
 ## Birinci sahis: arabada surucu koltugundan (on panel, direksiyon), iki tekerlikte surucunun gozunden.
 func _cockpit_camera() -> void:
 	var kind: String = _ride.get_meta("kind")
-	var look := Basis(Vector3.UP, _cam_yaw - _ride.rotation.y) if _dragging or absf(angle_difference(_cam_yaw, _ride.rotation.y)) > 0.05 else Basis()
+	var look := Basis(Vector3.UP, angle_difference(_ride.rotation.y, _cam_yaw)) * Basis(Vector3.RIGHT, _fps_pitch)
 	if kind == "araba":
 		if _cockpit == null:
 			_cockpit = _make_cockpit()
@@ -1036,59 +1136,113 @@ func _cockpit_camera() -> void:
 		_cockpit.visible = true
 		_set_body_visible(_ride, false)
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
-		wheel.rotation.z = -_steer * 2.2
-		# Govdenin ust kismi gorunmesin diye yalniz kokpit ve camlar; kamera koltuk hizasinda
-		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.05), Vector3(-0.36, 1.2, 0.18))
-		cam.near = 0.08
+		wheel.rotation.z = -_steer * 2.6
+		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
+		(_cockpit.get_node("Ekran") as Label3D).text = _carplay_text()
+		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.06), Vector3(-0.36, 1.18, 0.22))
+		cam.near = 0.05
+		cam.fov = 72.0
 	else:
-		# Surucunun bas kemiginin biraz onunden bak; kendi sacini gormesin
+		# Surucunun gozlerinden: bas kemiginin biraz ustu, kendi basi gorunmesin diye yakin duzlem
 		var hb: Transform3D = owner_model.head_transform()
-		cam.global_position = hb.origin + _ride.global_basis * Vector3(0, 0.08, -0.22)
-		cam.global_basis = _ride.global_basis * look * Basis(Vector3.RIGHT, -0.12)
-		cam.near = 0.12
+		cam.global_position = hb.origin + _ride.global_basis * Vector3(0, 0.1, -0.06)
+		cam.global_basis = _ride.global_basis * look * Basis(Vector3.RIGHT, -0.1)
+		cam.near = 0.16
+		cam.fov = 75.0
+
+
+func _carplay_text() -> String:
+	if _nav == Vector2.INF or minimap.route.is_empty():
+		return "CarPlay\nHaritadan hedef seç (M)"
+	var d := 0.0
+	var prev := _owner_pos()
+	for q in minimap.route:
+		d += prev.distance_to(q)
+		prev = q
+	return "%s\n%s" % [minimap.dest_name, ("%.1f km" % (d / 1000.0)) if d > 1000.0 else ("%d m" % int(d))]
 
 
 func _set_body_visible(v: Node3D, on: bool) -> void:
 	for mi: MeshInstance3D in v.find_children("*", "MeshInstance3D", true, false):
-		if mi.get_parent() != _cockpit and not String(mi.get_parent().name).begins_with("wheel") and not mi.is_ancestor_of(_cockpit):
-			if _cockpit == null or not _cockpit.is_ancestor_of(mi):
-				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if not on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if _cockpit != null and _cockpit.is_ancestor_of(mi):
+			continue
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
-## Araba ici: on panel, gostergeler, direksiyon, koltuklar, direkler (modelin ici bos oldugu icin).
+## Araba ici: on panel, gostergeler, CarPlay ekrani, direksiyon, koltuklar, kapi dosemeleri, direkler, ayna.
 func _make_cockpit() -> Node3D:
 	var c := Node3D.new()
-	var dash := Kit.mat("26282c", 0.7)
-	var trim := Kit.mat("3a3d42", 0.5)
-	var seat := Kit.mat("2e2f33", 0.9)
-	Kit.box(c, Vector3(1.55, 0.32, 0.55), Vector3(0, 0.82, -0.62), dash)                      # on panel
-	Kit.box(c, Vector3(1.5, 0.05, 0.45), Vector3(0, 0.99, -0.68), trim)
-	var gauge := StandardMaterial3D.new()
-	gauge.albedo_color = Color("0d1014")
-	gauge.emission_enabled = true
-	gauge.emission = Color("3fa9f5")
-	gauge.emission_energy_multiplier = 0.6
-	Kit.box(c, Vector3(0.36, 0.13, 0.02), Vector3(-0.36, 0.98, -0.42), gauge)                # gosterge
-	Kit.box(c, Vector3(0.22, 0.14, 0.02), Vector3(0.02, 0.93, -0.4), gauge)                  # ekran / navigasyon
+	var dash := Kit.mat("2a2c30", 0.75)
+	var soft := Kit.mat("3b3d41", 0.85)
+	var trim := Kit.mat("8c8f94", 0.35)
+	var fabric := Kit.mat("4a4c52", 1.0)
+	var beige := Kit.mat("cfc6b6", 0.95)
+	# On panel: alt govde, ust egimli yuzey, gosterge kapagi
+	Kit.box(c, Vector3(1.56, 0.36, 0.45), Vector3(0, 0.74, -0.78), dash)
+	Kit.box(c, Vector3(1.56, 0.06, 0.55), Vector3(0, 0.95, -0.85), soft, Vector3(0.22, 0, 0))
+	Kit.box(c, Vector3(0.48, 0.12, 0.22), Vector3(-0.36, 1.0, -0.62), dash, Vector3(-0.3, 0, 0))
+	# Gostergeler ve CarPlay ekrani (yazilar canli guncellenir)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color("0b0e12")
+	glow.emission_enabled = true
+	glow.emission = Color("15324a")
+	Kit.box(c, Vector3(0.42, 0.14, 0.02), Vector3(-0.36, 0.95, -0.56), glow, Vector3(-0.35, 0, 0))
+	var speed := Label3D.new()
+	speed.name = "Hiz"
+	speed.font_size = 48
+	speed.pixel_size = 0.0016
+	speed.modulate = Color("8fd3ff")
+	speed.position = Vector3(-0.36, 0.955, -0.548)
+	speed.rotation.x = -0.35
+	speed.text = "0"
+	c.add_child(speed)
+	Kit.box(c, Vector3(0.3, 0.2, 0.03), Vector3(0.05, 0.9, -0.58), glow, Vector3(-0.25, 0, 0))
+	var screen := Label3D.new()
+	screen.name = "Ekran"
+	screen.font_size = 28
+	screen.pixel_size = 0.0011
+	screen.modulate = Color.WHITE
+	screen.position = Vector3(0.05, 0.905, -0.563)
+	screen.rotation.x = -0.25
+	screen.width = 260.0
+	screen.autowrap_mode = TextServer.AUTOWRAP_WORD
+	c.add_child(screen)
+	# Orta konsol, vites kolu
+	Kit.box(c, Vector3(0.22, 0.32, 0.7), Vector3(0.0, 0.42, -0.2), dash)
+	Kit.cyl(c, 0.012, 0.012, 0.16, Vector3(0.0, 0.66, -0.12), trim, 6)
+	Kit.ball(c, 0.03, Vector3(0.0, 0.75, -0.12), dash)
+	# Direksiyon: kolon, simit, kollar
 	var wheel := Node3D.new()
 	wheel.name = "Direksiyon"
-	wheel.position = Vector3(-0.36, 0.95, -0.33)
-	wheel.rotation.x = -1.15
+	wheel.position = Vector3(-0.36, 0.92, -0.42)
+	wheel.rotation.x = -1.1
 	c.add_child(wheel)
-	Kit.torus(wheel, 0.15, 0.18, Vector3.ZERO, trim, Vector3.ZERO)
-	Kit.box(wheel, Vector3(0.3, 0.03, 0.04), Vector3.ZERO, trim)
-	Kit.box(wheel, Vector3(0.04, 0.03, 0.15), Vector3(0, 0, 0.07), trim)
+	Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
+	Kit.torus(wheel, 0.155, 0.185, Vector3.ZERO, soft, Vector3.ZERO)
+	Kit.box(wheel, Vector3(0.28, 0.025, 0.04), Vector3.ZERO, soft)
+	Kit.box(wheel, Vector3(0.04, 0.025, 0.14), Vector3(0, 0, 0.07), soft)
+	Kit.cyl(wheel, 0.055, 0.055, 0.03, Vector3.ZERO, dash, 12)
+	# Koltuklar ve basliklar
 	for x in [-0.36, 0.36]:
-		Kit.box(c, Vector3(0.5, 0.12, 0.5), Vector3(x, 0.5, 0.25), seat)
-		Kit.box(c, Vector3(0.5, 0.65, 0.12), Vector3(x, 0.85, 0.52), seat)
-	for x in [-0.72, 0.72]:
-		Kit.box(c, Vector3(0.06, 0.6, 0.06), Vector3(x, 1.25, -0.5), trim, Vector3(-0.45, 0, 0))   # on direkler
-	Kit.box(c, Vector3(1.4, 0.04, 1.4), Vector3(0, 1.48, 0.2), Kit.mat("bdb8ae", 0.9))          # tavan dosemesi
+		Kit.box(c, Vector3(0.52, 0.12, 0.52), Vector3(x, 0.46, 0.22), fabric)
+		Kit.box(c, Vector3(0.5, 0.7, 0.12), Vector3(x, 0.85, 0.5), fabric, Vector3(0.12, 0, 0))
+		Kit.box(c, Vector3(0.26, 0.18, 0.1), Vector3(x, 1.3, 0.56), fabric)
+	# Kapi dosemeleri, kol dayama, kapi kolu
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.06, 0.48, 1.5), Vector3(sx * 0.78, 0.72, 0.0), soft)
+		Kit.box(c, Vector3(0.1, 0.05, 0.5), Vector3(sx * 0.72, 0.78, 0.05), dash)
+		Kit.box(c, Vector3(0.02, 0.03, 0.12), Vector3(sx * 0.74, 0.92, -0.3), trim)
+	# A direkleri, tavan dosemesi, ic dikiz aynasi, gunesliklar
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), beige, Vector3(-0.55, 0, 0))
+		Kit.box(c, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), beige, Vector3(0.15, 0, 0))
+	Kit.box(c, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), beige)
+	Kit.box(c, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), Kit.mat("1b1c1e", 0.3))
+	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
 	var paint := Kit.mat("b8322c", 0.35)
-	Kit.box(c, Vector3(1.5, 0.08, 1.3), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))     # kaput
-	for x in [-0.78, 0.78]:
-		Kit.box(c, Vector3(0.08, 0.5, 1.6), Vector3(x, 0.78, 0.1), Kit.mat("3a3d42", 0.6))   # kapi panelleri
-	Kit.box(c, Vector3(0.12, 0.28, 0.08), Vector3(-0.7, 1.15, -0.55), Kit.mat("1b1c1e", 0.4))   # ayna
+	Kit.box(c, Vector3(1.5, 0.08, 1.3), Vector3(0, 0.92, -1.62), paint, Vector3(0.12, 0, 0))
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), Kit.mat("1b1c1e", 0.4))
 	return c
 
 
@@ -1097,43 +1251,62 @@ func _update_drive(dt: float) -> void:
 	var top: float = cfg["max"]
 	var gas: float = -ui.stick.y
 	var steer: float = ui.stick.x
-	if gas > 0.12:
-		_drive_speed = move_toward(_drive_speed, top * gas, float(cfg["acc"]) * dt)
+	var handbrake := Input.is_physical_key_pressed(KEY_SPACE)
+	if handbrake:
+		_drive_speed = move_toward(_drive_speed, 0.0, 11.0 * dt)
+	elif gas > 0.12:
+		if _drive_speed < -0.2:
+			_drive_speed = move_toward(_drive_speed, 0.0, float(cfg["brake"]) * dt)
+		else:
+			# Hiz arttikca ivme azalir
+			var acc: float = float(cfg["acc"]) * (1.0 - 0.6 * clampf(_drive_speed / top, 0.0, 1.0))
+			_drive_speed = move_toward(_drive_speed, top * gas, acc * dt)
 	elif gas < -0.12:
-		_drive_speed = move_toward(_drive_speed, -top * 0.25 * -gas, (12.0 if _drive_speed > 0.3 else 3.0) * dt)
+		if _drive_speed > 0.2:
+			_drive_speed = move_toward(_drive_speed, 0.0, float(cfg["brake"]) * dt)     # fren
+		else:
+			_drive_speed = move_toward(_drive_speed, -top * 0.22 * -gas, 1.8 * dt)     # geri vites
 	else:
-		_drive_speed = move_toward(_drive_speed, 0.0, 2.5 * dt)
-	# Direksiyon yumusak doner; hizlandikca daha az kirilir
-	_steer = move_toward(_steer, steer, dt * 2.6)
-	var steer_k := _steer * lerpf(1.0, 0.45, clampf(absf(_drive_speed) / top, 0.0, 1.0))
-	var yaw := _ride.rotation.y - _drive_speed * tan(steer_k * 0.6) / float(cfg["base"]) * dt
+		_drive_speed = move_toward(_drive_speed, 0.0, (1.2 + absf(_drive_speed) * 0.08) * dt)   # motor freni ve suruklenme
+	# Direksiyon: yavas doner, birakinca ortalanir; hizlandikca daha az kirilir
+	_steer = move_toward(_steer, steer, dt * float(cfg["steer"]) * (1.0 if absf(steer) > 0.05 else 1.6))
+	var lock: float = float(cfg["lock"]) * lerpf(1.0, 0.35, clampf(absf(_drive_speed) / top, 0.0, 1.0))
+	var yaw_rate := _drive_speed * tan(_steer * lock) / float(cfg["base"])
+	if handbrake and cfg["hide"] and absf(_drive_speed) > 3.0:
+		yaw_rate *= 1.7      # el freniyle kayarak donus
+	var yaw := _ride.rotation.y - yaw_rate * dt
 	var p := Vector2(_ride.position.x, _ride.position.z)
 	var fwd := Vector2(-sin(yaw), -cos(yaw))
 	var want := p + fwd * _drive_speed * dt
 	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
+	np = _push_from_vehicles(np, float(cfg["r"]) + 0.2, _ride)
 	if np.distance_to(want) > 0.02:
-		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # engele surtundu: yavasla
+		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # carpti: yavasla
 	var hide: bool = cfg["hide"]
 	var h := ParkMap.terrain_height(np) if hide else ParkMap.walk_height(np)
-	var h2 := ParkMap.terrain_height(np + fwd * 2.0)
+	var slope := atan2(ParkMap.terrain_height(np + fwd * 1.5) - ParkMap.terrain_height(np - fwd * 1.5), 3.0)
 	_ride.position = Vector3(np.x, h, np.y)
 	_ride.rotation.y = yaw
-	_ride.rotation.x = lerpf(_ride.rotation.x, atan2(h2 - ParkMap.terrain_height(np), 2.0), minf(1.0, dt * 5.0))
-	World.spin_wheels(_ride, _drive_speed * dt)
 	var accel := (_drive_speed - _last_speed) / maxf(dt, 0.001)
 	_last_speed = _drive_speed
+	# Egim + hizlanirken burun hafif kalkar, frende hafif iner (birikmez; hedefe yaklasir)
+	var pitch_to := slope + clampf(accel * 0.004, -0.03, 0.02) * (1.0 if hide else 0.5)
+	_ride.rotation.x = lerpf(_ride.rotation.x, pitch_to, minf(1.0, dt * 6.0))
+	World.spin_wheels(_ride, _drive_speed * dt, _steer * float(cfg["lock"]))
 	if hide:
-		# Araba: virajda govde disa, gaz-frende one-arkaya hafif yatar
-		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.05, minf(1.0, dt * 3.0))
-		_ride.rotation.x += clampf(accel * 0.004, -0.03, 0.03)
+		# Araba: virajda govde hafif disa yatar
+		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.04, minf(1.0, dt * 3.0))
 	else:
-		# Iki tekerlekli: virajda hizla orantili iceri yatar
-		var lean_to := -_steer * clampf(_drive_speed / top * 1.6, 0.0, 1.0) * 0.55
-		_ride.rotation.z = lerpf(_ride.rotation.z, lean_to, minf(1.0, dt * 3.5))
+		# Iki tekerlekli: donus hizina gore iceri yatar
+		var lean_to := clampf(-yaw_rate * absf(_drive_speed) * 0.07, -0.6, 0.6)
+		_ride.rotation.z = lerpf(_ride.rotation.z, lean_to, minf(1.0, dt * 3.0))
 		owner_model.ride_speed = absf(_drive_speed)
 		if cfg.has("grip"):
 			var g: Vector3 = cfg["grip"]
 			owner_model.grips = [_ride.global_transform * Vector3(-g.x, g.y, g.z), _ride.global_transform * Vector3(g.x, g.y, g.z)]
+	if _rider_pet:
+		var seat: Vector3 = _rider_pet.get_meta("seat")
+		_rider_pet.global_transform = _ride.global_transform * Transform3D(Basis(), seat - Vector3(0, 0.62, 0))
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
 	if absf(_drive_speed) > 1.0 and not _dragging:
@@ -1142,6 +1315,172 @@ func _update_drive(dt: float) -> void:
 	if _engine and float(cfg["engine"]) > 0.0:
 		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
+## Hareketli araclarin (trafik, park etmis kendi araclarimiz, otobus) icinden gecilmez.
+func _push_from_vehicles(p: Vector2, r: float, skip: Node3D = null) -> Vector2:
+	var list: Array = []
+	for c in _cars:
+		list.append([c, 2.0, 0.95])
+	for c in _rides:
+		if c != skip:
+			list.append([c, 2.0 if c.get_meta("kind") == "araba" else 0.8, 0.95 if c.get_meta("kind") == "araba" else 0.35])
+	for b in _buses:
+		if b.visible:
+			list.append([b, 5.8, 1.35])
+	if _taxi:
+		list.erase(_taxi)
+	for e in list:
+		var n: Node3D = e[0]
+		if n == skip or not n.visible:
+			continue
+		var c := Vector2(n.global_position.x, n.global_position.z)
+		if c.distance_squared_to(p) > 100.0:
+			continue
+		var f := Vector2(-sin(n.global_rotation.y), -cos(n.global_rotation.y))
+		var half: float = e[1] - e[2]
+		var q := Geometry2D.get_closest_point_to_segment(p, c - f * half, c + f * half)
+		var rr: float = e[2] + r
+		var d := p.distance_to(q)
+		if d < rr:
+			p = q + ((p - q) / d if d > 0.001 else Vector2(f.y, -f.x)) * rr
+	return p
+
+
+# ---------------------------------------------------------------- taksi ve dolmus (yolcu)
+
+## Arac yolu: yalnizca araclarin gidebildigi sokaklar (tek yonlere uyulur).
+func _road_route(from: Vector2, to: Vector2) -> PackedVector2Array:
+	var nodes := ParkMap.nodes
+	var start := -1
+	var goal := -1
+	var bs := 1e18
+	var bg := 1e18
+	for i in nodes.size():
+		if ParkMap.road_next[i].is_empty():
+			continue
+		var ds := nodes[i].distance_squared_to(from)
+		var dg := nodes[i].distance_squared_to(to)
+		if ds < bs:
+			bs = ds
+			start = i
+		if dg < bg:
+			bg = dg
+			goal = i
+	var dist := {start: 0.0}
+	var back := {}
+	var open: Array = [start]
+	while not open.is_empty():
+		var bi := 0
+		for k in open.size():
+			if dist[open[k]] < dist[open[bi]]:
+				bi = k
+		var u: int = open[bi]
+		open.remove_at(bi)
+		if u == goal:
+			break
+		for v in ParkMap.road_next[u]:
+			var nd: float = dist[u] + nodes[u].distance_to(nodes[v])
+			if nd < dist.get(v, 1e18):
+				dist[v] = nd
+				back[v] = u
+				open.append(v)
+	var out := PackedVector2Array()
+	var k := goal
+	while k != start and back.has(k):
+		out.insert(0, nodes[k])
+		k = back[k]
+	out.insert(0, nodes[start])
+	return out
+
+
+func _nearest_taxi() -> Node3D:
+	var o := _owner_pos()
+	for c in _cars:
+		if _car_model(c) in ["taksi", "dolmus"] and o.distance_to(Vector2(c.position.x, c.position.z)) < 4.0:
+			return c
+	return null
+
+
+func _board_taxi(c: Node3D) -> void:
+	if _nav == Vector2.INF:
+		ui.toast("Önce haritadan (M) nereye gideceğini seç, sonra bin.")
+		return
+	_taxi = c
+	_taxi.set_process(false)
+	_taxi_path = _road_route(Vector2(c.position.x, c.position.z), _nav)
+	_taxi_i = 0
+	_taxi_speed = 0.0
+	var length := 0.0
+	for i in range(1, _taxi_path.size()):
+		length += _taxi_path[i - 1].distance_to(_taxi_path[i])
+	var dolmus := _car_model(c) == "dolmus"
+	_taxi_fare = (5 if dolmus else 10) + int(length / (250.0 if dolmus else 90.0))
+	_moving = false
+	_queue.clear()
+	owner_model.visible = false
+	_board_pets(false, Vector3.ZERO)
+	ui._actions.visible = false
+	_cam_blend = 0.6
+	ui.toast("%s · %s · %d ₺" % ["Dolmuş" if dolmus else "Taksi", minimap.dest_name, _taxi_fare])
+
+
+func _update_taxi(dt: float) -> void:
+	var c := _taxi
+	var p := Vector2(c.position.x, c.position.z)
+	if _taxi_i >= _taxi_path.size():
+		_leave_taxi(true)
+		return
+	var tgt := _taxi_path[_taxi_i]
+	var seg_dir := (tgt - (_taxi_path[_taxi_i - 1] if _taxi_i > 0 else p)).normalized()
+	var lane := tgt + Vector2(-seg_dir.y, seg_dir.x) * 1.7
+	var to := lane - p
+	var d := to.length()
+	if d < 2.5:
+		_taxi_i += 1
+		return
+	# Viraj oncesi yavasla
+	var want := 9.0
+	if _taxi_i + 1 < _taxi_path.size():
+		var nd := (_taxi_path[_taxi_i + 1] - tgt).normalized()
+		want = lerpf(4.0, 9.0, clampf(nd.dot(seg_dir), 0.0, 1.0)) if d < 14.0 else 9.0
+	_taxi_speed = move_toward(_taxi_speed, want, dt * 2.5)
+	var dir := to / d
+	var np := p + dir * minf(_taxi_speed * dt, d)
+	var yaw := lerp_angle(c.rotation.y, atan2(-dir.x, -dir.y), minf(1.0, dt * 3.0))
+	c.position = Vector3(np.x, ParkMap.terrain_height(np), np.y)
+	c.rotation.y = yaw
+	if c.get_child_count() > 0:
+		World.spin_wheels(c.get_child(0), _taxi_speed * dt)
+	owner_node.position = c.position
+	if not _dragging:
+		_cam_yaw = lerp_angle(_cam_yaw, yaw, minf(1.0, dt * 1.6))
+
+
+func _leave_taxi(arrived: bool) -> void:
+	var c := _taxi
+	_taxi = null
+	var p := Vector2(c.position.x, c.position.z)
+	var side := Vector2(cos(c.rotation.y), -sin(c.rotation.y))
+	var out := p + side * 2.2
+	for cand in [p + side * 2.2, p - side * 2.2, p + side * 3.2]:
+		if world.is_free(cand, 0.4):
+			out = cand
+			break
+	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
+	owner_model.visible = true
+	ui._actions.visible = true
+	_unboard_pets(out)
+	_cam_blend = 0.6
+	if arrived:
+		state.d["coins"] = maxi(0, int(state.d["coins"]) - _taxi_fare)
+		ui.toast("Vardın · %d ₺ ödedin" % _taxi_fare)
+	# Arac yeniden trafige karisir
+	c.set("node", ParkMap.nearest_node(p))
+	c.set("_prev", -1)
+	if c.has_method("_pick"):
+		c._pick()
+	c.set_process(true)
 
 
 # ---------------------------------------------------------------- navigasyon ve mini harita
@@ -1189,10 +1528,12 @@ func _update_minimap(dt: float) -> void:
 
 # ---------------------------------------------------------------- ev (ic mekan)
 
-## Ev: Subayevleri'nde Altinpark'a bakan 5 katli apartmanin (OSM bina 682) 2. kati.
-const HOME_BUILDING := Vector2(320.6, 66.3)
-const HOME_DOOR := Vector2(326.56, 56.62)
-const HOME_DOOR_OUT := Vector2(0.526, -0.85)
+## Ev: Subayevleri'nde, Aksa Camii'nin kuzeyindeki parkin kosesi, Arif Sokak ile Vadi Sokak arasinda parka inen
+## yarim yolun basindaki 4 katli apartman (OSM bina 407), 2. kat. Balkon kuzeydeki parka bakar.
+const HOME_BUILDING := Vector2(42.95, -365.43)
+const HOME_CORNERS := [Vector2(26.8, -370.6), Vector2(33.6, -351.3), Vector2(59.1, -360.2), Vector2(52.3, -379.6)]
+const HOME_DOOR := Vector2(30.17, -360.93)
+const HOME_DOOR_OUT := Vector2(-0.944, 0.331)
 const HOME_FLOOR := 2
 var _home: Node3D
 
@@ -1204,19 +1545,20 @@ func _near_home_door() -> bool:
 func _enter_home() -> void:
 	if _home == null:
 		_home = Home.new()
-		# Yerel x ekseni binanin 32 derecelik kenari boyunca (balkon dogu-guneydoguya, parka bakar)
-		var b := deg_to_rad(212.0)
-		_home.rotation.y = -b
-		var ground := ParkMap.terrain_height(HOME_DOOR)
-		var center_local := Vector3(6.0 + 2.2, 0, 5.8)
-		var basis := Basis(Vector3.UP, -b)
-		var c3 := Vector3(HOME_BUILDING.x, ground + 0.6 + HOME_FLOOR * 3.1, HOME_BUILDING.y)
-		_home.position = c3 - basis * center_local
+		# Yerel x: binanin kisa ekseni boyunca guneye (x = 0 kuzey cephesi: balkon parka bakar),
+		# yerel z: uzun ekseni boyunca batiya (salon penceresi sokaga)
+		var theta := atan2(-0.944, 0.331)
+		_home.rotation.y = theta
+		var ground := -1e9
+		for q in HOME_CORNERS:
+			ground = maxf(ground, ParkMap.terrain_height(q))
+		var c3 := Vector3(HOME_BUILDING.x, ground + HOME_FLOOR * 3.0 + 0.05, HOME_BUILDING.y)
+		_home.position = c3 - Basis(Vector3.UP, theta) * Vector3(9.6, 0, 5.8)
 		add_child(_home)
 	_home.visible = true
 	ParkMap.home = _home
 	# Binanin bu kattan yukarisi gorunmesin (yukaridan bakinca daire acik gorunur)
-	world.hide_above(HOME_BUILDING, Vector2(cos(deg_to_rad(-58.0)), sin(deg_to_rad(-58.0))), Vector2(12.5, 8.5), _home.global_position.y - 0.2)
+	world.hide_above(HOME_BUILDING, Vector2(0.944, -0.33), Vector2(14.2, 10.9), _home.global_position.y - 0.2)
 	_moving = false
 	_queue.clear()
 	var inside: Vector2 = _home.w2(_home.entrance_local)
@@ -1637,6 +1979,9 @@ func _update_owner(dt: float) -> void:
 	if _bus_ride != null and _mode == "play":
 		_update_bus_ride(dt)
 		return
+	if _taxi != null and _mode == "play":
+		_update_taxi(dt)
+		return
 	if _mode != "play":
 		_moving = false
 	elif _steering and ui.stick.length() <= 0.15:
@@ -1672,7 +2017,7 @@ func _update_owner(dt: float) -> void:
 		# Yumusak hizlanma; yavaslama daha cabuk
 		_walk_v = move_toward(_walk_v, want_sp, dt * (5.0 if want_sp > _walk_v else 9.0))
 		var sp := maxf(_walk_v, 0.6)
-		var np: Vector2 = world.resolve(p + to / d * minf(sp * dt, d), 0.35, p)
+		var np: Vector2 = _push_from_vehicles(world.resolve(p + to / d * minf(sp * dt, d), 0.35, p), 0.35)
 		var moved := np.distance_to(p) / maxf(dt, 0.0001)
 		owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
 		if moved > 0.2:
@@ -1778,10 +2123,17 @@ func _update_context() -> void:
 	if _ride != null:
 		ui.set_context("", "")      # inmek: kamera dugmesinin yanindaki in dugmesi ya da E
 		return
-	for r in _rides:
-		if o.distance_to(Vector2(r.position.x, r.position.z)) < (3.6 if r.get_meta("kind") == "araba" else 2.2):
-			ui.set_context(RIDES[r.get_meta("kind")]["ad"], "drive", "play")
-			return
+	if _taxi != null:
+		ui.set_context("", "")
+		return
+	var tx := _nearest_taxi()
+	if tx:
+		ui.set_context("%s Bin" % ("Dolmuşa" if _car_model(tx) == "dolmus" else "Taksiye"), "taxi", "play")
+		return
+	var rd := _nearest_rideable()
+	if rd:
+		ui.set_context(RIDES[rd.get_meta("kind") if rd.has_meta("kind") else "araba"]["ad"], "drive", "play")
+		return
 	if ParkMap.has_spot("petshop") and o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
 		ui.set_context("Pet Shop'a Gir", "shop", "cart")
 	elif ParkMap.has_spot("dondurmaci") and o.distance_to(ParkMap.spot("dondurmaci") + Vector2(0, 2.5)) < 3.6:
@@ -1797,6 +2149,15 @@ func _update_context() -> void:
 
 
 func _update_camera(dt: float) -> void:
+	_update_camera_raw(dt)
+	# Kamera gecisleri (arac, ic gorunum, ev) isinlanmadan yumusak
+	if _cam_blend > 0.0:
+		_cam_blend -= dt
+		cam.global_transform = _cam_last.interpolate_with(cam.global_transform, minf(1.0, dt * 9.0))
+	_cam_last = cam.global_transform
+
+
+func _update_camera_raw(dt: float) -> void:
 	var k := minf(1.0, dt * 5.0)
 	match _mode:
 		"menu":

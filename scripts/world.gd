@@ -1588,7 +1588,7 @@ func vehicle(path: String, length: float, flip := false) -> Node3D:
 	return holder
 
 
-## tools/split_wheels.py ile ayrilmis tekerlekler: [dugum, yaricap (m)]
+## tools/split_wheels.py ile ayrilmis tekerlekler: [dugum, yaricap (m), ilk duzen, donme ekseni (yerel), on teker mi, aci]
 static func find_wheels(inst: Node, scale_k: float) -> Array:
 	var out: Array = []
 	for n in inst.find_children("wheel_*", "", true, false):
@@ -1598,17 +1598,29 @@ static func find_wheels(inst: Node, scale_k: float) -> Array:
 			if list.is_empty():
 				continue
 			mi = list[0]
-		out.append([n, maxf(mi.mesh.get_aabb().size.y * 0.5 * scale_k, 0.05)])
+		var axis := Vector3.RIGHT if String(n.name).begins_with("wheel_x") else Vector3.BACK
+		var size := mi.mesh.get_aabb().size
+		out.append([n, maxf(size.y * 0.5 * scale_k, 0.05), (n as Node3D).basis, axis, null, 0.0])
 	return out
 
 
-## Tekerlekleri alinan yol kadar dondurur (arac -Z'ye gidiyorsa ileri).
-static func spin_wheels(holder: Node3D, dist: float) -> void:
-	if not holder or not holder.has_meta("wheels"):
+## Tekerlekleri alinan yol kadar dondurur (arac -Z'ye gidiyorsa ileri); on tekerler 'steer' (radyan) kadar doner.
+static func spin_wheels(holder: Node3D, dist: float, steer := 0.0) -> void:
+	if not holder or not holder.has_meta("wheels") or not holder.is_inside_tree():
 		return
-	var right := holder.global_basis.x.normalized()
+	var inv := holder.global_transform.affine_inverse()
 	for w in holder.get_meta("wheels"):
-		(w[0] as Node3D).global_rotate(right, -dist / float(w[1]))
+		var node: Node3D = w[0]
+		if w[4] == null:
+			# Ilk cagride: on teker mi, eksen aracin sagina mi bakiyor
+			var local := inv * node.global_position
+			w[4] = local.z < 0.0
+			var ax_h: Vector3 = inv.basis * (node.get_parent().global_basis * Vector3(w[3]))
+			w.append(signf(ax_h.x) if absf(ax_h.x) > 0.01 else 1.0)
+		w[5] = fmod(float(w[5]) + dist / float(w[1]), TAU)
+		var spin := Basis(Vector3(w[3]), -float(w[5]) * float(w[6]))
+		var turn := Basis(Vector3.UP, -steer) if w[4] else Basis()
+		node.basis = Basis(w[2]) * turn * spin
 
 
 ## Trafikteki arac: taksi, dolmus, hatchback ya da renkli araba.
