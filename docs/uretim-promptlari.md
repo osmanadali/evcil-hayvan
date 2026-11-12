@@ -148,18 +148,23 @@ A user interface design mockup for a 3D mobile pet life-simulation game on a tab
 
 **Görselleri bana gönderirken:** PNG ya da JPG olarak bu sohbete yüklemen yeterli. Yükleme ekranı ve menü arka planını doğrudan oyuna koyarım, simgeyi uygulama simgesi yaparım.
 
-## Oyuncunun arabasi: 2019 Fransiz kompakt sedan (ilan: Renault 2019, Icon, otomatik)
+## Oyuncunun arabasi: 2015 Alman kompakt hatchback (VW Polo 6C, otomatik DSG)
 
-Tripo > Text to Model (veya ilan fotografi ile Image to Model). Ayarlar: Model v2.5+, Texture HD, PBR acik,
+Tripo > Text to Model (ya da fotograf ile Image to Model). Ayarlar: Model v2.5+, Texture HD, PBR acik,
 Quad kapali, Smart Low Poly kapali, Face limit ~30k.
 
-Prompt:
-2019 French compact four-door sedan, Renault Megane IV sedan style, elegant sloping roofline, C-shaped LED
-daytime running lights in the headlights, thin chrome grille bar, wide horizontal tail lights reaching into
-the trunk lid, 16-inch dark multi-spoke alloy wheels, metallic paint, tinted windows, realistic proportions
-4.63 m long 1.81 m wide 1.44 m high, clean body without any logos, badges or license plate text,
+Dis prompt:
+2015 German compact five-door hatchback, Volkswagen Polo 6C facelift style, clean straight shoulder line,
+horizontal slim black grille joining the headlights, rectangular headlights with LED daytime light strip,
+small front bumper fog lights, rounded rectangular tail lights, short rear overhang, 15-inch silver
+multi-spoke alloy wheels, metallic silver paint, black side mirrors housings, tinted windows,
+realistic proportions 3.97 m long 1.68 m wide 1.46 m high, no logos, no badges, no license plate text,
 game-ready, PBR textures, neutral studio lighting, single object on white background
 
-Negatif / dikkat: logo yok, plaka yazisi yok, kapilar kapali, tekerlekler ayri gorunsun.
-Fotograf varsa: ilanin yandan ve 3/4 on cekilmis fotografini Image to Model'e ver, ayni promptu ekle.
-Indirilen GLB'yi bana gonder: tekerlekleri ayirip doner hale getirir, senin arabanin yerine koyarim.
+Ic mekan (istersen ayri uretilir; oyunda ic mekani zaten Polo duzenine gore cizdim):
+2015 compact hatchback car interior cockpit, Polo 6C style dashboard, two round analog gauges with small
+center display, three round air vents, 6.5-inch touchscreen in center stack, climate control knobs,
+automatic DSG gear lever, three-spoke leather steering wheel, dark grey plastics with silver trim,
+grey fabric seats, no logos, game-ready, PBR
+
+Not: logo ve plaka yazisi olmasin. GLB'yi gonder: tekerlekleri ayirip doner hale getirip senin arabana koyarim.

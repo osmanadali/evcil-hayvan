@@ -1527,6 +1527,9 @@ func _cockpit_camera() -> void:
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
 		wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
 		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
+		var kmh := absf(_drive_speed) * 3.6
+		(_cockpit.get_node("Ibre1") as Node3D).rotation.z = 2.1 - clampf(kmh / 200.0, 0.0, 1.0) * 4.2
+		(_cockpit.get_node("Ibre0") as Node3D).rotation.z = 2.1 - clampf(0.12 + kmh / 120.0 * 0.5 + absf(ui.stick.y) * 0.2, 0.0, 1.0) * 4.2
 		var cpn = _cockpit.get_node("CarPlayVP/CP")
 		cpn.player = _owner_pos()
 		cpn.heading = _ride.rotation.y
@@ -1566,112 +1569,136 @@ func _set_body_visible(v: Node3D, on: bool) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
-## Araba ici: on panel, gostergeler, CarPlay ekrani, direksiyon, koltuklar, kapi dosemeleri, direkler, ayna.
+## Araba ici (2015 kompakt hatchback, Polo 6C duzeni): iki kadranli gosterge, yuvarlak yan
+## havalandirmalar, gumus serit, orta konsolda CarPlay ekrani, klima dugmeleri, otomatik vites kolu,
+## uc kollu direksiyon, gri kumas koltuklar, kapi dosemeleri.
 func _make_cockpit() -> Node3D:
 	var c := Node3D.new()
-	var dash := Kit.mat("2a2c30", 0.75)
-	var soft := Kit.mat("3b3d41", 0.85)
-	var trim := Kit.mat("8c8f94", 0.35)
-	var fabric := Kit.mat("4a4c52", 1.0)
-	var beige := Kit.mat("cfc6b6", 0.95)
-	# On panel: alt govde, ust egimli yuzey, gosterge kapagi
-	Kit.box(c, Vector3(1.56, 0.36, 0.45), Vector3(0, 0.74, -0.78), dash)
-	Kit.box(c, Vector3(1.56, 0.06, 0.55), Vector3(0, 0.95, -0.85), soft, Vector3(0.22, 0, 0))
-	Kit.box(c, Vector3(0.48, 0.12, 0.22), Vector3(-0.36, 1.0, -0.62), dash, Vector3(-0.3, 0, 0))
-	# Gostergeler ve CarPlay ekrani (yazilar canli guncellenir)
-	var glow := StandardMaterial3D.new()
-	glow.albedo_color = Color("0b0e12")
-	glow.emission_enabled = true
-	glow.emission = Color("15324a")
-	Kit.box(c, Vector3(0.42, 0.14, 0.02), Vector3(-0.36, 0.95, -0.56), glow, Vector3(-0.35, 0, 0))
+	var dash := Kit.mat("2b2d31", 0.8)
+	var soft := Kit.mat("3a3c40", 0.9)
+	var silver := Kit.mat("b9bcc0", 0.3)
+	silver.metallic = 0.6
+	var black := Kit.mat("141517", 0.4)
+	var fabric := Kit.mat("55585e", 1.0)
+	var fabric2 := Kit.mat("3d4045", 1.0)
+	var head := Kit.mat("cdc8bd", 0.95)
+	# On panel govdesi ve ust yuzey
+	Kit.box(c, Vector3(1.56, 0.38, 0.5), Vector3(0, 0.72, -0.8), dash)
+	Kit.box(c, Vector3(1.56, 0.06, 0.6), Vector3(0, 0.94, -0.88), soft, Vector3(0.2, 0, 0))
+	# Gumus serit (panel boyunca)
+	Kit.box(c, Vector3(1.5, 0.035, 0.02), Vector3(0, 0.84, -0.545), silver)
+	# Gosterge kapagi ve iki yuvarlak kadran + ortada kucuk ekran
+	Kit.box(c, Vector3(0.46, 0.13, 0.24), Vector3(-0.36, 1.0, -0.64), dash, Vector3(-0.3, 0, 0))
+	var face := Kit.mat("0d0f12", 0.4)
+	var ring := Kit.mat("c9ccd0", 0.3)
+	for gx in [-0.47, -0.25]:
+		Kit.cyl(c, 0.068, 0.068, 0.01, Vector3(gx, 0.935, -0.565), face, 24, Vector3(PI / 2 - 0.3, 0, 0))
+		Kit.torus(c, 0.064, 0.072, Vector3(gx, 0.935, -0.56), ring, Vector3(PI / 2 - 0.3, 0, 0))
+		var needle := Kit.box(c, Vector3(0.006, 0.05, 0.004), Vector3(gx, 0.95, -0.556), Kit.glow("ff5a1f", 1.5), Vector3(-0.3, 0, 0.7))
+		needle.name = "Ibre%d" % (0 if gx < -0.3 else 1)
+	Kit.box(c, Vector3(0.07, 0.07, 0.005), Vector3(-0.36, 0.935, -0.562), Kit.glow("1d3a52", 0.6), Vector3(-0.3, 0, 0))
 	var speed := Label3D.new()
 	speed.name = "Hiz"
-	speed.font_size = 48
-	speed.pixel_size = 0.0016
-	speed.modulate = Color("8fd3ff")
-	speed.position = Vector3(-0.36, 0.955, -0.548)
-	speed.rotation.x = -0.35
+	speed.font_size = 40
+	speed.pixel_size = 0.0011
+	speed.modulate = Color("e8f4ff")
+	speed.position = Vector3(-0.36, 0.936, -0.558)
+	speed.rotation.x = -0.3
 	speed.text = "0"
 	c.add_child(speed)
-	# CarPlay: SubViewport'ta cizilen canli ekran, on paneldeki dokunmatik ekrana doku olur
+	# Yan havalandirmalar (yuvarlak) ve orta havalandirmalar (dikdortgen)
+	for vx in [-0.68, 0.68]:
+		Kit.torus(c, 0.045, 0.06, Vector3(vx, 0.86, -0.548), silver, Vector3(PI / 2, 0, 0))
+		Kit.cyl(c, 0.045, 0.045, 0.01, Vector3(vx, 0.86, -0.552), black, 16, Vector3(PI / 2, 0, 0))
+	for vx in [-0.02, 0.18]:
+		Kit.box(c, Vector3(0.16, 0.06, 0.02), Vector3(vx, 1.0, -0.6), black, Vector3(-0.25, 0, 0))
+		Kit.box(c, Vector3(0.17, 0.008, 0.022), Vector3(vx, 1.033, -0.6), silver, Vector3(-0.25, 0, 0))
+	# Orta konsol: CarPlay ekrani (SubViewport), altinda klima paneli
 	var vp := SubViewport.new()
 	vp.name = "CarPlayVP"
 	vp.size = Vector2i(640, 300)
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	vp.transparent_bg = false
 	var cp := CarPlay.new()
 	cp.name = "CP"
 	vp.add_child(cp)
 	c.add_child(vp)
 	var scr := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	q.size = Vector2(0.34, 0.16)
+	q.size = Vector2(0.27, 0.13)
 	scr.mesh = q
 	var sm := StandardMaterial3D.new()
 	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	sm.albedo_texture = vp.get_texture()
 	scr.material_override = sm
-	scr.position = Vector3(0.08, 0.95, -0.535)
-	scr.rotation.x = -0.28
+	scr.position = Vector3(0.08, 0.9, -0.528)
+	scr.rotation.x = -0.18
 	c.add_child(scr)
-	Kit.box(c, Vector3(0.37, 0.19, 0.02), Vector3(0.08, 0.948, -0.548), Kit.mat("101113", 0.3), Vector3(-0.28, 0, 0))
-	# Gosterge paneli: iki kadran
-	for gx in [-0.45, -0.27]:
-		Kit.cyl(c, 0.05, 0.05, 0.005, Vector3(gx, 0.965, -0.545), Kit.mat("e8eef4", 0.4), 20, Vector3(PI / 2 - 0.35, 0, 0))
-	# Havalandirma izgaralari, torpido cizgisi
-	for vx in [-0.68, -0.08, 0.24, 0.66]:
-		Kit.box(c, Vector3(0.12, 0.05, 0.02), Vector3(vx, 0.86, -0.555), Kit.mat("111214", 0.5))
-	Kit.box(c, Vector3(0.5, 0.008, 0.01), Vector3(0.45, 0.72, -0.555), trim)
-	# Orta konsol, vites kolu
-	Kit.box(c, Vector3(0.22, 0.32, 0.7), Vector3(0.0, 0.42, -0.2), dash)
-	Kit.cyl(c, 0.012, 0.012, 0.16, Vector3(0.0, 0.66, -0.12), trim, 6)
-	Kit.ball(c, 0.03, Vector3(0.0, 0.75, -0.12), dash)
-	# Direksiyon: kolon, simit, kollar
+	Kit.box(c, Vector3(0.31, 0.17, 0.02), Vector3(0.08, 0.9, -0.54), black, Vector3(-0.18, 0, 0))
+	Kit.box(c, Vector3(0.32, 0.18, 0.012), Vector3(0.08, 0.9, -0.546), silver, Vector3(-0.18, 0, 0))
+	Kit.box(c, Vector3(0.3, 0.1, 0.03), Vector3(0.08, 0.74, -0.54), black)
+	for kx in [-0.02, 0.08, 0.18]:
+		Kit.cyl(c, 0.022, 0.022, 0.025, Vector3(kx, 0.74, -0.52), silver, 14, Vector3(PI / 2, 0, 0))
+	# Orta tunel, otomatik vites kolu (P R N D), el freni
+	Kit.box(c, Vector3(0.24, 0.3, 0.75), Vector3(0.0, 0.43, -0.2), dash)
+	Kit.box(c, Vector3(0.16, 0.012, 0.22), Vector3(0.0, 0.585, -0.2), black)
+	Kit.cyl(c, 0.014, 0.018, 0.13, Vector3(0.0, 0.65, -0.2), black, 8)
+	Kit.capsule(c, 0.028, 0.1, Vector3(0.0, 0.73, -0.2), Kit.mat("26282b", 0.5))
+	Kit.box(c, Vector3(0.012, 0.012, 0.12), Vector3(0.0, 0.745, -0.2), silver)
+	var prnd := Label3D.new()
+	prnd.text = "P R N D S"
+	prnd.font_size = 24
+	prnd.pixel_size = 0.0012
+	prnd.modulate = Color("d0d4d8")
+	prnd.position = Vector3(0.05, 0.593, -0.2)
+	prnd.rotation = Vector3(-PI / 2, PI / 2, 0)
+	c.add_child(prnd)
+	Kit.box(c, Vector3(0.04, 0.04, 0.24), Vector3(0.0, 0.62, 0.12), black, Vector3(-0.2, 0, 0))
+	# Direksiyon: kolon + uc kollu simit (kol ve sag, alt), ortada hava yastigi
 	var wheel := Node3D.new()
 	wheel.name = "Direksiyon"
 	wheel.position = Vector3(-0.36, 0.92, -0.42)
 	wheel.rotation.x = -1.1
 	c.add_child(wheel)
 	Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
-	Kit.torus(wheel, 0.155, 0.185, Vector3.ZERO, soft, Vector3.ZERO)
-	Kit.box(wheel, Vector3(0.28, 0.025, 0.04), Vector3.ZERO, soft)
-	Kit.box(wheel, Vector3(0.04, 0.025, 0.14), Vector3(0, 0, 0.07), soft)
-	Kit.cyl(wheel, 0.055, 0.055, 0.03, Vector3.ZERO, dash, 12)
-	# Koltuklar ve basliklar
+	Kit.torus(wheel, 0.16, 0.19, Vector3.ZERO, Kit.mat("1d1e21", 0.7), Vector3.ZERO)
+	Kit.box(wheel, Vector3(0.3, 0.02, 0.045), Vector3(0, 0, -0.01), soft)
+	Kit.box(wheel, Vector3(0.05, 0.02, 0.15), Vector3(0, 0, 0.08), soft)
+	Kit.box(wheel, Vector3(0.16, 0.022, 0.012), Vector3(0, 0.005, 0.03), silver)
+	Kit.cyl(wheel, 0.065, 0.07, 0.04, Vector3(0, 0.01, 0), Kit.mat("26282b", 0.6), 16)
+	# Koltuklar (gri kumas, ortasi koyu seritli) ve basliklar
 	for x in [-0.36, 0.36]:
 		Kit.box(c, Vector3(0.52, 0.12, 0.52), Vector3(x, 0.46, 0.22), fabric)
-		Kit.box(c, Vector3(0.5, 0.7, 0.12), Vector3(x, 0.85, 0.5), fabric, Vector3(0.12, 0, 0))
-		Kit.box(c, Vector3(0.26, 0.18, 0.1), Vector3(x, 1.3, 0.56), fabric)
-	# Kapi dosemeleri, kol dayama, kapi kolu
-	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.06, 0.48, 1.5), Vector3(sx * 0.78, 0.72, 0.0), soft)
-		Kit.box(c, Vector3(0.1, 0.05, 0.5), Vector3(sx * 0.72, 0.78, 0.05), dash)
-		Kit.box(c, Vector3(0.02, 0.03, 0.12), Vector3(sx * 0.74, 0.92, -0.3), trim)
-	# A direkleri, tavan dosemesi, ic dikiz aynasi, gunesliklar
-	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), beige, Vector3(-0.55, 0, 0))
-		Kit.box(c, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), beige, Vector3(0.15, 0, 0))
-	Kit.box(c, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), beige)
-	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), beige)             # B diregi
-		Kit.box(c, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), beige)              # kapi ustu
-		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)               # pencere alti
-		Kit.box(c, Vector3(0.03, 0.02, 0.28), Vector3(sx * 0.75, 0.82, -0.1), Kit.mat("6c7076", 0.4))  # cam dugmeleri
-	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)       # arka koltuk
+		Kit.box(c, Vector3(0.28, 0.125, 0.5), Vector3(x, 0.462, 0.22), fabric2)
+		Kit.box(c, Vector3(0.5, 0.72, 0.12), Vector3(x, 0.86, 0.5), fabric, Vector3(0.12, 0, 0))
+		Kit.box(c, Vector3(0.26, 0.6, 0.125), Vector3(x, 0.86, 0.49), fabric2, Vector3(0.12, 0, 0))
+		Kit.box(c, Vector3(0.26, 0.18, 0.1), Vector3(x, 1.32, 0.57), fabric)
+	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)
 	Kit.box(c, Vector3(1.4, 0.6, 0.12), Vector3(0, 0.82, 1.3), fabric, Vector3(0.15, 0, 0))
-	Kit.box(c, Vector3(1.5, 0.02, 1.6), Vector3(0, 0.38, 0.2), Kit.mat("26272a", 1.0))     # paspas/zemin
+	Kit.box(c, Vector3(1.5, 0.02, 1.6), Vector3(0, 0.38, 0.2), Kit.mat("232427", 1.0))
+	# Kapi dosemeleri: kol dayama, gumus kapi kolu, hoparlor
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.06, 0.5, 1.5), Vector3(sx * 0.78, 0.72, 0.0), soft)
+		Kit.box(c, Vector3(0.1, 0.05, 0.5), Vector3(sx * 0.72, 0.8, 0.05), dash)
+		Kit.box(c, Vector3(0.02, 0.025, 0.12), Vector3(sx * 0.745, 0.92, -0.32), silver)
+		Kit.cyl(c, 0.07, 0.07, 0.01, Vector3(sx * 0.745, 0.55, -0.35), black, 16, Vector3(0, 0, PI / 2))
+		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)
+		Kit.box(c, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), head, Vector3(-0.55, 0, 0))
+		Kit.box(c, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), head)
+		Kit.box(c, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), head)
+		Kit.box(c, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), head, Vector3(0.15, 0, 0))
+	Kit.box(c, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), head)
+	Kit.box(c, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), black)
 	var il := OmniLight3D.new()
 	il.position = Vector3(0, 1.3, 0.0)
 	il.omni_range = 1.8
 	il.light_energy = 0.45
 	il.light_color = Color("fff1dc")
 	c.add_child(il)
-	Kit.box(c, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), Kit.mat("1b1c1e", 0.3))
 	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
 	var paint := Kit.mat("b8322c", 0.35)
-	Kit.box(c, Vector3(1.5, 0.08, 1.3), Vector3(0, 0.92, -1.62), paint, Vector3(0.12, 0, 0))
+	Kit.box(c, Vector3(1.5, 0.08, 1.2), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))
 	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), Kit.mat("1b1c1e", 0.4))
+		Kit.box(c, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), black)
 	return c
 
 
