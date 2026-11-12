@@ -5,6 +5,7 @@ extends Node3D
 
 const ParkMap = preload("res://scripts/park_map.gd")
 const Kit = preload("res://scripts/kit.gd")
+const _World = preload("res://scripts/world.gd")
 const CRUISE := 8.5
 const DWELL := 9.0
 const LANE := 1.8
@@ -25,6 +26,7 @@ var stop_pos := Vector2.ZERO  # son durulan duragin bekleme yeri
 var last_stop := {}
 var _next_stop := 0
 var _doors: Array[Node3D] = []
+var _wheels: Array = []
 
 
 func setup(no: String, data: Dictionary, start_leg: int, start_s: float) -> void:
@@ -82,6 +84,8 @@ func _model_from_file() -> void:
 	inst.position = Basis(Vector3.UP, inst.rotation.y) * Vector3(-c.x, 0, -c.z) * k
 	inst.position.y = -box.position.y * k
 	add_child(holder)
+	_wheels = _World.find_wheels(inst, k)
+	set_meta("wheels", _wheels)
 	_destination(Vector3(0, 2.95, -6.02))
 
 
@@ -183,6 +187,8 @@ func _process(dt: float) -> void:
 				want = 0.0          # yolun ortasindaki oyuncuya yol verir
 		speed = move_toward(speed, want, dt * (3.0 if want < speed else 1.6))
 		s += speed * dt
+		if not _wheels.is_empty():
+			_World.spin_wheels(self, speed * dt)
 		if s >= total:
 			var end := _point(total)
 			if ParkMap.inside_bounds(end, -30.0):

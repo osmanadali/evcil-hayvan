@@ -54,6 +54,8 @@ var _cam_pitch := 0.27
 var _press_pos := Vector2.ZERO
 var _press_moved := 0.0
 var _press_time := 0.0
+var _steering := false     # cubukla yuruyor
+var _walk_v := 0.0          # su anki yurume hizi
 var _kb_stick := false     # klavye cubugu dolduruyor
 var _routing := false      # harita rotasi izleniyor (yurume hizinda)
 var _direct := false       # son hedefe duz cizgiyle mi gidiliyor
@@ -571,7 +573,10 @@ func _input(e: InputEvent) -> void:
 	if _mode == "play" and not ui.is_blocking() and not map_screen.visible:
 		match k.keycode:
 			KEY_E, KEY_F:
-				if ui._context.visible:
+				if _ride != null:
+					if absf(_drive_speed) < 2.0:
+						_exit_ride()
+				elif ui._context.visible:
 					_on_command(ui._context_cmd)
 			KEY_1:
 				_on_command("pet")
@@ -585,6 +590,9 @@ func _input(e: InputEvent) -> void:
 				map_screen.open(_owner_pos())
 			KEY_C:
 				_on_photo("enter")
+			KEY_V:
+				if _ride != null:
+					_fps = not _fps
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -826,6 +834,12 @@ const VEHICLE_FLIP := {"bisiklet": true, "taksi": true, "dolmus": true}      # m
 var _rides: Array[Node3D] = []       # binilebilen araclar
 var _ride: Node3D                    # su an surulen arac
 var _drive_speed := 0.0
+var _last_speed := 0.0
+var _steer := 0.0
+var _fps := false          # surerken birinci sahis kamera
+var _cockpit: Node3D
+var _cam_btn: Button
+var _exit_btn: Button
 var _engine: AudioStreamPlayer
 
 
@@ -865,7 +879,11 @@ func _spawn_rides() -> void:
 		var dir := (b - a).normalized()
 		var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
 		var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
-		var car: Node3D = world.make_car(Color("c23b32"))
+		var car: Node3D = world.vehicle("res://assets/models/hatchback.glb", 4.1)
+		if car == null:
+			car = world.make_car(Color("c23b32"))
+		else:
+			_paint(car, Color("b8322c"))
 		car.set_meta("kind", "araba")
 		_place_ride(car, p, atan2(-dir.x, -dir.y))
 	# Bahce kapisinin onunde bisiklet ve scooter
@@ -881,6 +899,17 @@ func _spawn_rides() -> void:
 				break
 			p += Vector2(0.8, 0.0)
 		_place_ride(v, p, PI)
+
+
+## Govde boyasini degistirir (lastik ve camlar koyu oldugu icin carpim az etkiler).
+func _paint(v: Node3D, c: Color) -> void:
+	for mi: MeshInstance3D in v.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.get_active_material(i)
+			if m is BaseMaterial3D:
+				var mm: BaseMaterial3D = m.duplicate()
+				mm.albedo_color = c.lerp(Color.WHITE, 0.15) * 1.6
+				mi.set_surface_override_material(i, mm)
 
 
 func _place_ride(v: Node3D, p: Vector2, yaw: float) -> void:
@@ -920,7 +949,25 @@ func _enter_ride() -> void:
 	if _engine and cfg["engine"] > 0.0:
 		_engine.play()
 	ui._actions.visible = false
-	ui.toast("Sol çubuk: ileri-geri ve direksiyon")
+	if _cam_btn == null:
+		_cam_btn = UiKit.button(ui.hud, "", "camera", func(): _fps = not _fps, ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
+		_cam_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		_cam_btn.offset_left = -96
+		_cam_btn.offset_top = -184
+		_cam_btn.offset_right = -28
+		_cam_btn.offset_bottom = -116
+	_cam_btn.visible = true
+	if _exit_btn == null:
+		_exit_btn = UiKit.button(ui.hud, "", "come", func():
+			if absf(_drive_speed) < 2.0:
+				_exit_ride(), ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
+		_exit_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		_exit_btn.offset_left = -96
+		_exit_btn.offset_top = -264
+		_exit_btn.offset_right = -28
+		_exit_btn.offset_bottom = -196
+	_exit_btn.visible = true
+	ui.toast("Sol çubuk: gaz, fren, direksiyon · kamera düğmesi (V): içeriden sür")
 
 
 func _exit_ride() -> void:
@@ -935,6 +982,15 @@ func _exit_ride() -> void:
 			out = cand
 			break
 	ui._actions.visible = true
+	if _cam_btn:
+		_cam_btn.visible = false
+	if _exit_btn:
+		_exit_btn.visible = false
+	_fps = false
+	cam.near = 0.05
+	if _cockpit:
+		_cockpit.queue_free()
+		_cockpit = null
 	var hidden: bool = RIDES[_ride.get_meta("kind")]["hide"]
 	_ride.rotation.z = 0.0
 	_ride = null
@@ -955,6 +1011,73 @@ func _exit_ride() -> void:
 		_engine.stop()
 
 
+## Birinci sahis: arabada surucu koltugundan (on panel, direksiyon), iki tekerlikte surucunun gozunden.
+func _cockpit_camera() -> void:
+	var kind: String = _ride.get_meta("kind")
+	var look := Basis(Vector3.UP, _cam_yaw - _ride.rotation.y) if _dragging or absf(angle_difference(_cam_yaw, _ride.rotation.y)) > 0.05 else Basis()
+	if kind == "araba":
+		if _cockpit == null:
+			_cockpit = _make_cockpit()
+			_ride.add_child(_cockpit)
+		_cockpit.visible = true
+		_set_body_visible(_ride, false)
+		var wheel: Node3D = _cockpit.get_node("Direksiyon")
+		wheel.rotation.z = -_steer * 2.2
+		# Govdenin ust kismi gorunmesin diye yalniz kokpit ve camlar; kamera koltuk hizasinda
+		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.05), Vector3(-0.36, 1.2, 0.18))
+		cam.near = 0.08
+	else:
+		# Surucunun bas kemiginin biraz onunden bak; kendi sacini gormesin
+		var hb: Transform3D = owner_model.head_transform()
+		cam.global_position = hb.origin + _ride.global_basis * Vector3(0, 0.08, -0.22)
+		cam.global_basis = _ride.global_basis * look * Basis(Vector3.RIGHT, -0.12)
+		cam.near = 0.12
+
+
+func _set_body_visible(v: Node3D, on: bool) -> void:
+	for mi: MeshInstance3D in v.find_children("*", "MeshInstance3D", true, false):
+		if mi.get_parent() != _cockpit and not String(mi.get_parent().name).begins_with("wheel") and not mi.is_ancestor_of(_cockpit):
+			if _cockpit == null or not _cockpit.is_ancestor_of(mi):
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if not on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+
+## Araba ici: on panel, gostergeler, direksiyon, koltuklar, direkler (modelin ici bos oldugu icin).
+func _make_cockpit() -> Node3D:
+	var c := Node3D.new()
+	var dash := Kit.mat("26282c", 0.7)
+	var trim := Kit.mat("3a3d42", 0.5)
+	var seat := Kit.mat("2e2f33", 0.9)
+	Kit.box(c, Vector3(1.55, 0.32, 0.55), Vector3(0, 0.82, -0.62), dash)                      # on panel
+	Kit.box(c, Vector3(1.5, 0.05, 0.45), Vector3(0, 0.99, -0.68), trim)
+	var gauge := StandardMaterial3D.new()
+	gauge.albedo_color = Color("0d1014")
+	gauge.emission_enabled = true
+	gauge.emission = Color("3fa9f5")
+	gauge.emission_energy_multiplier = 0.6
+	Kit.box(c, Vector3(0.36, 0.13, 0.02), Vector3(-0.36, 0.98, -0.42), gauge)                # gosterge
+	Kit.box(c, Vector3(0.22, 0.14, 0.02), Vector3(0.02, 0.93, -0.4), gauge)                  # ekran / navigasyon
+	var wheel := Node3D.new()
+	wheel.name = "Direksiyon"
+	wheel.position = Vector3(-0.36, 0.95, -0.33)
+	wheel.rotation.x = -1.15
+	c.add_child(wheel)
+	Kit.torus(wheel, 0.15, 0.18, Vector3.ZERO, trim, Vector3.ZERO)
+	Kit.box(wheel, Vector3(0.3, 0.03, 0.04), Vector3.ZERO, trim)
+	Kit.box(wheel, Vector3(0.04, 0.03, 0.15), Vector3(0, 0, 0.07), trim)
+	for x in [-0.36, 0.36]:
+		Kit.box(c, Vector3(0.5, 0.12, 0.5), Vector3(x, 0.5, 0.25), seat)
+		Kit.box(c, Vector3(0.5, 0.65, 0.12), Vector3(x, 0.85, 0.52), seat)
+	for x in [-0.72, 0.72]:
+		Kit.box(c, Vector3(0.06, 0.6, 0.06), Vector3(x, 1.25, -0.5), trim, Vector3(-0.45, 0, 0))   # on direkler
+	Kit.box(c, Vector3(1.4, 0.04, 1.4), Vector3(0, 1.48, 0.2), Kit.mat("bdb8ae", 0.9))          # tavan dosemesi
+	var paint := Kit.mat("b8322c", 0.35)
+	Kit.box(c, Vector3(1.5, 0.08, 1.3), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))     # kaput
+	for x in [-0.78, 0.78]:
+		Kit.box(c, Vector3(0.08, 0.5, 1.6), Vector3(x, 0.78, 0.1), Kit.mat("3a3d42", 0.6))   # kapi panelleri
+	Kit.box(c, Vector3(0.12, 0.28, 0.08), Vector3(-0.7, 1.15, -0.55), Kit.mat("1b1c1e", 0.4))   # ayna
+	return c
+
+
 func _update_drive(dt: float) -> void:
 	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	var top: float = cfg["max"]
@@ -966,7 +1089,10 @@ func _update_drive(dt: float) -> void:
 		_drive_speed = move_toward(_drive_speed, -top * 0.25 * -gas, (12.0 if _drive_speed > 0.3 else 3.0) * dt)
 	else:
 		_drive_speed = move_toward(_drive_speed, 0.0, 2.5 * dt)
-	var yaw := _ride.rotation.y - _drive_speed * tan(steer * 0.55) / float(cfg["base"]) * dt
+	# Direksiyon yumusak doner; hizlandikca daha az kirilir
+	_steer = move_toward(_steer, steer, dt * 2.6)
+	var steer_k := _steer * lerpf(1.0, 0.45, clampf(absf(_drive_speed) / top, 0.0, 1.0))
+	var yaw := _ride.rotation.y - _drive_speed * tan(steer_k * 0.6) / float(cfg["base"]) * dt
 	var p := Vector2(_ride.position.x, _ride.position.z)
 	var fwd := Vector2(-sin(yaw), -cos(yaw))
 	var want := p + fwd * _drive_speed * dt
@@ -979,9 +1105,17 @@ func _update_drive(dt: float) -> void:
 	_ride.position = Vector3(np.x, h, np.y)
 	_ride.rotation.y = yaw
 	_ride.rotation.x = lerpf(_ride.rotation.x, atan2(h2 - ParkMap.terrain_height(np), 2.0), minf(1.0, dt * 5.0))
-	if not hide:
-		# Iki tekerlekli: virajda iceri yatar
-		_ride.rotation.z = lerpf(_ride.rotation.z, -steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.35, minf(1.0, dt * 4.0))
+	World.spin_wheels(_ride, _drive_speed * dt)
+	var accel := (_drive_speed - _last_speed) / maxf(dt, 0.001)
+	_last_speed = _drive_speed
+	if hide:
+		# Araba: virajda govde disa, gaz-frende one-arkaya hafif yatar
+		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.05, minf(1.0, dt * 3.0))
+		_ride.rotation.x += clampf(accel * 0.004, -0.03, 0.03)
+	else:
+		# Iki tekerlekli: virajda hizla orantili iceri yatar
+		var lean_to := -_steer * clampf(_drive_speed / top * 1.6, 0.0, 1.0) * 0.55
+		_ride.rotation.z = lerpf(_ride.rotation.z, lean_to, minf(1.0, dt * 3.5))
 		owner_model.ride_speed = absf(_drive_speed)
 		if cfg.has("grip"):
 			var g: Vector3 = cfg["grip"]
@@ -1386,7 +1520,16 @@ func _update_owner(dt: float) -> void:
 		return
 	if _mode != "play":
 		_moving = false
+	elif _steering and ui.stick.length() <= 0.15:
+		# Cubuk / tus birakildi: kalan hedefe kosmadan yerinde dur
+		_steering = false
+		_moving = false
+		_target = p
+		d = 0.0
+	if _mode != "play":
+		pass
 	elif ui.stick.length() > 0.15:
+		_steering = true
 		# Cubuk az itilince yurur, sonuna kadar itilince kosar
 		limit = lerpf(1.5, WALK_SPEED, clampf((ui.stick.length() - 0.35) / 0.55, 0.0, 1.0))
 		_routing = false
@@ -1406,7 +1549,10 @@ func _update_owner(dt: float) -> void:
 	elif _moving and d > 0.15:
 		if _routing:
 			limit = ROUTE_SPEED
-		var sp := minf(limit, 1.0 + d * 2.5) if _queue.is_empty() else limit
+		var want_sp := minf(limit, 1.0 + d * 2.5) if _queue.is_empty() else limit
+		# Yumusak hizlanma; yavaslama daha cabuk
+		_walk_v = move_toward(_walk_v, want_sp, dt * (5.0 if want_sp > _walk_v else 9.0))
+		var sp := maxf(_walk_v, 0.6)
 		var np: Vector2 = world.resolve(p + to / d * minf(sp * dt, d), 0.35, p)
 		var moved := np.distance_to(p) / maxf(dt, 0.0001)
 		owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
@@ -1425,7 +1571,8 @@ func _update_owner(dt: float) -> void:
 				_moving = false
 	else:
 		_moving = false
-		owner_model.speed = 0.0
+		_walk_v = 0.0
+		owner_model.speed = move_toward(owner_model.speed, 0.0, dt * 8.0)
 
 
 ## Atilan esyanin fizigi: egik atis, yerde sekme, yuvarlanma ve surtunme.
@@ -1504,10 +1651,7 @@ func _update_context() -> void:
 			ui.set_context("Metroya İn", "metro", "star")
 			return
 	if _ride != null:
-		if absf(_drive_speed) < 1.0:
-			ui.set_context("Araçtan İn", "exit", "come")
-		else:
-			ui.set_context("", "")
+		ui.set_context("", "")      # inmek: kamera dugmesinin yanindaki in dugmesi ya da E
 		return
 	for r in _rides:
 		if o.distance_to(Vector2(r.position.x, r.position.z)) < (3.6 if r.get_meta("kind") == "araba" else 2.2):
@@ -1554,6 +1698,8 @@ func _update_camera(dt: float) -> void:
 			_focus = _focus.lerp(a.position, k)
 			cam.position = _focus + Vector3(1.4, 2.2, 3.4)
 			cam.look_at(_focus + Vector3(1.1, 0.9, 0))
+		_ when _ride != null and _fps:
+			_cockpit_camera()
 		_:
 			_focus = _focus.lerp(owner_node.position, k)
 			var dist := CAM_DIST * _zoom
@@ -1806,6 +1952,7 @@ func _debug_shot() -> void:
 			if r.get_meta("kind") == (_args["drive"] if _args["drive"] != "1" else "araba"):
 				owner_node.position = r.position + Vector3(1.0, 0, 0)
 		_enter_ride()
+		_fps = _args.has("fps")
 	if _args.has("trace"):
 		for i in int(_args["trace"]):
 			if _args.get("cmd", "") == "stick":

@@ -2,6 +2,7 @@ extends Node3D
 ## Sokak aginda gezen araba: sag seritten gider, tek yonlere uyar, oyuncuya yol verir.
 
 const ParkMap = preload("res://scripts/park_map.gd")
+const _World = preload("res://scripts/world.gd")
 const CRUISE := 7.5
 
 var node := 0
@@ -62,6 +63,8 @@ func _process(dt: float) -> void:
 			want = 0.0
 	_speed = move_toward(_speed, want, dt * (9.0 if want < _speed else 3.5))
 	_t += _speed * dt / _len
+	if get_child_count() > 0:
+		_World.spin_wheels(get_child(0), _speed * dt)
 	if _t >= 1.0:
 		_prev = node
 		node = _next

@@ -1505,7 +1505,31 @@ func vehicle(path: String, length: float, flip := false) -> Node3D:
 	var c := box.get_center()
 	pivot.position = Basis(Vector3.UP, turn) * Vector3(-c.x, 0, -c.z) * k
 	pivot.position.y = -box.position.y * k
+	holder.set_meta("wheels", find_wheels(inst, k))
 	return holder
+
+
+## tools/split_wheels.py ile ayrilmis tekerlekler: [dugum, yaricap (m)]
+static func find_wheels(inst: Node, scale_k: float) -> Array:
+	var out: Array = []
+	for n in inst.find_children("wheel_*", "", true, false):
+		var mi: MeshInstance3D = n if n is MeshInstance3D else null
+		if mi == null:
+			var list := n.find_children("*", "MeshInstance3D", true, false)
+			if list.is_empty():
+				continue
+			mi = list[0]
+		out.append([n, maxf(mi.mesh.get_aabb().size.y * 0.5 * scale_k, 0.05)])
+	return out
+
+
+## Tekerlekleri alinan yol kadar dondurur (arac -Z'ye gidiyorsa ileri).
+static func spin_wheels(holder: Node3D, dist: float) -> void:
+	if not holder or not holder.has_meta("wheels"):
+		return
+	var right := holder.global_basis.x.normalized()
+	for w in holder.get_meta("wheels"):
+		(w[0] as Node3D).global_rotate(right, -dist / float(w[1]))
 
 
 ## Trafikteki arac: taksi, dolmus, hatchback ya da renkli araba.

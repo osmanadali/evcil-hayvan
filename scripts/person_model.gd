@@ -200,6 +200,11 @@ func _process(dt: float) -> void:
 	position.y = -absf(sin(_phase)) * 0.03 * move * (1.0 + run)
 
 
+## Bas kemiginin dunya donusumu (birinci sahis kamera icin).
+func head_transform() -> Transform3D:
+	return _skel.global_transform * _skel.get_bone_global_pose(_bones["Head"])
+
+
 ## Ayakta dururken kalca kemiginin yerden yuksekligi (sele hizalamak icin).
 func hips_height() -> float:
 	return _skel.get_bone_global_rest(_bones["Hips"]).origin.y
