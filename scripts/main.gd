@@ -594,6 +594,7 @@ func _on_command(cmd: String) -> void:
 			for k in agents:
 				agents[k].command("come")
 			owner_model.act("wave", 0.9)
+			_pet_voice(a.kind)
 		"sit", "lie":
 			a.command(cmd)
 			state.add_xp(a.kind, 0.5)
@@ -642,6 +643,7 @@ func _do_pet() -> void:
 	_face_owner(a.pos2())
 	owner_model.act("pet", 1.3)
 	a.model.happy_time = 1.6
+	_pet_voice(a.kind, true)
 	_hearts(a.position)
 	if _pet_cd <= 0.0:
 		_pet_cd = 1.2
@@ -685,6 +687,8 @@ var _voice_i := 0
 func _setup_audio() -> void:
 	for n in ["ortam", "adim1", "adim2", "adim3", "adim4", "para", "firlat", "tik", "mutlu"]:
 		_sounds[n] = load("res://assets/sfx/%s.wav" % n)
+	for n in ["havla1", "havla2", "havla3", "miyav1", "miyav2", "miyav3", "mirla1", "solu1"]:
+		_sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	var amb: AudioStreamWAV = _sounds["ortam"]
 	amb.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	amb.loop_end = int(amb.get_length() * amb.mix_rate)
@@ -700,6 +704,14 @@ func _setup_audio() -> void:
 	state.coins_added.connect(func(): _sfx("para", -8.0))
 	state.leveled.connect(func(_k, _l): _sfx("mutlu", -6.0))
 	UiKit.on_click = func(): _sfx("tik", -12.0)
+
+
+## Hayvanin kendi sesi: kopek havlar, kedi miyavlar. soft = sevilirken (soluma / mirlama)
+func _pet_voice(kind: String, soft := false) -> void:
+	if kind == "kedi":
+		_sfx("mirla1" if soft else "miyav%d" % (randi() % 3 + 1), -5.0, randf_range(0.95, 1.08))
+	else:
+		_sfx("solu1" if soft else "havla%d" % (randi() % 3 + 1), -5.0, randf_range(0.95, 1.05))
 
 
 func _sfx(sound: String, db := -6.0, pitch := 1.0) -> void:
@@ -763,6 +775,7 @@ func _on_reward(kind: String, what: String) -> void:
 			state.add_need(kind, "fun", 18.0)
 			state.add_xp(kind, 4.0)
 			state.add_coins(5 if what == "fetch_air" else 3)
+			_pet_voice("kopek")
 			state.count("fetch")
 			_hearts(agents[kind].position)
 			if what == "fetch_air":

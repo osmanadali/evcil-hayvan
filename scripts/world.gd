@@ -570,7 +570,7 @@ func _build_spots() -> void:
 	_umbrella_table(cf + Vector2(-8.0, 3.2), "c9ab7a")
 	# Dondurmaci
 	var k := ParkMap.spot("dondurmaci")
-	_model("dondurmaci", k, 3.4, PI)
+	_model("dondurmaci", k, 3.6, 0.0)
 	_add_circle(Vector3(k.x, k.y, 2.3))
 	_umbrella_table(k + Vector2(-4.0, 2.6), "d9a441")
 	# Cardak

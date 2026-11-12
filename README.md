@@ -92,7 +92,7 @@ Köpek (sarı Labrador) ve kedi (turuncu tekir; ikisi de gerçekçi tarzda, `doc
 oluşturur, gövde ve dalların üstüne yüzlerce yaprak kartı dizer (`agac_lod.glb`, `cam_lod.glb`).
 
 **Sesler** `tools/make_sounds.py` ile sentezlenir (kayıt kullanılmaz): ortam (rüzgâr, kuş, uzak şehir), adım, bozuk para,
-fırlatma, düğme. Havlama ve miyavlama henüz yok.
+fırlatma, düğme. Havlama, miyavlama, mırlama ve soluma ElevenLabs ses efekti üretimiyle yapıldı (`assets/sfx/*.mp3`).
 
 **İnsan karakterleri** Tripo'dan değil, MakeHuman'in CC0 lisanslı verisinden (temel gövde, ten, giysi, saç) üretilir:
 `python3 tools/make_human.py <mh_klasörü> kadin assets/models/kadin.glb`. Araç yalnızca veri dosyalarını okur; gövdeyi
