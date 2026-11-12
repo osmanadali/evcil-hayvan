@@ -489,10 +489,19 @@ func _build_buildings() -> void:
 		# Egimde: taban en alcak koseye iner, cati en yuksek koseden olculur
 		var y_lo := 1e9
 		var y_hi := -1e9
-		for p in poly:
-			var gh := ParkMap.terrain_height(p)
-			y_lo = minf(y_lo, gh)
-			y_hi = maxf(y_hi, gh)
+		# Zemin kat yokusun en yuksek noktasina gore: kenarlar boyunca da ornekle (koseler arasi tepeler)
+		for i in poly.size():
+			var a0 := poly[i]
+			var a1 := poly[(i + 1) % poly.size()]
+			var steps := maxi(1, int(a0.distance_to(a1) / 2.0))
+			for k in steps + 1:
+				var p := a0.lerp(a1, float(k) / steps)
+				var gh := ParkMap.terrain_height(p)
+				var out_p := p + (p - c).normalized() * 1.2       # binanin hemen disi (kaldirim)
+				gh = maxf(gh, ParkMap.terrain_height(out_p) + ParkMap.sidewalk_raise(out_p))
+				y_lo = minf(y_lo, ParkMap.terrain_height(p))
+				y_hi = maxf(y_hi, gh)
+		y_hi += 0.15
 		y_lo -= 0.6
 		var tint := Color(FACADES[_rng.randi() % FACADES.size()])
 		if kind == "cami":

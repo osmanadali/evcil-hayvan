@@ -86,7 +86,11 @@ void fragment() {
 		// Yagmur izi: pencere altlarinda hafif kararma
 		wall *= 1.0 - 0.1 * box(cell, vec2(0.26, 0.0), vec2(0.74, 0.26)) * (1.0 - cell.y * 3.0);
 
-		float top_ok = step(UV.y, h - 0.7);
+		float top_ok = step(UV.y, h - 0.7) * step(0.0, UV.y);   // bodrum kaidesinde (UV.y < 0) pencere yok
+		if (UV.y < 0.0) {
+			// Bodrum kaidesi: koyu tas kaplama, yatay derzler
+			wall = plaster * vec3(0.5, 0.48, 0.45) * (1.0 - 0.18 * smoothstep(0.06, 0.0, fract(UV.y / 0.5)));
+		}
 		vec3 col = wall;
 		float rough = 0.92;
 		bool balcony = !ground && mod(id.x, 3.0) == 1.0;
