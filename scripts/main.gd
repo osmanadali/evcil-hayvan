@@ -743,14 +743,52 @@ func _do_feed(id: String) -> void:
 
 # ---------------------------------------------------------------- arac surme
 
-const DRIVE_MAX := 14.0        # m/sn (yaklasik 50 km/s)
+const VEHICLE_FLIP := {"bisiklet": true}      # modelin onu ters gelenler
 var _rides: Array[Node3D] = []       # binilebilen araclar
 var _ride: Node3D                    # su an surulen arac
 var _drive_speed := 0.0
 var _engine: AudioStreamPlayer
 
 
-## Oyuncunun kendi arabasi: baslangic noktasina en yakin sokagin kenarinda durur.
+## Binilebilen araclar: araba, scooter, bisiklet. Ayarlar: en yuksek hiz, ivme, dingil araligi, carpisma yaricapi,
+## binince karakter gizlenir mi, sele konumu (karakterin kayma payi), motor sesi.
+const RIDES := {
+	"araba": {"max": 14.0, "acc": 5.0, "base": 2.6, "r": 1.15, "hide": true, "seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
+	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, -0.2, 0.2), "engine": 1.6, "ad": "Scooter'a Bin"},
+	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, -0.04, 0.28), "engine": 0.0, "ad": "Bisiklete Bin"},
+}
+
+
+## Tripo modelini arac olarak hazirlar: uzun ekseni -Z (on), yere oturur, gercek boya olceklenir.
+func _vehicle(path: String, length: float, flip := false) -> Node3D:
+	var holder := Node3D.new()
+	if not ResourceLoader.exists(path):
+		return null
+	var inst: Node3D = load(path).instantiate()
+	var box := AABB()
+	var first := true
+	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
+		var xf := Transform3D()
+		var n: Node = mi
+		while n != inst:
+			xf = (n as Node3D).transform * xf
+			n = n.get_parent()
+		var a := xf * mi.mesh.get_aabb()
+		box = a if first else box.merge(a)
+		first = false
+	var pivot := Node3D.new()
+	holder.add_child(pivot)
+	pivot.add_child(inst)
+	var turn := (PI / 2.0 if box.size.x > box.size.z else 0.0) + (PI if flip else 0.0)
+	pivot.rotation.y = turn
+	var k := length / maxf(box.size.x, box.size.z)
+	pivot.scale = Vector3.ONE * k
+	var c := box.get_center()
+	pivot.position = Basis(Vector3.UP, turn) * Vector3(-c.x, 0, -c.z) * k
+	pivot.position.y = -box.position.y * k
+	return holder
+
+
 func _spawn_rides() -> void:
 	for r in _rides:
 		r.queue_free()
@@ -764,37 +802,61 @@ func _spawn_rides() -> void:
 			if d < best_d:
 				best_d = d
 				best = i
-	if best < 0:
-		return
-	var a := ParkMap.nodes[best]
-	var b: Vector2 = ParkMap.nodes[ParkMap.road_next[best][0]]
-	var dir := (b - a).normalized()
-	var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
-	var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
-	var car: Node3D = world.make_car(Color("c23b32"))
-	car.position = Vector3(p.x, ParkMap.terrain_height(p), p.y)
-	car.rotation.y = atan2(-dir.x, -dir.y)
-	add_child(car)
-	_rides.append(car)
+	if best >= 0:
+		var a := ParkMap.nodes[best]
+		var b: Vector2 = ParkMap.nodes[ParkMap.road_next[best][0]]
+		var dir := (b - a).normalized()
+		var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
+		var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
+		var car: Node3D = world.make_car(Color("c23b32"))
+		car.set_meta("kind", "araba")
+		_place_ride(car, p, atan2(-dir.x, -dir.y))
+	# Bahce kapisinin onunde bisiklet ve scooter
+	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.2)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(1.8, 3.4)]]:
+		var v := _vehicle(spec[1], spec[2], bool(VEHICLE_FLIP.get(spec[0], false)))
+		if v == null:
+			continue
+		v.set_meta("kind", spec[0])
+		var p: Vector2 = start + spec[3]
+		for i in 12:
+			if world.is_free(p, 0.6):
+				break
+			p += Vector2(0.8, 0.0)
+		_place_ride(v, p, PI)
+
+
+func _place_ride(v: Node3D, p: Vector2, yaw: float) -> void:
+	v.position = Vector3(p.x, ParkMap.walk_height(p), p.y)
+	v.rotation.y = yaw
+	add_child(v)
+	_rides.append(v)
 
 
 func _enter_ride() -> void:
 	var o := _owner_pos()
+	var best_d := 1e9
 	for r in _rides:
-		if o.distance_to(Vector2(r.position.x, r.position.z)) < 3.6:
+		var dd := o.distance_to(Vector2(r.position.x, r.position.z))
+		if dd < (3.6 if r.get_meta("kind") == "araba" else 2.2) and dd < best_d:
+			best_d = dd
 			_ride = r
 	if _ride == null:
 		return
+	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	_drive_speed = 0.0
 	_moving = false
 	_queue.clear()
 	_marker.visible = false
-	owner_model.visible = false
 	owner_model.speed = 0.0
-	for k in agents:
-		agents[k].visible = false
-		agents[k].set_process(false)
-	if _engine:
+	if cfg["hide"]:
+		owner_model.visible = false
+		for k in agents:
+			agents[k].visible = false
+			agents[k].set_process(false)
+	else:
+		owner_model.riding = _ride.get_meta("kind")
+		owner_model.position = cfg["seat"]
+	if _engine and cfg["engine"] > 0.0:
 		_engine.play()
 	ui._actions.visible = false
 	ui.toast("Sol çubuk: ileri-geri ve direksiyon")
@@ -805,54 +867,67 @@ func _exit_ride() -> void:
 		return
 	var c := Vector2(_ride.position.x, _ride.position.z)
 	var side := Vector2(-cos(_ride.rotation.y), sin(_ride.rotation.y))     # aracin solu
-	var out := c + side * 1.9
-	for cand in [c + side * 1.9, c - side * 1.9, c + side * 2.6, c - side * 2.6]:
+	var gap: float = 1.9 if RIDES[_ride.get_meta("kind")]["hide"] else 0.9
+	var out := c + side * gap
+	for cand in [c + side * gap, c - side * gap, c + side * (gap + 0.7), c - side * (gap + 0.7)]:
 		if world.is_free(cand, 0.4):
 			out = cand
 			break
 	ui._actions.visible = true
+	var hidden: bool = RIDES[_ride.get_meta("kind")]["hide"]
+	_ride.rotation.z = 0.0
 	_ride = null
 	_drive_speed = 0.0
 	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
 	owner_model.visible = true
-	var i := 0
-	for k in agents:
-		agents[k].visible = true
-		agents[k].set_process(true)
-		agents[k].place(out + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
-		i += 1
+	owner_model.riding = ""
+	owner_model.position = Vector3.ZERO
+	if hidden:
+		var i := 0
+		for k in agents:
+			agents[k].visible = true
+			agents[k].set_process(true)
+			agents[k].place(out + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
+			i += 1
 	if _engine:
 		_engine.stop()
 
 
 func _update_drive(dt: float) -> void:
+	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
+	var top: float = cfg["max"]
 	var gas: float = -ui.stick.y
 	var steer: float = ui.stick.x
 	if gas > 0.12:
-		_drive_speed = move_toward(_drive_speed, DRIVE_MAX * gas, 5.0 * dt)
+		_drive_speed = move_toward(_drive_speed, top * gas, float(cfg["acc"]) * dt)
 	elif gas < -0.12:
-		_drive_speed = move_toward(_drive_speed, -4.0 * -gas, (12.0 if _drive_speed > 0.3 else 3.5) * dt)
+		_drive_speed = move_toward(_drive_speed, -top * 0.25 * -gas, (12.0 if _drive_speed > 0.3 else 3.0) * dt)
 	else:
 		_drive_speed = move_toward(_drive_speed, 0.0, 2.5 * dt)
-	var yaw := _ride.rotation.y - _drive_speed * tan(steer * 0.55) / 2.6 * dt
+	var yaw := _ride.rotation.y - _drive_speed * tan(steer * 0.55) / float(cfg["base"]) * dt
 	var p := Vector2(_ride.position.x, _ride.position.z)
 	var fwd := Vector2(-sin(yaw), -cos(yaw))
 	var want := p + fwd * _drive_speed * dt
-	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, 1.15, p))
+	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
 	if np.distance_to(want) > 0.02:
 		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # engele surtundu: yavasla
-	var h := ParkMap.terrain_height(np)
+	var hide: bool = cfg["hide"]
+	var h := ParkMap.terrain_height(np) if hide else ParkMap.walk_height(np)
 	var h2 := ParkMap.terrain_height(np + fwd * 2.0)
 	_ride.position = Vector3(np.x, h, np.y)
 	_ride.rotation.y = yaw
-	_ride.rotation.x = lerpf(_ride.rotation.x, atan2(h2 - h, 2.0), minf(1.0, dt * 5.0))
+	_ride.rotation.x = lerpf(_ride.rotation.x, atan2(h2 - ParkMap.terrain_height(np), 2.0), minf(1.0, dt * 5.0))
+	if not hide:
+		# Iki tekerlekli: virajda iceri yatar
+		_ride.rotation.z = lerpf(_ride.rotation.z, -steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.35, minf(1.0, dt * 4.0))
+		owner_model.ride_speed = absf(_drive_speed)
 	owner_node.position = _ride.position
-	owner_node.rotation.y = yaw
+	owner_node.rotation = _ride.rotation
 	if absf(_drive_speed) > 1.0 and not _dragging:
 		_cam_yaw = lerp_angle(_cam_yaw, yaw, minf(1.0, dt * 2.2))
 	state.count("drive", absf(_drive_speed) * dt)
-	if _engine:
-		_engine.pitch_scale = 0.75 + absf(_drive_speed) / DRIVE_MAX * 1.3
+	if _engine and float(cfg["engine"]) > 0.0:
+		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
 
 
@@ -1315,8 +1390,8 @@ func _update_context() -> void:
 			ui.set_context("", "")
 		return
 	for r in _rides:
-		if o.distance_to(Vector2(r.position.x, r.position.z)) < 3.6:
-			ui.set_context("Arabaya Bin", "drive", "play")
+		if o.distance_to(Vector2(r.position.x, r.position.z)) < (3.6 if r.get_meta("kind") == "araba" else 2.2):
+			ui.set_context(RIDES[r.get_meta("kind")]["ad"], "drive", "play")
 			return
 	if o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
 		ui.set_context("Pet Shop'a Gir", "shop", "cart")
@@ -1586,7 +1661,9 @@ func _debug_shot() -> void:
 				break
 			await get_tree().create_timer(0.5).timeout
 	if _args.has("drive") and not _rides.is_empty():
-		owner_node.position = _rides[0].position + Vector3(1.5, 0, 0)
+		for r in _rides:
+			if r.get_meta("kind") == (_args["drive"] if _args["drive"] != "1" else "araba"):
+				owner_node.position = r.position + Vector3(1.0, 0, 0)
 		_enter_ride()
 	if _args.has("trace"):
 		for i in int(_args["trace"]):

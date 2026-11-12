@@ -15,6 +15,9 @@ static var _keep: Array = []
 
 var speed := 0.0
 var force_speed := -1.0   # test: animasyonu bu hizla oynat
+var riding := ""          # "bisiklet" / "scooter": oturma ve pedal pozu
+var ride_speed := 0.0
+var _pedal := 0.0
 var tint := Color.WHITE   # tisort rengi
 var hand: Node3D          # elde tasinan esya icin
 
@@ -134,6 +137,9 @@ func _process(dt: float) -> void:
 		if floorf(_phase / PI + 0.5) != floorf(before / PI + 0.5):
 			stepped.emit()
 	_act_t = minf(_act_t + dt / _act_d, 1.0)
+	if riding != "":
+		_ride_pose(dt)
+		return
 	var k := sin(_act_t * PI) if _act_t < 1.0 else 0.0   # 0 -> 1 -> 0
 
 	var breathe := sin(_t * 1.6) * 0.012
@@ -189,3 +195,31 @@ func _process(dt: float) -> void:
 			for n in 3:
 				_turn("%sHand%s%d" % [side, f, n + 1], [[d.inverse() * Z, curl]])
 	position.y = -absf(sin(_phase)) * 0.03 * move * (1.0 + run)
+
+
+## Bisiklet / scooter uzerinde: oturur, eller gidonda; bisiklette pedal cevirir.
+func _ride_pose(dt: float) -> void:
+	var bike := riding == "bisiklet"
+	_pedal += dt * ride_speed / 0.55 * (1.0 if bike else 0.0)
+	var lean := 0.32 if bike else 0.08
+	_turn("Hips", [[X, lean * 0.5]])
+	_turn("Spine", [[X, lean * 0.6]])
+	_turn("Spine1", [[X, lean * 0.3]])
+	_turn("Spine2", [])
+	_turn("Neck", [[X, -lean * 0.8]])
+	_turn("Head", [[X, -lean * 0.3], [Y, sin(_t * 0.4) * 0.08]])
+	for side in ["Left", "Right"]:
+		var sx := 1.0 if side == "Left" else -1.0
+		var ph := _pedal + (0.0 if side == "Left" else PI)
+		var thigh := (-1.05 + 0.32 * sin(ph)) if bike else -1.4
+		var knee := (1.15 + 0.45 * sin(ph + 1.2)) if bike else 1.5
+		var u: Quaternion = _fix[side + "UpLeg"]
+		_turn(side + "UpLeg", [[X, thigh], [Z, sx * 0.08], u])
+		_turn(side + "Leg", [[u.inverse() * X, knee], _fix[side + "Leg"]])
+		_turn(side + "Foot", [_fix[side + "Foot"], [X, -0.3]])
+		var d: Quaternion = _down[side]
+		_turn(side + "Arm", [[X, -1.05 - lean * 0.6], [Z, sx * 0.12], d])
+		_turn(side + "ForeArm", [[d.inverse() * X, -0.35], _fix[side + "ForeArm"]])
+		for f in FINGERS:
+			for n in 3:
+				_turn("%sHand%s%d" % [side, f, n + 1], [[d.inverse() * Z, -sx * 0.9]])

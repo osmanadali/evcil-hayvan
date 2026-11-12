@@ -1093,6 +1093,27 @@ func _stop_shelter(p: Vector2, road: Vector2, name: String, lines: Array) -> voi
 	var rot := atan2(toward.x, toward.y)
 	var r := _root(p, rot)
 	r.position.y += ParkMap.sidewalk_raise(p)
+	if ResourceLoader.exists("res://assets/models/durak.glb"):
+		# Tripo modeli: uzun kenari X, arka cami -Z'de; 3.8 m boya olceklenir
+		var inst: Node3D = _scene("durak").instantiate()
+		var box := _merged_aabb(inst, Transform3D())
+		var k := 3.8 / box.size.x
+		inst.scale = Vector3.ONE * k
+		var c := box.get_center() * k
+		inst.position = Vector3(-c.x, -box.position.y * k, -c.z - 0.05)
+		r.add_child(inst)
+	else:
+		_shelter_simple(r)
+	_stop_plate(r, name, lines)
+	var b := Basis(Vector3.UP, rot)
+	var corner := func(x: float, z: float) -> Vector2:
+		var v := b * Vector3(x, 0, z)
+		return p + Vector2(v.x, v.z)
+	_add_segment(corner.call(-1.75, -0.66), corner.call(1.75, -0.66))
+	_add_segment(corner.call(1.75, -0.66), corner.call(1.75, 0.4))
+
+
+func _shelter_simple(r: Node3D) -> void:
 	var frame := Kit.mat("3d434a", 0.4)
 	var glass := StandardMaterial3D.new()
 	glass.albedo_color = Color(0.72, 0.86, 0.95, 0.35)
@@ -1115,20 +1136,17 @@ func _stop_shelter(p: Vector2, road: Vector2, name: String, lines: Array) -> voi
 	ad.emission = Color("fff2d6")
 	ad.emission_energy_multiplier = 0.25
 	Kit.box(r, Vector3(0.12, 1.6, 1.0), Vector3(1.75, 1.25, -0.1), ad)
-	# Ust levha: durak adi ve hatlar
-	Kit.box(r, Vector3(3.2, 0.36, 0.06), Vector3(0, 2.75, 0.5), Kit.mat("1a4fa0", 0.5))
-	var t := _text(r, name.to_upper(), Vector3(0, 2.75, 0.535), Color.WHITE, 0.17)
+
+
+## Durak levhasi: mavi tabelada durak adi, altinda gecen hatlar.
+func _stop_plate(r: Node3D, name: String, lines: Array) -> void:
+	Kit.box(r, Vector3(3.2, 0.36, 0.06), Vector3(0, 2.95, 0.6), Kit.mat("1a4fa0", 0.5))
+	var t := _text(r, name.to_upper(), Vector3(0, 2.95, 0.635), Color.WHITE, 0.17)
 	t.rotation.y = 0.0
 	if not lines.is_empty():
-		var lt := _text(r, "  ".join(lines), Vector3(0, 2.35, 0.535), Color("ffd24a"), 0.2)
+		var lt := _text(r, "  ".join(lines), Vector3(0, 3.33, 0.635), Color("ffd24a"), 0.2)
 		lt.rotation.y = 0.0
-		Kit.box(r, Vector3(1.2, 0.3, 0.05), Vector3(0, 2.35, 0.5), Kit.mat("1d2a33", 0.5))
-	var b := Basis(Vector3.UP, rot)
-	var corner := func(x: float, z: float) -> Vector2:
-		var v := b * Vector3(x, 0, z)
-		return p + Vector2(v.x, v.z)
-	_add_segment(corner.call(-1.75, -0.66), corner.call(1.75, -0.66))
-	_add_segment(corner.call(1.75, -0.66), corner.call(1.75, 0.4))
+		Kit.box(r, Vector3(1.2, 0.3, 0.05), Vector3(0, 3.33, 0.6), Kit.mat("1d2a33", 0.5))
 
 
 ## Metro girisi: alcak granit duvarlar, asagi inen merdiven acikligi, cam sacak ve kirmizi M direk.
