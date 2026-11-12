@@ -763,6 +763,125 @@ func _go(p: Vector2) -> void:
 
 # ---------------------------------------------------------------- komutlar
 
+## Su icinde ne kadar batiyor (kiyidan uzaklastikca derinlesir, en cok ~0.75 m).
+func _wade_depth(p: Vector2) -> float:
+	if ParkMap.home != null:
+		return 0.0
+	var sd := ParkMap.water_sd(p)
+	return clampf(-sd * 0.32, 0.0, 0.75) if sd < 0.0 else 0.0
+
+
+## Suya girme / islanma: suda yavaslar, cikinca bir sure su damlar.
+func _update_wet(dt: float) -> void:
+	var p := _owner_pos()
+	var inside := _ride == null and ParkMap.home == null and ParkMap.water_sd(p) < -0.2
+	if inside and not _in_water:
+		_sfx("firlat", -6.0, 0.6)
+		ui.toast("Suya girdin! Sırılsıklam oldun!")
+		state.count("swim", 1.0)
+	_in_water = inside
+	if inside:
+		_wet_t = 25.0
+	else:
+		_wet_t = maxf(_wet_t - dt, 0.0)
+	if _drips == null or not is_instance_valid(_drips):
+		_drips = CPUParticles3D.new()
+		_drips.amount = 24
+		_drips.lifetime = 0.7
+		_drips.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		_drips.emission_box_extents = Vector3(0.2, 0.5, 0.12)
+		_drips.direction = Vector3.DOWN
+		_drips.spread = 10.0
+		_drips.initial_velocity_min = 0.2
+		_drips.initial_velocity_max = 0.6
+		_drips.gravity = Vector3(0, -9.0, 0)
+		_drips.scale_amount_min = 0.015
+		_drips.scale_amount_max = 0.03
+		var m := SphereMesh.new()
+		m.radius = 1.0
+		m.height = 2.0
+		m.radial_segments = 6
+		m.rings = 3
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.75, 0.88, 1.0, 0.8)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.roughness = 0.05
+		m.material = mat
+		_drips.mesh = m
+		_drips.position = Vector3(0, 0.9, 0)
+		owner_node.add_child(_drips)
+	_drips.emitting = _wet_t > 0.0 and not inside
+
+
+## Tahterevalli (bir ucta sen, obur ucta hayvanin) ve salincak.
+func _start_play_ride(pr: Dictionary) -> void:
+	_play_ride = pr
+	_play_t = 0.0
+	_moving = false
+	_queue.clear()
+	owner_model.speed = 0.0
+	owner_model.riding = "otur"
+	owner_model.ride_lean = 0.05
+	ui._actions.visible = false
+	if pr["kind"] == "tahterevalli":
+		var a := _active()
+		a.set_process(false)
+		a.set_physics_process(false)
+		ui.toast("%s öbür uca atladı!" % state.pet(a.kind)["name"])
+		_pet_voice(a.kind)
+	_update_context()
+
+
+func _end_play_ride() -> void:
+	if _play_ride.is_empty():
+		return
+	var pr := _play_ride
+	_play_ride = {}
+	(pr["pivot"] as Node3D).rotation = Vector3.ZERO
+	owner_model.riding = ""
+	owner_model.grips = []
+	owner_model.position = Vector3.ZERO
+	owner_node.rotation = Vector3(0, owner_node.rotation.y, 0)
+	var out: Vector2 = pr["pos"] + (Vector2(-2.6, 0.8) if pr["kind"] == "tahterevalli" else Vector2(0, 1.4))
+	_place_owner(out)
+	for k in agents:
+		agents[k].set_process(true)
+		agents[k].set_physics_process(true)
+		agents[k].place(out + Vector2(1.0, 0.6))
+	ui._actions.visible = true
+	_update_context()
+
+
+func _update_play_ride(dt: float) -> void:
+	if _play_ride.is_empty():
+		return
+	if ui.stick.length() > 0.5 and _play_t > 0.8:
+		_end_play_ride()
+		return
+	_play_t += dt
+	var pv: Node3D = _play_ride["pivot"]
+	var ramp := clampf(_play_t / 2.0, 0.0, 1.0)
+	if _play_ride["kind"] == "tahterevalli":
+		pv.rotation.z = sin(_play_t * 1.7) * 0.26 * ramp
+		var xf := pv.global_transform
+		owner_node.global_position = xf * Vector3(-1.6, 0.04, 0)
+		owner_node.rotation = Vector3(0, -PI / 2, 0)
+		owner_model.position = Vector3(0, 0.09 - owner_model.hips_height(), 0)
+		owner_model.grips = [xf * Vector3(-1.3, 0.42, 0.18), xf * Vector3(-1.3, 0.42, -0.18)]
+		var a := _active()
+		a.global_position = xf * Vector3(1.55, 0.04, 0)
+		a.rotation.y = PI / 2
+		if Engine.get_process_frames() % 200 == 0:
+			_pet_voice(a.kind)
+	else:
+		pv.rotation.x = sin(_play_t * 2.1) * 0.6 * ramp
+		var xf := pv.global_transform
+		owner_node.global_position = xf * Vector3(0, -1.66, 0.0)
+		owner_node.rotation = Vector3(pv.rotation.x, 0, 0)
+		owner_model.position = Vector3(0, 0.09 - owner_model.hips_height(), 0.1)
+		owner_model.grips = [xf * Vector3(-0.2, -1.15, 0.0), xf * Vector3(0.2, -1.15, 0.0)]
+
+
 ## Ziplama: gorsel olarak yukari; konum yerde kalir (engeller ayni).
 func _jump() -> void:
 	if _jump_h > 0.0 or _ride != null or _bus_ride != null:
@@ -793,6 +912,14 @@ func _on_command(cmd: String) -> void:
 			_exit_home()
 		"drive":
 			_enter_ride()
+		"playride":
+			var o := _owner_pos()
+			for pr in world.play_rides:
+				if o.distance_to(pr["pos"]) < 2.0:
+					_start_play_ride(pr)
+					break
+		"playexit":
+			_end_play_ride()
 		"taxi":
 			var tx := _nearest_taxi()
 			if tx:
@@ -904,6 +1031,11 @@ var _steer := 0.0
 var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
 var _jump_h := 0.0
+var _in_water := false
+var _play_ride: Dictionary = {}
+var _play_t := 0.0
+var _wet_t := 0.0
+var _drips: CPUParticles3D
 var _jump_v := 0.0
 var _fps_yaw := 0.0     # araç icinde bas cevirme (0 = ileri); birakinca yavasca ortalanir
 var _cockpit: Node3D
@@ -2169,7 +2301,8 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	_update_owner(dt)
+	if _play_ride.is_empty():
+		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
 		_jump_h = maxf(_jump_h + _jump_v * dt, 0.0)
@@ -2179,6 +2312,8 @@ func _process(dt: float) -> void:
 		if _ride == null:
 			owner_model.position.y = _jump_h
 	_update_street_life(dt)
+	_update_play_ride(dt)
+	_update_wet(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
 	_update_thrown(dt)
@@ -2284,9 +2419,11 @@ func _update_owner(dt: float) -> void:
 		# Yumusak hizlanma; yavaslama daha cabuk
 		_walk_v = move_toward(_walk_v, want_sp, dt * (5.0 if want_sp > _walk_v else 9.0))
 		var sp := maxf(_walk_v, 0.6)
-		var np: Vector2 = _push_from_vehicles(world.resolve(p + to / d * minf(sp * dt, d), 0.35, p), 0.35)
+		world.wade = true
+		var np: Vector2 = _push_from_vehicles(world.resolve(p + to / d * minf(sp * dt * (0.55 if _in_water else 1.0), d), 0.35, p), 0.35)
+		world.wade = false
 		var moved := np.distance_to(p) / maxf(dt, 0.0001)
-		owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
+		owner_node.position = Vector3(np.x, ParkMap.walk_height(np) - _wade_depth(np), np.y)
 		if moved > 0.2:
 			var dir := np - p
 			owner_node.rotation.y = lerp_angle(owner_node.rotation.y, atan2(-dir.x, -dir.y), minf(1.0, dt * 9.0))
@@ -2387,6 +2524,14 @@ func _update_context() -> void:
 	if _near_home_door():
 		ui.set_context("Eve Gir", "home_in", "home")
 		return
+	if not _play_ride.is_empty():
+		ui.set_context("İn", "playexit", "come")
+		return
+	if _ride == null and _taxi == null:
+		for pr in world.play_rides:
+			if o.distance_to(pr["pos"]) < 2.0:
+				ui.set_context("Tahterevalliye Bin" if pr["kind"] == "tahterevalli" else "Salıncağa Bin", "playride", "play")
+				return
 	if _ride != null:
 		ui.set_context("", "")      # inmek: kamera dugmesinin yanindaki in dugmesi ya da E
 		return
@@ -2621,6 +2766,11 @@ func _debug_shot() -> void:
 		for k in agents:
 			agents[k].place(_owner_pos() + agents[k].slot)
 		_focus = owner_node.position
+	if _args.has("playride") and not world.play_rides.is_empty():
+		var pr: Dictionary = world.play_rides[int(_args["playride"]) % world.play_rides.size()]
+		_place_owner(pr["pos"])
+		_start_play_ride(pr)
+		print("OYUN ", pr["kind"], " ", pr["pos"])
 	if _args.has("home"):
 		_enter_home()
 		if _args.has("room"):

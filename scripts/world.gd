@@ -17,6 +17,7 @@ const CELL := 16.0
 var toys: Array[Node3D] = []
 var bowl_pos := Vector2.ZERO
 var pool_pos := Vector2(1e6, 1e6)
+var play_rides: Array = []     # [{kind: "tahterevalli"/"salincak", pos: Vector2, pivot: Node3D}]
 var kennel_pos := Vector2(1e6, 1e6)
 var yarn_pos := Vector2.ZERO
 
@@ -144,7 +145,11 @@ func resolve(np: Vector2, r: float, old: Vector2) -> Vector2:
 
 
 ## Suda mi? Yol ve patikalarin gectigi yerler (kopruler) sayilmaz.
+var wade := false     # true iken (yalniz oyuncu yururken) kiyidan 2.5 m iceri girilebilir
+
 func _wet(p: Vector2) -> bool:
+	if wade and ParkMap.water_sd(p) > -2.5:
+		return false
 	if not ParkMap.water_blocked(p):
 		return false
 	var m := _mask(p)
@@ -915,6 +920,7 @@ func _build_play_area() -> void:
 		Kit.box(r, Vector3(0.1, 0.6, 0.1), Vector3(0, 0.3, 0), Kit.mat("ece6d8"))
 		Kit.torus(r, 0.5, 0.62, Vector3(0, 1.15 + i * 0.12, 0), Kit.mat(cols[i], 0.5), Vector3(0, 0, PI / 2))
 		_add_circle(Vector3(p.x, p.y, 0.12))
+	_seesaw(c + Vector2(-1.2, 0.2))
 	var rp := c + Vector2(3.5, 1.0)
 	var ramp := _root(rp, 0.4)
 	Kit.box(ramp, Vector3(1.2, 0.1, 2.3), Vector3(0, 0.55, -0.98), Kit.mat("e0b23e"), Vector3(0.52, 0, 0))
@@ -936,6 +942,23 @@ func _build_play_area() -> void:
 		var p := c + Vector2(1.0 + i * 0.9, 4.8)
 		Kit.cyl(self, 0.05, 0.05, 1.1, at(p, 0.55), Kit.mat(cols[i % 3], 0.5), 8)
 		_add_circle(Vector3(p.x, p.y, 0.08))
+
+
+## Tahterevalli: ortada destek, x ekseni boyunca 3.6 m kalas, iki ucta tutamak.
+func _seesaw(p: Vector2) -> void:
+	var r := _root(p)
+	var red := Kit.mat("c8452f", 0.5)
+	Kit.box(r, Vector3(0.3, 0.5, 0.5), Vector3(0, 0.25, 0), Kit.mat("3f6fa8", 0.5))
+	var pv := Node3D.new()
+	pv.position = Vector3(0, 0.55, 0)
+	r.add_child(pv)
+	Kit.box(pv, Vector3(3.6, 0.07, 0.32), Vector3.ZERO, Kit.mat("e9b93a", 0.5))
+	for sx in [-1.0, 1.0]:
+		Kit.box(pv, Vector3(0.05, 0.4, 0.05), Vector3(sx * 1.3, 0.22, 0), red)
+		Kit.box(pv, Vector3(0.05, 0.05, 0.42), Vector3(sx * 1.3, 0.42, 0), red)
+		Kit.box(pv, Vector3(0.36, 0.06, 0.34), Vector3(sx * 1.6, 0.05, 0), red)
+	_add_circle(Vector3(p.x, p.y, 0.4))
+	play_rides.append({"kind": "tahterevalli", "pos": p, "pivot": pv, "yaw": 0.0})
 
 
 func _build_pitches() -> void:
@@ -1177,6 +1200,26 @@ func _build_details() -> void:
 	# Oyun parklari: salincak ve kaydirak
 	for pg in d["playgrounds"]:
 		var p := Vector2(pg["pos"][0], pg["pos"][1])
+		# Baska bir modelin (kafe, bufe) icine dusmesin: en yakin bos alana kaydir
+		var ok := func(q: Vector2) -> bool:
+			for o in [Vector2.ZERO, Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 1.5), Vector2(0, -1.5), Vector2(4.0, -1.2)]:
+				if not is_free(q + o, 0.6) or _inside_building(q + o):
+					return false
+			for sn in ParkMap.spot_half:
+				if ParkMap.rect_sd(q, ParkMap.spot(sn) - ParkMap.spot_half[sn], ParkMap.spot(sn) + ParkMap.spot_half[sn]) < 7.0:
+					return false
+			return true
+		if not ok.call(p):
+			var moved := false
+			for rr in range(3, 30, 3):
+				for k in 12:
+					var q := p + Vector2.from_angle(k * TAU / 12.0) * float(rr)
+					if ok.call(q):
+						p = q
+						moved = true
+						break
+				if moved:
+					break
 		_keep_out.append([p, Vector2(6, 6)])
 		var r := _root(p)
 		var red := Kit.mat("c8452f", 0.5)
@@ -1185,9 +1228,19 @@ func _build_details() -> void:
 			Kit.box(r, Vector3(0.1, 2.4, 0.1), Vector3(sx, 1.2, 0), red)
 		Kit.box(r, Vector3(3.4, 0.1, 0.1), Vector3(0, 2.4, 0), red)
 		for sx in [-0.7, 0.7]:
-			Kit.box(r, Vector3(0.02, 1.7, 0.02), Vector3(sx - 0.2, 1.55, 0), Kit.mat("8d8f92"))
-			Kit.box(r, Vector3(0.02, 1.7, 0.02), Vector3(sx + 0.2, 1.55, 0), Kit.mat("8d8f92"))
-			Kit.box(r, Vector3(0.5, 0.05, 0.2), Vector3(sx, 0.7, 0), blue)
+			# Salincak: ust kirista donen pivot; zincirler ve oturak pivotun cocugu
+			var sw := Node3D.new()
+			sw.position = Vector3(sx, 2.4, 0)
+			r.add_child(sw)
+			Kit.box(sw, Vector3(0.02, 1.7, 0.02), Vector3(-0.2, -0.85, 0), Kit.mat("8d8f92"))
+			Kit.box(sw, Vector3(0.02, 1.7, 0.02), Vector3(0.2, -0.85, 0), Kit.mat("8d8f92"))
+			Kit.box(sw, Vector3(0.5, 0.05, 0.2), Vector3(0, -1.7, 0), blue)
+			play_rides.append({"kind": "salincak", "pos": p + Vector2(sx, 0.9), "pivot": sw, "yaw": 0.0})
+		for off in [Vector2(0, 3.4), Vector2(0, -3.4), Vector2(-4.2, 2.0), Vector2(4.2, -2.0), Vector2(-4.2, -2.0)]:
+			var q: Vector2 = p + off
+			if is_free(q + Vector2(1.9, 0), 0.4) and is_free(q - Vector2(1.9, 0), 0.4) and not _inside_building(q):
+				_seesaw(q)
+				break
 		Kit.box(r, Vector3(0.9, 0.08, 2.8), Vector3(4.0, 0.9, 0.6), Kit.mat("e9b93a", 0.5), Vector3(0.55, 0, 0))
 		Kit.box(r, Vector3(1.0, 1.7, 1.0), Vector3(4.0, 0.85, -1.2), blue)
 		_add_circle(Vector3(p.x + 4.0, p.y - 1.2, 0.8))
