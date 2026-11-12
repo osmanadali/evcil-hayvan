@@ -1163,6 +1163,15 @@ func _on_command(cmd: String) -> void:
 		"npcplay":
 			if _near_npc:
 				a.play_with(_near_npc)
+				_near_npc.play_mate = a
+				_near_npc.play_t = 11.0
+				if _near_npc.world == null:
+					_near_npc.world = world
+				# Hayvanin sahibi durup izler
+				var own = _near_npc.follow
+				if own and "hold" in own:
+					own.hold = 12.0
+					own.hold_face = Vector2(_near_npc.position.x, _near_npc.position.z)
 				ui.toast("%s yeni arkadaşıyla oynuyor!" % p["name"])
 
 

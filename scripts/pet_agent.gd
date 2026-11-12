@@ -389,8 +389,9 @@ func _play(dt: float) -> void:
 		return
 	var pp := Vector2(play_partner.position.x, play_partner.position.z)
 	if _role == 1:
-		# Kovalayan
-		if _move(pp, 5.4, dt) < 0.9 and not model.is_hopping():
+		# Kovalayan: arkadasinin icine girmez, ~0.9 m'de durur
+		var chase := pp + (pos2() - pp).normalized() * 0.85
+		if _move(chase, 5.4, dt) < 0.15 and not model.is_hopping():
 			model.hop(0.3, 0.4)
 			if play_partner.has_method("play_with"):
 				_role = 0

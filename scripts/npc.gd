@@ -13,6 +13,8 @@ var short_pause := false
 var graph_node := -1        # >= 0 ise sokak aginda rastgele yurur
 var world: Node3D          # verilirse gezinirken engelli noktalari secmez
 var _prev_node := -1
+var play_mate: Node3D       # oyuncunun hayvaniyla kovalamaca (bu hayvan kacar)
+var play_t := 0.0
 var hold := 0.0              # > 0 iken durur ve hold_face noktasina doner (selamlasma)
 var hold_face := Vector2.ZERO
 
@@ -75,6 +77,23 @@ func _next() -> void:
 
 func _process(dt: float) -> void:
 	var p := Vector2(position.x, position.z)
+	if play_t > 0.0 and is_instance_valid(play_mate):
+		play_t -= dt
+		var away := p - Vector2(play_mate.position.x, play_mate.position.z)
+		var d := away.length()
+		var mv := Vector2.ZERO
+		if d < 2.6:
+			# Yakalanmamak icin yana kacar (daire cizerek), cok yakinsa itilir
+			mv = away.normalized().rotated(0.7) * (3.6 if d > 0.7 else 5.0)
+		var np := p + mv * dt
+		if world == null or world.is_free(np, 0.3):
+			place(np)
+		if mv.length() > 0.1:
+			rotation.y = lerp_angle(rotation.y, atan2(-mv.x, -mv.y), minf(1.0, dt * 10.0))
+		else:
+			rotation.y = lerp_angle(rotation.y, atan2(away.x, away.y), minf(1.0, dt * 6.0))
+		visual.speed = mv.length()
+		return
 	if hold > 0.0:
 		hold -= dt
 		var f := hold_face - p
