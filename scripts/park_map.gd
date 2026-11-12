@@ -8,6 +8,34 @@ const WATER_LIFT := 0.07      # su yuzeyi zeminin bu kadar ustunde
 const SPLAT_CENTER := Vector2.ZERO
 
 static var loaded := false
+static var zone := ""                    # "" = Subayevleri, "gar" = Gar-Maltepe (assets/gar/)
+const ZONE_TITLES := {"": "Subayevleri", "gar": "Gar ve Maltepe"}
+
+
+## Bolgeye ozel dosyanin yolu.
+static func asset(name: String) -> String:
+	return "res://assets/%s%s" % ["" if zone == "" else zone + "/", name]
+
+
+## Bolge degisince her seyi bosalt (sonra load_data yeniden okur).
+static func reset(new_zone: String) -> void:
+	zone = new_zone
+	loaded = false
+	data = {}
+	nodes = PackedVector2Array()
+	links = []
+	road_next = []
+	link_w = {}
+	water = []
+	water_boxes = []
+	spots = {}
+	spot_half = {}
+	heights = PackedFloat32Array()
+	mask_b = null
+
+
+static func has_spot(name: String) -> bool:
+	return spots.has(name)
 static var mask_b: Image                # zemin maskesi (R asfalt, G asfalt+kaldirim)
 static var BOUNDS_MIN := Vector2(-430, -360)
 static var BOUNDS_MAX := Vector2(430, 360)
@@ -30,7 +58,7 @@ static func load_data() -> void:
 	if loaded:
 		return
 	loaded = true
-	data = JSON.parse_string(FileAccess.get_file_as_string("res://assets/city.json"))
+	data = JSON.parse_string(FileAccess.get_file_as_string(asset("city.json")))
 	var half := Vector2(data["half"][0], data["half"][1])
 	BOUNDS_MIN = -half
 	BOUNDS_MAX = half
@@ -63,7 +91,7 @@ static func load_data() -> void:
 		water_boxes.append(box.grow(6.0))
 	# Arazi yuksekligi: assets/height.png (16 bit, R = ust bayt, G = alt bayt)
 	var hd: Dictionary = data["height"]
-	var img: Image = (load("res://assets/height.png") as Texture2D).get_image()
+	var img: Image = (load(asset("height.png")) as Texture2D).get_image()
 	height_n = int(hd["n"])
 	height_extent = hd["extent"]
 	heights.resize(height_n * height_n)
@@ -71,7 +99,7 @@ static func load_data() -> void:
 		for i in height_n:
 			var c := img.get_pixel(i, j)
 			heights[j * height_n + i] = float(hd["min"]) + (c.r8 * 256.0 + c.g8) / 65535.0 * float(hd["range"])
-	mask_b = (load("res://assets/splat_b.png") as Texture2D).get_image()
+	mask_b = (load(asset("splat_b.png")) as Texture2D).get_image()
 	if mask_b.is_compressed():
 		mask_b.decompress()
 	for k in data["spots"]:

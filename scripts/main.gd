@@ -107,7 +107,13 @@ func _ready() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	loading.add_child(bg)
 	var lt := Label.new()
-	lt.text = "Patili Gezinti\n\nSubayevleri hazırlanıyor…"
+	var zone: String = ParkMap.zone if travel_to != "" else _args.get("zone", state.d.get("zone", ""))
+	if not ParkMap.ZONE_TITLES.has(zone):
+		zone = ""
+	if zone != ParkMap.zone or not ParkMap.loaded:
+		ParkMap.reset(zone)
+	state.d["zone"] = zone
+	lt.text = "Patili Gezinti\n\n%s%s hazırlanıyor…" % ["M4 metrosuyla yoldasın…\n\n" if travel_to != "" else "", ParkMap.ZONE_TITLES[zone]]
 	lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lt.add_theme_font_size_override("font_size", 44)
@@ -164,6 +170,20 @@ func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	loading.queue_free()
 	_ready_done = true
+	if travel_to != "":
+		# Metroyla gelindi: istasyon girisinden cik, dogrudan oyuna devam
+		for g in world.metro_gates:
+			if g["name"] == travel_to:
+				_spawn_at_gate(g)
+				break
+		ui.toast("%s istasyonundan çıktın · %s" % [travel_to, ParkMap.ZONE_TITLES[ParkMap.zone]])
+		travel_to = ""
+		_enter_play()
+	elif _args.has("gate"):
+		for g in world.metro_gates:
+			if g["name"] == _args["gate"]:
+				_spawn_at_gate(g)
+				break
 	if _args.has("shot"):
 		_debug_shot()
 
@@ -390,8 +410,9 @@ func _spawn_npcs() -> void:
 	rng.seed = 5
 	var tints := ["c94f4f", "3f6fb5", "4f8f5a", "e0b84a", "7a5ea8", "f2f2f2", "2f3a4a", "d98a4f", "6fb1c9", "9a9a9a"]
 	var pets := [["kopek", "f4f4f4", 0.8], [], ["kedi", "c9c9c9", 0.9], ["kopek", "b08a66", 1.1], [], ["kopek", "5a5a5a", 0.9], [], []]
-	var park := ParkMap.spot("cesme")
-	for i in 30:
+	var park := ParkMap.spot("cesme") if ParkMap.has_spot("cesme") else ParkMap.spot("baslangic")
+	var people := 30 if ParkMap.zone == "" else 18
+	for i in people:
 		var n := Npc.new()
 		var v := PersonModel.new()
 		v.kind = "kadin" if i % 2 == 0 else "erkek"
@@ -412,7 +433,7 @@ func _spawn_npcs() -> void:
 	# Sokaklarda dolasan arabalar
 	if world.car_mesh:
 		var paints := ["f2f2f2", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "f2c230"]
-		for i in 26:
+		for i in (26 if ParkMap.zone == "" else 12):
 			var car := Car.new()
 			for t in 40:
 				var k := rng.randi() % ParkMap.nodes.size()
@@ -423,7 +444,9 @@ func _spawn_npcs() -> void:
 			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
 			add_child(car)
 			_cars.append(car)
-	# Parkta kendi basina gezen hayvanlar
+	# Parkta kendi basina gezen hayvanlar (yalnizca oyun yerleri olan bolgede)
+	if not ParkMap.has_spot("cesme"):
+		return
 	var free := [
 		["kopek", "4a4038", 1.0, ParkMap.spot("oyun_alani"), 4.0, 2.2], ["kopek", "ffe0b0", 0.75, ParkMap.spot("oyun_alani") + Vector2(2, 1), 4.0, 2.6],
 		["kopek", "ffffff", 0.9, ParkMap.spot("cesme") + Vector2(10, 12), 7.0, 1.8], ["kedi", "ffffff", 1.0, ParkMap.spot("piknik") + Vector2(3, 2), 4.0, 1.2],
@@ -698,7 +721,7 @@ func _on_command(cmd: String) -> void:
 		"busexit":
 			_exit_bus()
 		"metro":
-			ui.toast("M4 Keçiören metrosu: Meteoroloji'den sonraki istasyonlar (Belediye, Dışkapı) haritanın dışında. Harita büyüyünce metroyla gidebileceksin.")
+			_open_metro()
 		"drive":
 			_enter_ride()
 		"exit":
@@ -971,6 +994,59 @@ func _update_drive(dt: float) -> void:
 	if _engine and float(cfg["engine"]) > 0.0:
 		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
+# ---------------------------------------------------------------- metro (bolgeler arasi)
+
+## M4 hattinda oyunda olan istasyonlar: [istasyon, bolge, aciklama]
+const METRO_STOPS := [["Meteoroloji", "", "Subayevleri"], ["Gar", "gar", "Ankara Garı · Gazi Mühendislik"],
+	["Maltepe", "gar", "Maltepe · Gazi Üniversitesi"], ["Adliye", "gar", "Adliye · Maltepe Pazarı"],
+	["Anadolu/Anıtkabir", "gar", "Anadolu Meydanı"]]
+static var travel_to := ""      # bolge degisince cikilacak istasyon
+static var _debug_traveled := false
+
+
+func _open_metro() -> void:
+	var here := ""
+	for g in world.metro_gates:
+		if _owner_pos().distance_to(g["pos"]) < 4.5:
+			here = g["name"]
+	var body: VBoxContainer = ui._open_modal("M4 Metro · %s" % here, 120, 120)
+	body.add_theme_constant_override("separation", 10)
+	for st in METRO_STOPS:
+		if st[0] == here:
+			continue
+		var name_: String = st[0]
+		var zone_: String = st[1]
+		UiKit.button(body, "%s  —  %s" % [name_, st[2]], "play", func():
+			ui.close_modal()
+			_travel(name_, zone_), UiKit.SOFT, UiKit.BROWN, Vector2(0, 70), 24, 28)
+
+
+func _travel(station: String, zone: String) -> void:
+	if zone == ParkMap.zone:
+		# Ayni bolgede: istasyonun girisine yuru(n)
+		for g in world.metro_gates:
+			if g["name"] == station:
+				_spawn_at_gate(g)
+				ui.toast("%s istasyonundan çıktın." % station)
+				return
+		return
+	state.d["zone"] = zone
+	state.save_game()
+	travel_to = station
+	ParkMap.reset(zone)
+	get_tree().reload_current_scene()
+
+
+func _spawn_at_gate(g: Dictionary) -> void:
+	var out: Vector2 = g["pos"] - g["toward"] * 4.8
+	_place_owner(out)
+	owner_node.rotation.y = atan2(g["toward"].x, g["toward"].y)
+	var i := 0
+	for k in agents:
+		agents[k].place(out + Vector2(1.0 + 0.6 * i, 0.8).rotated(i * 2.0))
+		i += 1
 
 
 # ---------------------------------------------------------------- otobus
@@ -1425,7 +1501,7 @@ func _update_context() -> void:
 			return
 	for g in world.metro_gates:
 		if o.distance_to(g["pos"]) < 4.0:
-			ui.set_context("Metroya İn (%s)" % g["line"], "metro", "star")
+			ui.set_context("Metroya İn", "metro", "star")
 			return
 	if _ride != null:
 		if absf(_drive_speed) < 1.0:
@@ -1437,9 +1513,9 @@ func _update_context() -> void:
 		if o.distance_to(Vector2(r.position.x, r.position.z)) < (3.6 if r.get_meta("kind") == "araba" else 2.2):
 			ui.set_context(RIDES[r.get_meta("kind")]["ad"], "drive", "play")
 			return
-	if o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
+	if ParkMap.has_spot("petshop") and o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
 		ui.set_context("Pet Shop'a Gir", "shop", "cart")
-	elif o.distance_to(ParkMap.spot("dondurmaci") + Vector2(0, 2.5)) < 3.6:
+	elif ParkMap.has_spot("dondurmaci") and o.distance_to(ParkMap.spot("dondurmaci") + Vector2(0, 2.5)) < 3.6:
 		ui.set_context("Dondurma Al  (10)", "icecream", "star")
 	elif o.distance_to(world.pool_pos) < 4.2 and not a.is_busy():
 		ui.set_context("Havuzda Yıka", "wash", "drop")
@@ -1456,7 +1532,7 @@ func _update_camera(dt: float) -> void:
 	match _mode:
 		"menu":
 			_menu_angle += dt * 0.06
-			var g := ParkMap.spot("cesme")
+			var g := ParkMap.spot("cesme") if ParkMap.has_spot("cesme") else ParkMap.spot("baslangic")
 			var c := Vector3(g.x, 1.5, g.y)
 			_focus = _focus.lerp(c, k)
 			cam.position = c + Vector3(sin(_menu_angle) * 24.0, 11.0, cos(_menu_angle) * 24.0)
@@ -1706,6 +1782,13 @@ func _debug_shot() -> void:
 			v.rotation.y = PI / 2.0     # on (-Z) sola baksin
 			add_child(v)
 			Kit.ball(v, 0.25, Vector3(0, 2.0, -float(parts[1]) * 0.55 if parts.size() > 1 else -2.2), Kit.mat("ff0000", 0.5))
+	if _args.has("travel") and not _debug_traveled:
+		_debug_traveled = true
+		print("YOLCULUK ", ParkMap.zone, " -> ", _args["travel"])
+		for st in METRO_STOPS:
+			if st[0] == _args["travel"]:
+				_travel(st[0], st[1])
+				return
 	if _args.has("busride"):
 		# Bir otobus durakta beklerken yanina git ve bin
 		for i in 400:

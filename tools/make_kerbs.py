@@ -14,17 +14,19 @@ import numpy as np
 from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+ZONE = os.environ.get('OSM_ZONE', 'subayevleri')
+DIR = os.path.join(ROOT, 'assets' if ZONE == 'subayevleri' else 'assets/' + ZONE)
 RAISE = 0.14
 CHUNK = 80.0
 STEP = 1.0
 
-data = json.load(open(os.path.join(ROOT, 'assets/city.json')))
+data = json.load(open(os.path.join(DIR, 'city.json')))
 EXT = data['extent']
 half = data['half']
-b = np.asarray(Image.open(os.path.join(ROOT, 'assets/splat_b.png')).convert('RGB')).astype(np.float32) / 255.0
+b = np.asarray(Image.open(os.path.join(DIR, 'splat_b.png')).convert('RGB')).astype(np.float32) / 255.0
 PX = b.shape[0]
 hd = data['height']
-himg = np.asarray(Image.open(os.path.join(ROOT, 'assets/height.png')).convert('RGB')).astype(np.float64)
+himg = np.asarray(Image.open(os.path.join(DIR, 'height.png')).convert('RGB')).astype(np.float64)
 H = hd['min'] + (himg[..., 0] * 256.0 + himg[..., 1]) / 65535.0 * hd['range']
 
 
@@ -122,6 +124,6 @@ for key, c in chunks.items():
     ob = bpy.data.objects.new(me.name, me)
     bpy.context.collection.objects.link(ob)
     total += len(c['f'])
-out = os.path.join(ROOT, 'assets/models/kaldirim.glb')
+out = os.path.join(ROOT, 'assets/models/kaldirim.glb') if ZONE == 'subayevleri' else os.path.join(DIR, 'kaldirim.glb')
 bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_animations=False)
 print('yazildi', out, len(chunks), 'parca', total, 'yuz', os.path.getsize(out) // 1024, 'KB')

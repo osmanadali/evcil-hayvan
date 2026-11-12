@@ -39,6 +39,8 @@ var _me_world := Vector2.ZERO
 func _ready() -> void:
 	ParkMap.load_data()
 	for sp in SPOT_PINS:
+		if not ParkMap.has_spot(sp[1]):
+			continue
 		var c: Vector2 = ParkMap.spot(sp[1])
 		PINS.append([sp[0], c, c + sp[2], sp[3], sp[4]])
 	for pl in ParkMap.data["places"]:
@@ -75,7 +77,7 @@ func _ready() -> void:
 	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tex.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	tex.size = Vector2(MAP_PX, MAP_PX)
-	tex.texture = load("res://assets/park_map.png")
+	tex.texture = load(ParkMap.asset("park_map.png"))
 	_canvas.add_child(tex)
 	for s in STREETS:
 		var sl := K.label(_canvas, s[0], 15, Color("8d8f92"), HORIZONTAL_ALIGNMENT_CENTER)

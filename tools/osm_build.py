@@ -3,11 +3,19 @@
 Uretir: assets/city.json (yollar, binalar, parklar, yerler), assets/splat_a.png, assets/splat_b.png (zemin boyama),
 assets/park_map.png (harita uygulamasi gorseli).
 Koordinatlar: metre, x dogu, z guney; merkez CENTER. Veri (c) OpenStreetMap katkicilari, ODbL."""
+import os
 import sys, json, math, random, xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFilter
 
-CENTER = (39.96950, 32.87150)      # enlem, boylam
-HALF = (650.0, 560.0)              # oyun alaninin yari boyutu (dogu-bati, kuzey-guney)
+# Bolgeler: her biri ayri bir oyun haritasi; aralarinda metroyla gidilir. OSM_ZONE ortam degiskeniyle secilir.
+ZONES = {
+    'subayevleri': {'center': (39.96950, 32.87150), 'half': (650.0, 560.0), 'out': 'assets', 'wanted': True},
+    'gar': {'center': (39.93350, 32.84420), 'half': (620.0, 480.0), 'out': 'assets/gar', 'wanted': False, 'start': (39.93420, 32.84300)},
+}
+ZONE = os.environ.get('OSM_ZONE', 'subayevleri')
+CENTER = ZONES[ZONE]['center']      # enlem, boylam
+HALF = ZONES[ZONE]['half']          # oyun alaninin yari boyutu (dogu-bati, kuzey-guney)
+OUT = ZONES[ZONE]['out']
 MARGIN = 110.0                     # alanin disinda da cizilen serit
 EXTENT = 2 * max(HALF) + 2 * MARGIN
 PX = 4096
@@ -254,7 +262,7 @@ def build(path):
             'parking': parking, 'playgrounds': playgrounds, 'bridges': bridges}
     for bl in data['buildings']:
         bl['name'] = FAKE.get(bl.get('name', ''), bl.get('name', ''))
-    json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+    json.dump(data, open(os.path.join(OUT, 'city.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
     print('yol %d, patika %d, bina %d, park %d, saha %d, su %d, yer %d, sokak adi %d, dugum %d' % (
         len(roads), len(paths), len(buildings), len(parks), len(pitches), len(water), len(places), len(streets), len(graph_nodes)))
     print('isletme/durak %d, sokak tabelasi %d, trafik isigi %d, yaya gecidi %d, esya %d, duvar/cit %d, otopark %d, oyun parki %d, kopru %d' % (
@@ -301,9 +309,9 @@ def raster(data):
     built = L()
     polys(built, data['buildings'], 255)
     walk_all = Image.fromarray(np.maximum(np.asarray(walk), np.asarray(asphalt)), 'L')
-    Image.merge('RGB', (sdf(foot, 6.0), inv(sdf(wat, 4.0)), sdf(sandbox, 6.0))).save('assets/splat_a.png')    # patika, kiyi, kum
-    Image.merge('RGB', (sdf(asphalt, 6.0), sdf(walk_all, 6.0), sdf(urban, 6.0))).save('assets/splat_b.png')   # asfalt, kaldirim, sehir zemini
-    Image.merge('RGB', (sdf(built, 6.0), L(), L())).resize((2048, 2048), Image.BILINEAR).save('assets/splat_c.png')  # bina yakinligi (golgeleme)
+    Image.merge('RGB', (sdf(foot, 6.0), inv(sdf(wat, 4.0)), sdf(sandbox, 6.0))).save(os.path.join(OUT, 'splat_a.png'))    # patika, kiyi, kum
+    Image.merge('RGB', (sdf(asphalt, 6.0), sdf(walk_all, 6.0), sdf(urban, 6.0))).save(os.path.join(OUT, 'splat_b.png'))   # asfalt, kaldirim, sehir zemini
+    Image.merge('RGB', (sdf(built, 6.0), L(), L())).resize((2048, 2048), Image.BILINEAR).save(os.path.join(OUT, 'splat_c.png'))  # bina yakinligi (golgeleme)
 
     # Harita uygulamasi gorseli
     m = Image.new('RGB', (PX, PX), (236, 233, 224))
@@ -326,13 +334,28 @@ def raster(data):
     for b in data['buildings']:
         col = {'cami': (190, 214, 220), 'okul': (240, 214, 170)}.get(b['t'], (226, 212, 200))
         d.polygon([P(p) for p in b['p']], fill=col, outline=(196, 180, 166))
-    m.filter(ImageFilter.GaussianBlur(0.5)).save('assets/park_map.png')
+    m.filter(ImageFilter.GaussianBlur(0.5)).save(os.path.join(OUT, 'park_map.png'))
 
 
 def heightmap(data):
     """Yukseklik karolarindan (data/dem, terrarium bicimi, z13) arazi yuksekligini uretir: assets/height.png."""
     import numpy as np
-    Z, xs, ys = 13, (4843, 4844), (3101, 3102)
+    Z = 13
+    ext0 = EXTENT + 400.0
+    n0 = 2 ** Z
+    def tile(lat, lon):
+        return ((lon + 180) / 360 * n0, (1 - math.log(math.tan(math.radians(lat)) + 1 / math.cos(math.radians(lat))) / math.pi) / 2 * n0)
+    dlat, dlon = ext0 / 2 / M_LAT, ext0 / 2 / M_LON
+    t0 = tile(CENTER[0] + dlat, CENTER[1] - dlon)
+    t1 = tile(CENTER[0] - dlat, CENTER[1] + dlon)
+    xs = tuple(range(int(t0[0]), int(t1[0]) + 1))
+    ys = tuple(range(int(t0[1]), int(t1[1]) + 1))
+    for x in xs:
+        for y in ys:
+            f = 'data/dem/%d_%d_%d.png' % (Z, x, y)
+            if not os.path.exists(f):
+                import urllib.request
+                urllib.request.urlretrieve('https://elevation-tiles-prod.s3.amazonaws.com/terrarium/%d/%d/%d.png' % (Z, x, y), f)
     big = np.zeros((256 * len(ys), 256 * len(xs)))
     for i, x in enumerate(xs):
         for j, y in enumerate(ys):
@@ -361,7 +384,7 @@ def heightmap(data):
     rgb = np.zeros((N, N, 3), dtype=np.uint8)
     rgb[:, :, 0] = v >> 8
     rgb[:, :, 1] = v & 255
-    Image.fromarray(rgb, 'RGB').save('assets/height.png')
+    Image.fromarray(rgb, 'RGB').save(os.path.join(OUT, 'height.png'))
     c = out[N // 2, N // 2]
     data['height'] = {'min': round(lo - c, 2), 'range': round(hi - lo, 2), 'extent': ext, 'n': N}
     print('yukseklik: en alcak %.0f m, en yuksek %.0f m (deniz seviyesinden), fark %.0f m' % (lo, hi, hi - lo))
@@ -392,12 +415,13 @@ def preview(data, out):
 
 
 if __name__ == '__main__':
+    os.makedirs(OUT, exist_ok=True)
     data = build(sys.argv[1])
     heightmap(data)
     raster(data)
     # Oyun yerlerini istenen konuma en yakin bos park cimine yerlestir
-    a = Image.open('assets/splat_a.png').load(); b = Image.open('assets/splat_b.png').load(); k = PX / EXTENT
-    cimg = Image.open('assets/splat_c.png'); cpx = cimg.load(); kc = cimg.size[0] / EXTENT
+    a = Image.open(os.path.join(OUT, 'splat_a.png')).load(); b = Image.open(os.path.join(OUT, 'splat_b.png')).load(); k = PX / EXTENT
+    cimg = Image.open(os.path.join(OUT, 'splat_c.png')); cpx = cimg.load(); kc = cimg.size[0] / EXTENT
     def clean(c, h, placed):
         if abs(c[0]) + h[0] > HALF[0] - 10 or abs(c[1]) + h[1] > HALF[1] - 10:
             return False
@@ -416,7 +440,7 @@ if __name__ == '__main__':
                     return False
         return True
     placed = []
-    for name, (want, h) in WANTED.items():
+    for name, (want, h) in (WANTED.items() if ZONES[ZONE]['wanted'] else []):
         best = None
         for r in range(0, 260, 4):
             steps = max(1, int(2 * math.pi * r / 4))
@@ -430,11 +454,27 @@ if __name__ == '__main__':
         placed.append((best, h))
         data['spots'][name] = {'pos': [round(best[0], 1), round(best[1], 1)], 'half': h}
         print('  yer %-11s istenen %s -> %s' % (name, want, data['spots'][name]['pos']))
-    # Baslangic: bahce kapisinin (dogu kenari) hemen onu; orasi da bos olmali
-    g = data['spots']['bahce']
-    start = [g['pos'][0] + g['half'][0] + 3.0, g['pos'][1]]
-    if not clean(start, [2.0, 2.0], []):
-        raise SystemExit('baslangic noktasi bos degil: bahcenin yerini degistir')
+    # Baslangic: bahce kapisinin (dogu kenari) hemen onu; bahcesiz bolgede metro istasyonunun yaninda bos bir kaldirim
+    if 'bahce' in data['spots']:
+        g = data['spots']['bahce']
+        start = [g['pos'][0] + g['half'][0] + 3.0, g['pos'][1]]
+        if not clean(start, [2.0, 2.0], []):
+            raise SystemExit('baslangic noktasi bos degil: bahcenin yerini degistir')
+    else:
+        st = ZONES[ZONE].get('start', CENTER)
+        want = ((st[1] - CENTER[1]) * M_LON, -(st[0] - CENTER[0]) * M_LAT)
+        start = None
+        for r in range(0, 200, 2):
+            for t in range(max(1, r * 2)):
+                q = (want[0] + r * math.cos(t * math.pi / max(1, r)), want[1] + r * math.sin(t * math.pi / max(1, r)))
+                px = (int((q[0] + EXTENT / 2) * k), int((q[1] + EXTENT / 2) * k))
+                if b[px][0] < 90 and cpx[int((q[0] + EXTENT / 2) * kc), int((q[1] + EXTENT / 2) * kc)][0] < 70 \
+                        and not any(_in(q, bl['p']) for bl in data['buildings']):
+                    start = [round(q[0], 1), round(q[1], 1)]
+                    break
+            if start:
+                break
+        print('  baslangic', start)
     data['spots']['baslangic'] = {'pos': start, 'half': [1.0, 1.0]}
     for name, sp in data['spots'].items():
         hh = sp['half']
@@ -442,6 +482,6 @@ if __name__ == '__main__':
             for dz in (-1, 0, 1):
                 q = (sp['pos'][0] + dx * hh[0], sp['pos'][1] + dz * hh[1])
                 assert not any(_in(q, bl['p']) for bl in data['buildings']), 'bina icinde: ' + name
-    json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+    json.dump(data, open(os.path.join(OUT, 'city.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
     if len(sys.argv) > 2:
         preview(data, sys.argv[2])

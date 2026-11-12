@@ -18,9 +18,9 @@ import xml.etree.ElementTree as ET
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from osm_build import CENTER, M_LAT, M_LON   # noqa: E402
+from osm_build import CENTER, M_LAT, M_LON, OUT, ZONE   # noqa: E402
 
-city = json.load(open(os.path.join(ROOT, 'assets/city.json')))
+city = json.load(open(os.path.join(ROOT, OUT, 'city.json')))
 N = city['nodes']
 HALF = city['half']
 
@@ -249,46 +249,48 @@ def width_at(p):
 
 ego = json.load(open(os.path.join(ROOT, 'data/ego_hatlari.json')))['hatlar']
 lines = {}
+if ZONE == 'subayevleri':
 
-# 427 ve 464: Subayevleri'nden kalkar, Fahrettin Altay Caddesi'nden guneye cikar, ayni yoldan doner
-go_pts, _ = route((440.0, -150.0), ['Sandalcı Caddesi', 'Kalender Sokak', 'Üçyıldız Caddesi', 'Bando Sokak', 'Fahrettin Altay Caddesi'], (-113.0, 676.0))
-back_pts, _ = route((-249.0, 819.0), ['Fahrettin Altay Caddesi', 'Şht. Makbule Sokak', 'Üçyıldız Caddesi', 'Kalender Sokak', 'Cihangir Caddesi', 'Fethibey Sokak', 'Centilmen Caddesi'], (380.0, -150.0))
-for no in ('427', '464'):
-    h = ego[no]
-    lines[no] = {'name': h['ad'], 'color': '1f5fae' if no == '427' else '2f8f4e',
-                 'gidis': {'path': [[round(x, 2), round(z, 2)] for x, z in go_pts], 'stops': place_stops(go_pts, h['haritada_gidis'], width_at)},
-                 'donus': {'path': [[round(x, 2), round(z, 2)] for x, z in back_pts], 'stops': place_stops(back_pts, h['haritada_donus'], width_at)}}
+    # 427 ve 464: Subayevleri'nden kalkar, Fahrettin Altay Caddesi'nden guneye cikar, ayni yoldan doner
+    go_pts, _ = route((440.0, -150.0), ['Sandalcı Caddesi', 'Kalender Sokak', 'Üçyıldız Caddesi', 'Bando Sokak', 'Fahrettin Altay Caddesi'], (-113.0, 676.0))
+    back_pts, _ = route((-249.0, 819.0), ['Fahrettin Altay Caddesi', 'Şht. Makbule Sokak', 'Üçyıldız Caddesi', 'Kalender Sokak', 'Cihangir Caddesi', 'Fethibey Sokak', 'Centilmen Caddesi'], (380.0, -150.0))
+    for no in ('427', '464'):
+        h = ego[no]
+        lines[no] = {'name': h['ad'], 'color': '1f5fae' if no == '427' else '2f8f4e',
+                     'gidis': {'path': [[round(x, 2), round(z, 2)] for x, z in go_pts], 'stops': place_stops(go_pts, h['haritada_gidis'], width_at)},
+                     'donus': {'path': [[round(x, 2), round(z, 2)] for x, z in back_pts], 'stops': place_stops(back_pts, h['haritada_donus'], width_at)}}
 
-# 481, 479, 419: Fatih Caddesi'nden gecer (bolunmus yol, iki yon ayri)
-# Bolunmus yol: guneye ve kuzeye giden seritler ayri yollar
-sb, nb = set(), set()
-for r in city['roads']:
-    if r.get('name') == 'Fatih Caddesi' and r['oneway']:
-        (sb if N[r['n'][-1]][1] > N[r['n'][0]][1] else nb).update(k for k in r['n'] if k in MAIN)
-south_pts, _ = route(N[min(sb, key=lambda k: N[k][1])], ['Fatih Caddesi'], N[max(sb, key=lambda k: N[k][1])])   # Kizilay yonu
-north_pts, _ = route(N[max(nb, key=lambda k: N[k][1])], ['Fatih Caddesi'], N[min(nb, key=lambda k: N[k][1])])   # Uyanis yonu
-for no in ('481', '479', '419'):
-    lines[no] = {'name': ego[no]['ad'], 'color': '1f5fae',
-                 'gidis': {'path': [[round(x, 2), round(z, 2)] for x, z in south_pts], 'stops': []},
-                 'donus': {'path': [[round(x, 2), round(z, 2)] for x, z in north_pts],
-                           'stops': place_stops(north_pts, ['Teleferik', 'Atatürk Bahçesi'], width_at)}}
-# Teleferik duragini gercek istasyonun onune cek
-tele = next((s for s in stations if s['name'] == 'Atatürk'), None)
-if tele:
+    # 481, 479, 419: Fatih Caddesi'nden gecer (bolunmus yol, iki yon ayri)
+    # Bolunmus yol: guneye ve kuzeye giden seritler ayri yollar
+    sb, nb = set(), set()
+    for r in city['roads']:
+        if r.get('name') == 'Fatih Caddesi' and r['oneway']:
+            (sb if N[r['n'][-1]][1] > N[r['n'][0]][1] else nb).update(k for k in r['n'] if k in MAIN)
+    south_pts, _ = route(N[min(sb, key=lambda k: N[k][1])], ['Fatih Caddesi'], N[max(sb, key=lambda k: N[k][1])])   # Kizilay yonu
+    north_pts, _ = route(N[max(nb, key=lambda k: N[k][1])], ['Fatih Caddesi'], N[min(nb, key=lambda k: N[k][1])])   # Uyanis yonu
     for no in ('481', '479', '419'):
-        st = lines[no]['donus']['stops']
-        best = project_on(north_pts, tele['pos'])
-        if best:
-            s0 = best[1]
-            p, d = point_at(north_pts, s0)
-            right = (-d[1], d[0])
-            w = width_at(p)
-            st[0].update({'s': round(s0, 1), 'pos': [round(p[0] + right[0] * (w * 0.5 + 1.6), 2), round(p[1] + right[1] * (w * 0.5 + 1.6), 2)],
-                          'road': [round(p[0], 2), round(p[1], 2)], 'dir': [round(d[0], 4), round(d[1], 4)]})
-            p2, d2 = point_at(north_pts, s0 + 160.0)
-            r2 = (-d2[1], d2[0])
-            st[1].update({'s': round(s0 + 160.0, 1), 'pos': [round(p2[0] + r2[0] * (w * 0.5 + 1.6), 2), round(p2[1] + r2[1] * (w * 0.5 + 1.6), 2)],
-                          'road': [round(p2[0], 2), round(p2[1], 2)], 'dir': [round(d2[0], 4), round(d2[1], 4)]})
+        lines[no] = {'name': ego[no]['ad'], 'color': '1f5fae',
+                     'gidis': {'path': [[round(x, 2), round(z, 2)] for x, z in south_pts], 'stops': []},
+                     'donus': {'path': [[round(x, 2), round(z, 2)] for x, z in north_pts],
+                               'stops': place_stops(north_pts, ['Teleferik', 'Atatürk Bahçesi'], width_at)}}
+    # Teleferik duragini gercek istasyonun onune cek
+    tele = next((s for s in stations if s['name'] == 'Atatürk'), None)
+    if tele:
+        for no in ('481', '479', '419'):
+            st = lines[no]['donus']['stops']
+            best = project_on(north_pts, tele['pos'])
+            if best:
+                s0 = best[1]
+                p, d = point_at(north_pts, s0)
+                right = (-d[1], d[0])
+                w = width_at(p)
+                st[0].update({'s': round(s0, 1), 'pos': [round(p[0] + right[0] * (w * 0.5 + 1.6), 2), round(p[1] + right[1] * (w * 0.5 + 1.6), 2)],
+                              'road': [round(p[0], 2), round(p[1], 2)], 'dir': [round(d[0], 4), round(d[1], 4)]})
+                p2, d2 = point_at(north_pts, s0 + 160.0)
+                r2 = (-d2[1], d2[0])
+                st[1].update({'s': round(s0 + 160.0, 1), 'pos': [round(p2[0] + r2[0] * (w * 0.5 + 1.6), 2), round(p2[1] + r2[1] * (w * 0.5 + 1.6), 2)],
+                              'road': [round(p2[0], 2), round(p2[1], 2)], 'dir': [round(d2[0], 4), round(d2[1], 4)]})
+
 
 # Haritadaki diger gercek duraklar (baska hatlarin): sadece durak yapisi
 used = [s['pos'] for ln in lines.values() for leg in ('gidis', 'donus') for s in ln[leg]['stops']]
@@ -320,7 +322,7 @@ cable = [st for st in stations if 'teleferi' in st['network']]
 
 out = {'lines': lines, 'other_stops': extra, 'metro': metro, 'cable_car': cable,
        'source': 'EGO hat bilgisi (data/ego_hatlari.json) + OpenStreetMap'}
-json.dump(out, open(os.path.join(ROOT, 'assets/transit.json'), 'w'), ensure_ascii=False)
+json.dump(out, open(os.path.join(ROOT, OUT, 'transit.json'), 'w'), ensure_ascii=False)
 for no, ln in lines.items():
     print(no, 'gidis %.0f m %d durak' % (arc(ln['gidis']['path'])[-1], len(ln['gidis']['stops'])),
           'donus %.0f m %d durak' % (arc(ln['donus']['path'])[-1], len(ln['donus']['stops'])))

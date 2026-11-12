@@ -16,8 +16,8 @@ const CELL := 16.0
 
 var toys: Array[Node3D] = []
 var bowl_pos := Vector2.ZERO
-var pool_pos := Vector2.ZERO
-var kennel_pos := Vector2.ZERO
+var pool_pos := Vector2(1e6, 1e6)
+var kennel_pos := Vector2(1e6, 1e6)
 var yarn_pos := Vector2.ZERO
 
 var _rng := RandomNumberGenerator.new()
@@ -49,8 +49,8 @@ var _t := 0.0
 func _ready() -> void:
 	_rng.seed = 20261112
 	ParkMap.load_data()
-	_splat_a = load("res://assets/splat_a.png")
-	_splat_b = load("res://assets/splat_b.png")
+	_splat_a = load(ParkMap.asset("splat_a.png"))
+	_splat_b = load(ParkMap.asset("splat_b.png"))
 	_img_a = _splat_a.get_image()
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
@@ -361,7 +361,7 @@ func _build_ground() -> void:
 	m.set_shader_parameter("splat_b", _splat_b)
 	m.set_shader_parameter("splat_center", ParkMap.SPLAT_CENTER)
 	m.set_shader_parameter("splat_extent", ParkMap.SPLAT_EXTENT)
-	m.set_shader_parameter("splat_c", load("res://assets/splat_c.png"))
+	m.set_shader_parameter("splat_c", load(ParkMap.asset("splat_c.png")))
 	for pair in [["t_grass", "cim"], ["t_asphalt", "asfalt"], ["t_pavers", "kaldirim"], ["t_yard", "zemin"], ["t_gravel", "patika"], ["t_sand", "kum"]]:
 		m.set_shader_parameter(pair[0], load("res://assets/tex/%s.jpg" % pair[1]))
 	for pair in [["n_grass", "cim_n"], ["n_asphalt", "asfalt_n"], ["n_pavers", "kaldirim_n"]]:
@@ -650,6 +650,8 @@ func _toy(node: Node3D, p: Vector2, y: float) -> void:
 # ---------------------------------------------------------------- oyuna eklenen yerler
 
 func _build_spots() -> void:
+	if not ParkMap.has_spot("bahce"):
+		return     # bu bolgede oyun yerleri (bahce, pet shop...) yok
 	for k in ParkMap.spots:
 		if k != "baslangic":
 			_keep_out.append([ParkMap.spots[k], ParkMap.spot_half[k] + Vector2(2, 2)])
@@ -845,7 +847,8 @@ func _build_pitches() -> void:
 
 ## Yuksek kaldirimlar (tools/make_kerbs.py): parcali model, uzaktakiler cizilmez.
 func _build_kerbs() -> void:
-	if not ResourceLoader.exists("res://assets/models/kaldirim.glb"):
+	var kerb_path := "res://assets/models/kaldirim.glb" if ParkMap.zone == "" else ParkMap.asset("kaldirim.glb")
+	if not ResourceLoader.exists(kerb_path):
 		return
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = load("res://assets/tex/kaldirim.jpg")
@@ -854,7 +857,7 @@ func _build_kerbs() -> void:
 	m.vertex_color_use_as_albedo = true
 	m.roughness = 0.9
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var inst: Node3D = _scene("kaldirim").instantiate()
+	var inst: Node3D = (load(kerb_path) as PackedScene).instantiate()
 	add_child(inst)
 	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
 		mi.material_override = m
@@ -965,7 +968,7 @@ func _build_details() -> void:
 			if placed:
 				continue
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
-		if po["k"] == "durak" and not FileAccess.file_exists("res://assets/transit.json"):
+		if po["k"] == "durak" and not FileAccess.file_exists(ParkMap.asset("transit.json")):
 			_bus_shelter(p + Vector2(2.6, 0.0))
 	# Adli binalar: catinin on kenarinda levha
 	for b in d["buildings"]:
@@ -1056,9 +1059,9 @@ var shop_spots: Array = []         # [{name, pos}] dukkan kapilari
 
 
 func _build_transit() -> void:
-	if not FileAccess.file_exists("res://assets/transit.json"):
+	if not FileAccess.file_exists(ParkMap.asset("transit.json")):
 		return
-	transit = JSON.parse_string(FileAccess.get_file_as_string("res://assets/transit.json"))
+	transit = JSON.parse_string(FileAccess.get_file_as_string(ParkMap.asset("transit.json")))
 	# Ayni yerdeki duraklari birlestir (427 ve 464 ayni duraklari kullanir)
 	var merged := {}
 	for no in transit["lines"]:
@@ -1085,7 +1088,7 @@ func _build_transit() -> void:
 			if ParkMap.inside_bounds(p, -6.0):
 				var toward := (Vector2(m["pos"][0], m["pos"][1]) - p).normalized()
 				_metro_entrance(p, toward, m["name"], m["line"], e["ref"])
-				metro_gates.append({"name": m["name"], "line": m["line"], "ref": e["ref"], "pos": p})
+				metro_gates.append({"name": m["name"], "line": m["line"], "ref": e["ref"], "pos": p, "toward": toward})
 	for c in transit["cable_car"]:
 		var p := Vector2(c["pos"][0], c["pos"][1])
 		if ParkMap.inside_bounds(p, 4.0):
@@ -1165,7 +1168,7 @@ func _metro_entrance(p: Vector2, toward: Vector2, station: String, line: String,
 	# Merdiven: iki yanda ve arkada duvar, acikligin icinde koyulasan basamaklar
 	Kit.box(r, Vector3(0.3, 1.0, 6.2), Vector3(-1.45, 0.5, -0.6), granite)
 	Kit.box(r, Vector3(0.3, 1.0, 6.2), Vector3(1.45, 0.5, -0.6), granite)
-	Kit.box(r, Vector3(3.2, 1.0, 0.3), Vector3(0, 0.5, 2.4), granite)
+	Kit.box(r, Vector3(3.2, 1.0, 0.3), Vector3(0, 0.5, -3.75), granite)
 	for i in 14:
 		var k := float(i) / 13.0
 		var stair := Kit.mat(Color(0.55, 0.56, 0.57).lerp(Color(0.04, 0.04, 0.05), k).to_html(false), 0.8)
@@ -1200,7 +1203,6 @@ func _metro_entrance(p: Vector2, toward: Vector2, station: String, line: String,
 	var c := func(x: float, z: float) -> Vector2:
 		var v := b * Vector3(x, 0, z)
 		return p + Vector2(v.x, v.z)
-	_add_segment(c.call(-1.6, 2.55), c.call(1.6, 2.55))
 	_add_segment(c.call(-1.6, 2.55), c.call(-1.6, -3.7))
 	_add_segment(c.call(1.6, 2.55), c.call(1.6, -3.7))
 	_add_segment(c.call(-1.6, -3.7), c.call(1.6, -3.7))

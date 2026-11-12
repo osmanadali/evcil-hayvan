@@ -42,7 +42,8 @@ func set_places() -> void:
 		"cardak": "Çardak", "cesme": "Çeşme", "oyun_alani": "Köpek Oyun Alanı", "piknik": "Piknik Alanı"}
 	places.clear()
 	for k in SPOT_NAMES:
-		places.append([SPOT_NAMES[k], ParkMap.spot(k), 9.0])
+		if ParkMap.has_spot(k):
+			places.append([SPOT_NAMES[k], ParkMap.spot(k), 9.0])
 	for pl in ParkMap.data["places"]:
 		places.append([pl["name"], Vector2(pl["pos"][0], pl["pos"][1]), float(pl["r"]) + 12.0])
 
