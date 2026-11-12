@@ -22,12 +22,20 @@ var yarn_pos := Vector2(7.2, -44.0)
 var _rng := RandomNumberGenerator.new()
 var _splat_a: Texture2D
 var _splat_b: Texture2D
+var _img_a: Image
+var _img_b: Image
+var _grid := PackedFloat32Array()
+var _grid_x0 := 0.0
+var _grid_z0 := 0.0
+var _grid_nx := 0
+var _grid_nz := 0
 var _scenes := {}
 var _flower_xf: Array[Transform3D] = []
 var _flower_col: Array[Color] = []
 var _bush_xf: Array[Transform3D] = []
 var _bush_col: Array[Color] = []
 var _tree_fixed: Array = []        # [konum, boy, tur]
+var _occluders: Array = []         # [model, merkez, yari boyut]
 var _ducks: Array = []
 var _clouds: Array[Node3D] = []
 var _fire: MeshInstance3D
@@ -38,30 +46,49 @@ func _ready() -> void:
 	_rng.seed = 20261112
 	_splat_a = load("res://assets/splat_a.png")
 	_splat_b = load("res://assets/splat_b.png")
-	_build_ground()
-	_build_water()
-	_build_home()
-	_build_street()
-	_build_plaza()
-	_build_bridge_and_pier()
-	_build_play_area()
-	_build_kiosk()
-	_build_garden()
-	_build_picnic()
-	_build_lookouts()
-	_build_square()
-	_build_orchard()
-	_build_beach()
-	_build_camp()
-	_build_lamps()
-	_build_trees()
-	_build_pond_life()
-	_scatter_plants()
-	_build_clouds()
+	_img_a = _splat_a.get_image()
+	_img_b = _splat_b.get_image()
+	var t0 := Time.get_ticks_msec()
+	for step in ["ground", "water", "home", "street", "plaza", "bridge_and_pier", "play_area", "kiosk", "garden", "picnic", "lookouts", "square", "orchard", "beach", "camp", "lamps", "trees", "pond_life", "scatter_plants", "clouds"]:
+		var t := Time.get_ticks_msec()
+		call(("_scatter_plants" if step == "scatter_plants" else "_build_" + step))
+		if OS.has_environment("SURE"):
+			print("SURE ", step, " ", Time.get_ticks_msec() - t, " ms")
+	if OS.has_environment("SURE"):
+		print("SURE toplam ", Time.get_ticks_msec() - t0, " ms")
 
 
 func gy(p: Vector2) -> float:
 	return ParkMap.terrain_height(p)
+
+
+## Zemin izgarasindan okunan yukseklik (bitki serpistirmede hizli olsun diye).
+func _fast_y(p: Vector2) -> float:
+	var fx := p.x - _grid_x0
+	var fz := p.y - _grid_z0
+	var ix := int(fx)
+	var iz := int(fz)
+	if fx < 0.0 or fz < 0.0 or ix >= _grid_nx - 1 or iz >= _grid_nz - 1:
+		return ParkMap.terrain_height(p)
+	var tx := fx - ix
+	var tz := fz - iz
+	var a := _grid[iz * _grid_nx + ix]
+	var b := _grid[iz * _grid_nx + ix + 1]
+	var c := _grid[(iz + 1) * _grid_nx + ix]
+	var d := _grid[(iz + 1) * _grid_nx + ix + 1]
+	return lerpf(lerpf(a, b, tx), lerpf(c, d, tx), tz)
+
+
+## Boyama dokularindan okunan zemin turu: cim serpistirilebilir mi?
+func _is_lawn(p: Vector2) -> bool:
+	var uv := (p - ParkMap.SPLAT_CENTER) / ParkMap.SPLAT_EXTENT + Vector2(0.5, 0.5)
+	var x := clampi(int(uv.x * 1024.0), 0, 1023)
+	var y := clampi(int(uv.y * 1024.0), 0, 1023)
+	var a := _img_a.get_pixel(x, y)
+	if a.r > 0.15 or a.b > 0.25 or a.g < 0.61:
+		return false
+	var b := _img_b.get_pixel(x, y)
+	return b.r < 0.15 and b.g < 0.15
 
 
 func at(p: Vector2, y := 0.0) -> Vector3:
@@ -166,7 +193,19 @@ func _block(c: Vector2, half: Vector2) -> void:
 func _block_model(holder: Node3D, p: Vector2, shrink := 0.82) -> void:
 	var h: Vector2 = holder.get_meta("half")
 	var quarter := absf(fmod(absf(holder.rotation.y), PI) - PI / 2.0) < 0.1
-	_block(p, (Vector2(h.y, h.x) if quarter else h) * shrink)
+	var half := Vector2(h.y, h.x) if quarter else h
+	_block(p, half * shrink)
+	_occluders.append([holder, p, half])
+
+
+## Kamera guneyden baktigi icin, oyuncu bir binanin arkasina gecince o bina gizlenir.
+func update_occluders(owner_pos: Vector2, enabled := true) -> void:
+	for o in _occluders:
+		var c: Vector2 = o[1]
+		var h: Vector2 = o[2]
+		var north_face := c.y - h.y - owner_pos.y
+		var behind := north_face > -2.0 * h.y + 0.5 and north_face < 6.6 and absf(owner_pos.x - c.x) < h.x + 1.2
+		(o[0] as Node3D).visible = not (behind and enabled)
 
 
 # ---------------------------------------------------------------- arazi
@@ -185,6 +224,21 @@ func _build_ground() -> void:
 		for i in nx:
 			var p := Vector2(xs[i], zs[j])
 			verts[j * nx + i] = Vector3(p.x, ParkMap.terrain_height(p), p.y)
+	# Ic bolgenin (1 m aralikli) yuksekliklerini sakla
+	var i0 := 0
+	var j0 := 0
+	while xs[i0] < mn.x - 4.0:
+		i0 += 1
+	while zs[j0] < mn.y - 4.0:
+		j0 += 1
+	_grid_x0 = xs[i0]
+	_grid_z0 = zs[j0]
+	_grid_nx = int(mx.x - mn.x) + 8
+	_grid_nz = int(mx.y - mn.y) + 8
+	_grid.resize(_grid_nx * _grid_nz)
+	for j in _grid_nz:
+		for i in _grid_nx:
+			_grid[j * _grid_nx + i] = verts[(j + j0) * nx + i + i0].y
 	var normals := PackedVector3Array()
 	normals.resize(verts.size())
 	var idx := PackedInt32Array()
@@ -620,7 +674,7 @@ func _build_square() -> void:
 	var cafe := _model("kafe", ParkMap.CAFE, 13.0, -PI / 2)
 	_block_model(cafe, ParkMap.CAFE)
 	# Ortada buyuk agac ve cevresinde tas oturak
-	_tree_fixed.append([s, 10.0, 0])
+	_tree_fixed.append([s, 7.5, 0])
 	Kit.cyl(self, 2.2, 2.3, 0.5, at(s, 0.25), Kit.mat("b9b3a6"), 20)
 	Kit.cyl(self, 1.7, 1.7, 0.06, at(s, 0.52), Kit.mat("4d3a2a"), 20)
 	circles.append(Vector3(s.x, s.y, 2.4))
@@ -983,10 +1037,9 @@ func _scatter_plants() -> void:
 	while placed < 2600 and tries < 60000:
 		tries += 1
 		var p := Vector2(_rng.randf_range(mn.x, mx.x), _rng.randf_range(mn.y, mx.y))
-		var d := ParkMap.path_sd(p)
-		if d < 0.5 or ParkMap.water_sd(p) < 1.0 or ParkMap.paved_sd(p) < 0.4 or ParkMap.lot_sd(p) < 0.5 \
-				or ParkMap.rect_sd(p, ParkMap.PLAY_MIN, ParkMap.PLAY_MAX) < 0.3 or p.distance_to(ParkMap.BEACH) < ParkMap.BEACH_R:
+		if not _is_lawn(p) or ParkMap.lot_sd(p) < 0.5:
 			continue
+		var d := ParkMap.path_sd(p)
 		if d < 2.2:
 			_flower(at(p), Color(FLOWER_COLORS[_rng.randi() % 6]))
 		elif _rng.randf() < 0.12:
@@ -1017,10 +1070,10 @@ func _scatter_plants() -> void:
 	while gxf.size() < 26000 and tries < 200000:
 		tries += 1
 		var p := Vector2(_rng.randf_range(mn.x, mx.x), _rng.randf_range(mn.y, mx.y))
-		if ParkMap.path_sd(p) < 0.3 or ParkMap.water_sd(p) < 0.9 or ParkMap.paved_sd(p) < 0.3 \
-				or ParkMap.rect_sd(p, ParkMap.PLAY_MIN, ParkMap.PLAY_MAX) < 0.2 or p.distance_to(ParkMap.BEACH) < ParkMap.BEACH_R - 1.0:
+		if not _is_lawn(p):
 			continue
-		gxf.append(_xf(p, _rng.randf_range(0.6, 1.1)))
+		var gs := _rng.randf_range(0.6, 1.1)
+		gxf.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(gs, gs, gs)), Vector3(p.x, _fast_y(p), p.y)))
 		gcol.append(Color(gcols[_rng.randi() % 4]))
 	_multimesh(_grass_mesh(), gxf, gcol, false, 24.0, 34.0)
 

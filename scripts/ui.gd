@@ -115,7 +115,13 @@ func _build_hud() -> void:
 
 	var cards := VBoxContainer.new()
 	cards.name = "Cards"
-	cards.position = Vector2(16, 24)
+	# Centik / kamera deligi icin ustten bosluk
+	var win := DisplayServer.window_get_size()
+	var safe := DisplayServer.get_display_safe_area()
+	var top := 24.0
+	if win.y > 0 and safe.position.y > 0:
+		top += safe.position.y * get_viewport().get_visible_rect().size.y / float(win.y)
+	cards.position = Vector2(16, top)
 	cards.add_theme_constant_override("separation", 10)
 	hud.add_child(cards)
 
@@ -123,7 +129,7 @@ func _build_hud() -> void:
 	right.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	right.offset_left = -176
 	right.offset_right = -16
-	right.offset_top = 24
+	right.offset_top = top
 	right.alignment = BoxContainer.ALIGNMENT_BEGIN
 	right.add_theme_constant_override("separation", 12)
 	hud.add_child(right)

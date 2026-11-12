@@ -3,3 +3,4 @@
 *.aab
 android/
 *.tmp
+build/

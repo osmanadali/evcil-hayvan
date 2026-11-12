@@ -60,6 +60,7 @@ var _pet_cd := 0.0
 var _slow_t := 0.0
 var _save_t := 0.0
 var _args := {}
+var _ready_done := false
 
 
 func _ready() -> void:
@@ -72,13 +73,30 @@ func _ready() -> void:
 	if _args.has("shot"):
 		state.reset()
 	_build_environment()
+	# Dunya kurulurken yukleniyor ekrani goster
+	var loading := CanvasLayer.new()
+	var bg := ColorRect.new()
+	bg.color = Color("f6e7c8")
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	loading.add_child(bg)
+	var lt := Label.new()
+	lt.text = "Patili Gezinti\n\nKasaba hazırlanıyor…"
+	lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lt.add_theme_font_size_override("font_size", 44)
+	lt.add_theme_color_override("font_color", Color("6b4a2f"))
+	lt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	loading.add_child(lt)
+	add_child(loading)
+	cam = Camera3D.new()
+	add_child(cam)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	world = World.new()
 	add_child(world)
 
-	cam = Camera3D.new()
 	cam.fov = 50.0
 	cam.far = 500.0
-	add_child(cam)
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.28
 	ring.outer_radius = 0.38
@@ -115,6 +133,8 @@ func _ready() -> void:
 		_mode = "menu"
 		ui.show_screen("menu"))
 	get_tree().set_auto_accept_quit(false)
+	loading.queue_free()
+	_ready_done = true
 	if _args.has("shot"):
 		_debug_shot()
 
@@ -269,6 +289,8 @@ func _start_game(owner_kind: String, pet_kind: String, pet_name: String) -> void
 	_spawn_coins()
 	_enter_play()
 	ui.toast("Hoş geldin! Yürümek için bir yere dokun.")
+	ui.toast("Dostunu sevmek için üzerine dokun.")
+	ui.toast("Haritadan çarşıya git; Pet Shop'ta mama ve aksesuar var.")
 
 
 func _enter_play() -> void:
@@ -385,7 +407,7 @@ func _spawn_coins() -> void:
 # ---------------------------------------------------------------- girdi
 
 func _unhandled_input(e: InputEvent) -> void:
-	if _mode == "menu" or ui.is_blocking() or map_screen.visible:
+	if not _ready_done or _mode == "menu" or ui.is_blocking() or map_screen.visible:
 		return
 	var touch := DisplayServer.is_touchscreen_available()
 	if e is InputEventScreenTouch and touch:
@@ -729,6 +751,8 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	if not _ready_done:
+		return
 	_pet_cd -= dt
 	_update_owner(dt)
 	for k in agents:
@@ -776,6 +800,7 @@ func _process(dt: float) -> void:
 			_slow_t = 0.3
 			state.visit(_owner_pos())
 			_update_context()
+			world.update_occluders(_owner_pos(), _mode != "photo")
 		_save_t += dt
 		if _save_t > 20.0:
 			_save_t = 0.0
@@ -1004,7 +1029,7 @@ func _debug_shot() -> void:
 			if _args.has("cmd"):
 				var c: String = _args["cmd"]
 				if c == "throw":
-					_throw_to(_owner_pos() + Vector2(2, -9))
+					_throw_to(_owner_pos() + Vector2(float(_args.get("tx", "-3")), float(_args.get("tz", "-8"))))
 				elif c == "walk":
 					_go(_owner_pos() + Vector2(float(_args.get("dx", "0")), float(_args.get("dz", "-30"))))
 				elif c == "pin":
@@ -1031,5 +1056,15 @@ func _debug_shot() -> void:
 			var t := owner_node.position + Vector3(0, 0.8, 0)
 			cam.position = t + Vector3(sin(a) * dist, 0.9, cos(a) * dist)
 			cam.look_at(t)
-	get_viewport().get_texture().get_image().save_png(_args["shot"])
+	if _args.has("secs"):
+		await get_tree().create_timer(float(_args["secs"])).timeout
+	var report := {"coins": state.d["coins"], "foods": state.d["foods"], "quests": state.d["quests"], "places": state.d["places"],
+		"owner": _owner_pos()}
+	for k in agents:
+		var p: Dictionary = state.pet(k)
+		report[k] = "mode=%d pose=%s pos=%s hunger=%.0f energy=%.0f fun=%.0f clean=%.0f xp=%.1f" % [agents[k].mode, agents[k].model.pose,
+			agents[k].pos2(), p["hunger"], p["energy"], p["fun"], p["clean"], p["xp"]]
+	print("RAPOR ", report)
+	if DisplayServer.get_name() != "headless":
+		get_viewport().get_texture().get_image().save_png(_args["shot"])
 	get_tree().quit()
