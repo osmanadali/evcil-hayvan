@@ -1093,6 +1093,76 @@ func _sign(p: Vector2, text: String, plate: String, ink: String, height := 2.7, 
 	return r
 
 
+## En yakin bina duvari: [duvar uzerindeki nokta yerine] disari bakan birim normal (bulunamazsa ZERO).
+func _wall_normal(p: Vector2) -> Vector2:
+	_inside_building(p)      # cokgen onbellegini doldurur
+	var best := 4.0
+	var nrm := Vector2.ZERO
+	for bp in _bpolys:
+		if not (bp[0] as Rect2).grow(4.0).has_point(p):
+			continue
+		var poly: PackedVector2Array = bp[1]
+		for i in poly.size():
+			var a := poly[i]
+			var b := poly[(i + 1) % poly.size()]
+			if a.distance_to(b) < 4.0:
+				continue        # vitrin sigmaz
+			var q := Geometry2D.get_closest_point_to_segment(p, a, b)
+			var d := q.distance_to(p)
+			if d < best:
+				best = d
+				var e := (b - a).normalized()
+				var n := Vector2(-e.y, e.x)
+				var mid := (a + b) * 0.5
+				if Geometry2D.is_point_in_polygon(mid + n * 0.4, poly):
+					n = -n
+				nrm = n
+	return nrm
+
+
+func tr_ok(p: Vector2) -> bool:
+	return (_road_point(p) - p).length() > 1.0
+
+
+## Zemin kat vitrini: cam, icinde aydinlik raflar, renkli tente, cam kapi. Yuzu yola bakar.
+func _shopfront(p: Vector2, to_road: Vector2, hex: String, kind: String) -> void:
+	var n := to_road.normalized()
+	var r := _root(p + n * 0.12, atan2(n.x, n.y))
+	var frame := Kit.mat("2b2d31", 0.4)
+	var w := 5.2
+	# Ic (aydinlik arka duvar, raflar, urunler)
+	var back := StandardMaterial3D.new()
+	back.albedo_color = Color("f4efe4")
+	back.emission_enabled = true
+	back.emission = Color("fff3dc")
+	back.emission_energy_multiplier = 0.55
+	Kit.box(r, Vector3(w - 0.2, 2.3, 0.04), Vector3(0, 1.25, -0.5), back)
+	var cols := ["c8322b", "2f62a8", "f2c230", "3f8f4a", "ffffff", "e07b1f"] if kind != "eczane" else ["ffffff", "d9ecf7", "e6f4e6", "fde7e7"]
+	for row in 3:
+		var y := 0.5 + row * 0.55
+		Kit.box(r, Vector3(w - 0.4, 0.03, 0.3), Vector3(0, y, -0.38), Kit.mat("d4cdbd", 0.5))
+		for k in 14:
+			var x := -w * 0.5 + 0.4 + k * (w - 0.8) / 14.0
+			if absf(x) < 0.7:
+				continue
+			Kit.box(r, Vector3(0.22, 0.28, 0.16), Vector3(x, y + 0.155, -0.38), Kit.mat(cols[(k + row) % cols.size()], 0.5))
+	# Cam ve cerceve; ortada cam kapi
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.7, 0.82, 0.9, 0.28)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.05
+	glass.metallic_specular = 0.9
+	Kit.box(r, Vector3(w, 2.4, 0.03), Vector3(0, 1.3, 0.0), glass)
+	for x in [-w * 0.5, -0.65, 0.65, w * 0.5]:
+		Kit.box(r, Vector3(0.08, 2.5, 0.1), Vector3(x, 1.25, 0.0), frame)
+	Kit.box(r, Vector3(w + 0.1, 0.1, 0.12), Vector3(0, 2.5, 0.0), frame)
+	Kit.box(r, Vector3(w + 0.1, 0.25, 0.14), Vector3(0, 0.12, 0.0), frame)
+	Kit.box(r, Vector3(0.03, 0.4, 0.03), Vector3(0.45, 1.1, 0.06), Kit.mat("c9ccd0", 0.3))
+	# Tente: dukkan renginde, one egimli
+	Kit.box(r, Vector3(w + 0.3, 0.05, 1.1), Vector3(0, 2.75, 0.5), Kit.mat(hex, 0.7), Vector3(0.32, 0, 0))
+	Kit.box(r, Vector3(w + 0.3, 0.22, 0.04), Vector3(0, 2.5, 1.02), Kit.mat(hex, 0.7))
+
+
 var _road_segs: Array = []
 
 ## En yakin yol ekseni uzerindeki nokta.
@@ -1148,6 +1218,10 @@ func _build_details() -> void:
 			var tr := _road_point(p) - p
 			var door := p + (tr.normalized() * minf(1.6, tr.length() * 0.5) if tr.length() > 0.3 else Vector2.ZERO)
 			shop_spots.append({"name": po["name"], "kind": po["k"], "pos": door})
+		if wall and tr_ok(p):
+			var wn := _wall_normal(p)
+			if wn != Vector2.ZERO:
+				_shopfront(p, wn, st[0], po["k"])
 		if po["k"] == "durak" and not FileAccess.file_exists(ParkMap.asset("transit.json")):
 			_bus_shelter(p + Vector2(2.6, 0.0))
 	# Adli binalar: catinin on kenarinda levha

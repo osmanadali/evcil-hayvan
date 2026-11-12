@@ -134,12 +134,12 @@ func _build_shell() -> void:
 		var o := OmniLight3D.new()
 		o.position = Vector3(x, H - 0.4, D * 0.45)
 		o.omni_range = 9.0
-		o.light_energy = 1.3
+		o.light_energy = 0.8
 		add_child(o)
 	var o2 := OmniLight3D.new()
 	o2.position = Vector3(W * 0.5, H - 0.4, D - 2.0)
 	o2.omni_range = 7.0
-	o2.light_energy = 0.9
+	o2.light_energy = 0.6
 	add_child(o2)
 
 
