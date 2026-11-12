@@ -1,5 +1,47 @@
 # Evcil Hayvan Oyunu — Plan
 
+## Güncel durum
+
+Kararlar: **Godot 4**, ilk hayvan **köpek**, önce **Android**, tamamen **offline** (diğer hayvanlar ve insanlar NPC).
+
+Çalışan ilk sürüm repoda (`project.godot`). Şu an olanlar:
+
+- **Papatya Parkı**: ev ve bahçesi (köpek kulübesi dahil), çeşmeli meydan, gölet ve dere, ahşap köprü, köpek oyun alanı, dondurmacı, çiçek bahçesi, piknik alanı, seyir tepesi, kır çiçeği çayırı.
+- Dokunarak yürüme, takip eden kamera, engeller ve su.
+- Komutlar: **Otur**, **Top At** (köpek koşup getirir).
+- Örnek aksesuar (şapka, tasma) ve üç büyüme evresi.
+- Parkta gezen insanlar, onları takip eden ve serbest dolaşan köpekler.
+- Telefon görünümlü **harita**: kaydır, yakınlaştır, bir yere dokun, köpek yolları izleyerek oraya gider.
+
+Köpek ve insanlar şimdilik basit şekillerden yapılmış geçici modeller; Tripo modelleri gelince değişecek.
+
+![Park](docs/park-genel.jpg)
+![Ekranlar](docs/oyun-ekranlari.jpg)
+
+### Çalıştırma
+
+Godot 4.4 ile `project.godot` dosyasını aç, F5'e bas. Harita verisi `scripts/park_map.gd` içinde; yolları değiştirirsen
+`godot --headless --path . -s tools/bake_splat.gd` ile zemin boyamasını yeniden üret.
+
+### Sıradaki işler
+
+1. Telefonda deneme: Android çıktısı alıp performansa ve renklere bakmak.
+2. Tripo'dan köpek modeli + animasyon denemesi (en büyük risk burada).
+3. Ev içi ve arka bahçe: oyuncaklar, mama kabı, besleme, ihtiyaç barları.
+4. Topu parmakla fırlatma, daha fazla komut (gel, pati ver, yat).
+5. Fotoğraf modu: alçak kamera, poz, arayüzsüz ekran görüntüsü.
+6. Yeni bölgeler: sahil, kasaba sokağı (kafe, pet shop), orman yolu, göl kenarı. Harita ekranı bölgeler arası geçişi de gösterecek.
+
+### Süre hakkında
+
+İki haftada telefonda oynanan, park + ev + komutlar içeren bir sürüm gerçekçi; kod tarafı hızlı ilerliyor.
+Mağazaya çıkacak kalite için belirleyici olan kod değil, modeller, animasyonlar ve telefonda test. Tripo çıktıları
+ilk denemede iyi çıkarsa süre kısalır, çıkmazsa en çok zaman orada gider.
+
+---
+
+Aşağısı ilk plan; kararların gerekçeleri için duruyor.
+
 Mobil, 3D, sakin tempolu bir evcil hayvan oyunu: hayvanını besle, büyüt, giydir, birlikte parklarda gezintiye çık.
 
 ## 1. Temel kararlar
