@@ -105,7 +105,7 @@ def build(path):
                 bridges.append({'p': [[round(x, 2), round(z, 2)] for x, z in pts], 'w': ROAD_W[hw]})
         elif hw in PATH_W:
             paths.append({'n': [nid(i) for i in ids], 'w': PATH_W[hw], 'steps': hw == 'steps'})
-        elif 'building' in tags and len(ring) >= 3:
+        elif 'building' in tags and len(ring) >= 3 and not (tags.get('layer', '0').lstrip('-').isdigit() and int(tags.get('layer', '0')) < 0) and tags.get('location') != 'underground':
             a = area(ring)
             kind = 'cami' if tags.get('amenity') == 'place_of_worship' or tags.get('building') == 'mosque' else \
                 ('okul' if tags.get('amenity') == 'school' or tags.get('building') == 'school' else 'apartman')
@@ -134,6 +134,8 @@ def build(path):
             if abs(c[0]) < HALF[0] - 15 and abs(c[1]) < HALF[1] - 15:
                 kind = 'park' if tags.get('leisure') == 'park' else ('saha' if 'leisure' in tags else ('cami' if tags.get('amenity') == 'place_of_worship' else 'okul'))
                 places.append({'name': tags['name'], 'kind': kind, 'pos': [round(c[0], 1), round(c[1], 1)], 'r': round(max(10.0, min(60.0, math.sqrt(area(ring)) * 0.6)), 1)})
+    # Zincir markalarin adlari oyunda uydurma adlarla degistirilir (marka hakki)
+    FAKE = {"BİM": "Bizim Market", "Migros": "Mavi Market", "Şok": "Şimşek Market", "Shell": "Sarı Petrol", "Total": "Toprak Petrol", "Petrol Ofisi": "Petrol Durağı", "Türkiye İş Bankası": "Başkent Bankası"}
     # Noktasal ayrintilar: dukkanlar, duraklar, trafik isiklari, yaya gecitleri...
     KIND = [('highway', 'bus_stop', 'durak'), ('public_transport', 'station', 'metro'), ('railway', 'station', 'metro'),
             ('amenity', 'pharmacy', 'eczane'), ('shop', 'supermarket', 'market'), ('shop', 'convenience', 'market'), ('shop', 'kiosk', 'market'),
@@ -160,6 +162,7 @@ def build(path):
         name = tags.get('name')
         if not name:
             continue
+        name = FAKE.get(name, name)
         kind = next((k for key, val, k in KIND if key in tags and (val is None or tags[key] == val)), None)
         if kind is None or any(o['name'] == name and math.dist(o['pos'], q) < 25 for o in pois):
             continue
@@ -249,6 +252,8 @@ def build(path):
             'buildings': buildings, 'parks': parks, 'pitches': pitches, 'water': water, 'places': places, 'streets': streets, 'spots': SPOTS,
             'pois': pois, 'signs': signs, 'signals': signals, 'crossings': crossings, 'props': props, 'barriers': barriers,
             'parking': parking, 'playgrounds': playgrounds, 'bridges': bridges}
+    for bl in data['buildings']:
+        bl['name'] = FAKE.get(bl.get('name', ''), bl.get('name', ''))
     json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     print('yol %d, patika %d, bina %d, park %d, saha %d, su %d, yer %d, sokak adi %d, dugum %d' % (
         len(roads), len(paths), len(buildings), len(parks), len(pitches), len(water), len(places), len(streets), len(graph_nodes)))

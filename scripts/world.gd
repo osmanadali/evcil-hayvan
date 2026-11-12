@@ -55,7 +55,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -961,7 +961,7 @@ func _build_details() -> void:
 		var st: Array = SIGN_STYLE.get(po["k"], SIGN_STYLE["dukkan"])
 		var wall: bool = po["wall"]
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
-		if po["k"] == "durak":
+		if po["k"] == "durak" and not FileAccess.file_exists("res://assets/transit.json"):
 			_bus_shelter(p + Vector2(2.6, 0.0))
 	# Adli binalar: catinin on kenarinda levha
 	for b in d["buildings"]:
@@ -1041,6 +1041,147 @@ func _build_details() -> void:
 		Kit.box(r, Vector3(0.9, 0.08, 2.8), Vector3(4.0, 0.9, 0.6), Kit.mat("e9b93a", 0.5), Vector3(0.55, 0, 0))
 		Kit.box(r, Vector3(1.0, 1.7, 1.0), Vector3(4.0, 0.85, -1.2), blue)
 		_add_circle(Vector3(p.x + 4.0, p.y - 1.2, 0.8))
+
+
+# ---------------------------------------------------------------- toplu tasima
+
+var transit := {}
+var stops: Array = []              # [{name, pos: Vector2, lines: Array}]
+var metro_gates: Array = []        # [{name, line, ref, pos: Vector2}]
+
+
+func _build_transit() -> void:
+	if not FileAccess.file_exists("res://assets/transit.json"):
+		return
+	transit = JSON.parse_string(FileAccess.get_file_as_string("res://assets/transit.json"))
+	# Ayni yerdeki duraklari birlestir (427 ve 464 ayni duraklari kullanir)
+	var merged := {}
+	for no in transit["lines"]:
+		for key in ["gidis", "donus"]:
+			for st in transit["lines"][no][key]["stops"]:
+				var p := Vector2(st["pos"][0], st["pos"][1])
+				var id := "%s@%d,%d" % [st["name"], roundi(p.x / 6.0), roundi(p.y / 6.0)]
+				if not merged.has(id):
+					merged[id] = {"name": st["name"], "pos": p, "road": Vector2(st["road"][0], st["road"][1]), "lines": []}
+				if not merged[id]["lines"].has(no):
+					merged[id]["lines"].append(no)
+	for st in transit["other_stops"]:
+		var p := Vector2(st["pos"][0], st["pos"][1])
+		merged["o%d" % merged.size()] = {"name": st["name"], "pos": p, "road": Vector2(st["road"][0], st["road"][1]), "lines": []}
+	for id in merged:
+		var st: Dictionary = merged[id]
+		if not ParkMap.inside_bounds(st["pos"], 2.0):
+			continue
+		stops.append(st)
+		_stop_shelter(st["pos"], st["road"], st["name"], st["lines"])
+	for m in transit["metro"]:
+		for e in m["entrances"]:
+			var p := Vector2(e["pos"][0], e["pos"][1])
+			if ParkMap.inside_bounds(p, -6.0):
+				var toward := (Vector2(m["pos"][0], m["pos"][1]) - p).normalized()
+				_metro_entrance(p, toward, m["name"], m["line"], e["ref"])
+				metro_gates.append({"name": m["name"], "line": m["line"], "ref": e["ref"], "pos": p})
+	for c in transit["cable_car"]:
+		var p := Vector2(c["pos"][0], c["pos"][1])
+		if ParkMap.inside_bounds(p, 4.0):
+			_sign(p, "Teleferik · %s İstasyonu" % c["name"], "6a2c91", "ffffff", 3.0, true, 0.26, "T")
+
+
+## Otobus duragi: acik yani yola bakar; tabelada durak adi ve gecen hatlar.
+func _stop_shelter(p: Vector2, road: Vector2, name: String, lines: Array) -> void:
+	var toward := (road - p).normalized()
+	var rot := atan2(toward.x, toward.y)
+	var r := _root(p, rot)
+	r.position.y += ParkMap.sidewalk_raise(p)
+	var frame := Kit.mat("3d434a", 0.4)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.72, 0.86, 0.95, 0.35)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.05
+	glass.metallic_specular = 0.9
+	for sx in [-1.75, 1.75]:
+		Kit.box(r, Vector3(0.09, 2.45, 0.09), Vector3(sx, 1.22, -0.65), frame)
+		Kit.box(r, Vector3(0.09, 2.45, 0.09), Vector3(sx, 1.22, 0.55), frame)
+	Kit.box(r, Vector3(3.8, 0.1, 1.6), Vector3(0, 2.48, -0.05), frame)
+	Kit.box(r, Vector3(3.6, 0.04, 1.5), Vector3(0, 2.42, -0.05), glass)
+	Kit.box(r, Vector3(3.5, 1.9, 0.03), Vector3(0, 1.3, -0.66), glass)
+	Kit.box(r, Vector3(0.03, 1.9, 1.1), Vector3(-1.75, 1.3, -0.1), glass)
+	Kit.box(r, Vector3(2.6, 0.06, 0.42), Vector3(0, 0.48, -0.42), Kit.mat("9a6b43", 0.7))
+	Kit.box(r, Vector3(2.6, 0.4, 0.06), Vector3(0, 0.72, -0.62), Kit.mat("9a6b43", 0.7))
+	# Reklam panosu (isikli)
+	var ad := StandardMaterial3D.new()
+	ad.albedo_color = Color("e9e4d8")
+	ad.emission_enabled = true
+	ad.emission = Color("fff2d6")
+	ad.emission_energy_multiplier = 0.25
+	Kit.box(r, Vector3(0.12, 1.6, 1.0), Vector3(1.75, 1.25, -0.1), ad)
+	# Ust levha: durak adi ve hatlar
+	Kit.box(r, Vector3(3.2, 0.36, 0.06), Vector3(0, 2.75, 0.5), Kit.mat("1a4fa0", 0.5))
+	var t := _text(r, name.to_upper(), Vector3(0, 2.75, 0.535), Color.WHITE, 0.17)
+	t.rotation.y = 0.0
+	if not lines.is_empty():
+		var lt := _text(r, "  ".join(lines), Vector3(0, 2.35, 0.535), Color("ffd24a"), 0.2)
+		lt.rotation.y = 0.0
+		Kit.box(r, Vector3(1.2, 0.3, 0.05), Vector3(0, 2.35, 0.5), Kit.mat("1d2a33", 0.5))
+	var b := Basis(Vector3.UP, rot)
+	var corner := func(x: float, z: float) -> Vector2:
+		var v := b * Vector3(x, 0, z)
+		return p + Vector2(v.x, v.z)
+	_add_segment(corner.call(-1.75, -0.66), corner.call(1.75, -0.66))
+	_add_segment(corner.call(1.75, -0.66), corner.call(1.75, 0.4))
+
+
+## Metro girisi: alcak granit duvarlar, asagi inen merdiven acikligi, cam sacak ve kirmizi M direk.
+func _metro_entrance(p: Vector2, toward: Vector2, station: String, line: String, ref: String) -> void:
+	var rot := atan2(-toward.x, -toward.y)          # -Z merdivenin indigi yon
+	var r := _root(p, rot)
+	r.position.y += ParkMap.sidewalk_raise(p)
+	var granite := Kit.mat("8c9196", 0.6)
+	var steel := Kit.mat("c9cdd1", 0.25)
+	steel.metallic = 0.8
+	# Merdiven: iki yanda ve arkada duvar, acikligin icinde koyulasan basamaklar
+	Kit.box(r, Vector3(0.3, 1.0, 6.2), Vector3(-1.45, 0.5, -0.6), granite)
+	Kit.box(r, Vector3(0.3, 1.0, 6.2), Vector3(1.45, 0.5, -0.6), granite)
+	Kit.box(r, Vector3(3.2, 1.0, 0.3), Vector3(0, 0.5, 2.4), granite)
+	for i in 14:
+		var k := float(i) / 13.0
+		var stair := Kit.mat(Color(0.55, 0.56, 0.57).lerp(Color(0.04, 0.04, 0.05), k).to_html(false), 0.8)
+		Kit.box(r, Vector3(2.6, 0.04, 0.42), Vector3(0, 0.03 + 0.001 * i, 2.0 - i * 0.42), stair)
+		Kit.box(r, Vector3(2.6, 0.012, 0.03), Vector3(0, 0.055, 2.2 - i * 0.42), Kit.mat("c8c8c4", 0.6))
+	for x in [-1.25, 1.25]:
+		Kit.cyl(r, 0.03, 0.03, 6.0, Vector3(x, 1.05, -0.6), steel, 6, Vector3(PI / 2, 0, 0))
+	# Cam sacak
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.6, 0.78, 0.9, 0.4)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.05
+	for z in [2.2, -3.4]:
+		for x in [-1.45, 1.45]:
+			Kit.box(r, Vector3(0.08, 2.9, 0.08), Vector3(x, 1.45, z), steel)
+	Kit.box(r, Vector3(3.3, 0.06, 6.2), Vector3(0, 2.92, -0.6), glass)
+	Kit.box(r, Vector3(3.4, 0.12, 0.12), Vector3(0, 2.9, 2.2), steel)
+	Kit.box(r, Vector3(3.4, 0.12, 0.12), Vector3(0, 2.9, -3.4), steel)
+	# Kirmizi M direk ve istasyon levhasi
+	var red := Kit.mat("c8322b", 0.4)
+	Kit.cyl(r, 0.06, 0.07, 3.6, Vector3(2.1, 1.8, 2.2), Kit.mat("4a4f55", 0.5), 8)
+	Kit.box(r, Vector3(0.7, 0.7, 0.08), Vector3(2.1, 3.75, 2.2), red)
+	var m := _text(r, "M", Vector3(2.1, 3.75, 2.25), Color.WHITE, 0.5)
+	m.rotation.y = 0.0
+	m.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	m.double_sided = true
+	var plate := _text(r, "%s  ·  %s  ·  Giriş %s" % [station, line, ref], Vector3(0, 3.18, 2.27), Color.WHITE, 0.16)
+	plate.rotation.y = 0.0
+	Kit.box(r, Vector3(3.3, 0.36, 0.05), Vector3(0, 3.18, 2.22), Kit.mat("1d2a33", 0.5))
+	# Carpisma: acikliga yurunemez, yan duvarlar
+	var b := Basis(Vector3.UP, rot)
+	var c := func(x: float, z: float) -> Vector2:
+		var v := b * Vector3(x, 0, z)
+		return p + Vector2(v.x, v.z)
+	_add_segment(c.call(-1.6, 2.55), c.call(1.6, 2.55))
+	_add_segment(c.call(-1.6, 2.55), c.call(-1.6, -3.7))
+	_add_segment(c.call(1.6, 2.55), c.call(1.6, -3.7))
+	_add_segment(c.call(-1.6, -3.7), c.call(1.6, -3.7))
+	_add_circle(Vector3(c.call(2.1, 2.2).x, c.call(2.1, 2.2).y, 0.15))
 
 
 func _bus_shelter(p: Vector2) -> void:

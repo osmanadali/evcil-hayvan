@@ -9,6 +9,7 @@ const PetModel = preload("res://scripts/pet_model.gd")
 const PetAgent = preload("res://scripts/pet_agent.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
 const UiKit = preload("res://scripts/ui_kit.gd")
+const Bus = preload("res://scripts/bus.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -293,6 +294,7 @@ func _spawn_cast() -> void:
 	owner_model.tint = Color("3f8f8a") if state.d["owner"] == "kadin" else Color("34507a")
 	_ride = null
 	_spawn_rides()
+	_spawn_buses()
 	owner_model.stepped.connect(func(): _sfx("adim%d" % (randi() % 4 + 1), -9.0, randf_range(0.9, 1.1)))
 	owner_node.add_child(owner_model)
 	_place_owner(ParkMap.spot("baslangic"))
@@ -635,6 +637,12 @@ func _on_command(cmd: String) -> void:
 		_do_feed(cmd.trim_prefix("feed:"))
 		return
 	match cmd:
+		"bus":
+			_enter_bus()
+		"busexit":
+			_exit_bus()
+		"metro":
+			ui.toast("M4 Keçiören metrosu: Meteoroloji'den sonraki istasyonlar (Belediye, Dışkapı) haritanın dışında. Harita büyüyünce metroyla gidebileceksin.")
 		"drive":
 			_enter_ride()
 		"exit":
@@ -846,6 +854,85 @@ func _update_drive(dt: float) -> void:
 	if _engine:
 		_engine.pitch_scale = 0.75 + absf(_drive_speed) / DRIVE_MAX * 1.3
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
+# ---------------------------------------------------------------- otobus
+
+var _buses: Array[Node3D] = []
+var _bus_ride: Node3D
+
+
+## Gercek EGO hatlari: 427 ve 464 Subayevleri'nden, 481 / 479 / 419 Fatih Caddesi'nden gecer.
+func _spawn_buses() -> void:
+	for b in _buses:
+		b.queue_free()
+	_buses.clear()
+	_bus_ride = null
+	if world.transit.is_empty():
+		return
+	var plan := [["427", 0, 0.0], ["427", 1, 900.0], ["464", 0, 1300.0], ["464", 1, 200.0],
+		["481", 0, 300.0], ["479", 1, 500.0], ["419", 0, 1000.0]]
+	for pl in plan:
+		if not world.transit["lines"].has(pl[0]):
+			continue
+		var b := Bus.new()
+		b.setup(pl[0], world.transit["lines"][pl[0]], pl[1], pl[2])
+		b.owner_node = owner_model       # binince gizlenir: otobus kendi yolcusuna yol vermez
+		add_child(b)
+		_buses.append(b)
+
+
+func _set_party_visible(on: bool, at := Vector2.ZERO) -> void:
+	owner_model.visible = on
+	owner_model.speed = 0.0
+	ui._actions.visible = on
+	var i := 0
+	for k in agents:
+		agents[k].visible = on
+		agents[k].set_process(on)
+		if on:
+			agents[k].place(at + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
+		i += 1
+
+
+func _enter_bus() -> void:
+	var o := _owner_pos()
+	for b in _buses:
+		if b.at_stop != "" and o.distance_to(Vector2(b.position.x, b.position.z)) < 7.5:
+			_bus_ride = b
+	if _bus_ride == null:
+		return
+	_moving = false
+	_queue.clear()
+	_marker.visible = false
+	_set_party_visible(false)
+	_bus_ride.dwell = maxf(_bus_ride.dwell, 2.0)
+	ui.toast("%s · %s. İnmek için bir durakta 'İn'e bas." % [_bus_ride.line, _bus_ride.title])
+
+
+func _exit_bus(at := Vector2.INF) -> void:
+	if _bus_ride == null:
+		return
+	var p: Vector2 = _bus_ride.stop_pos if at == Vector2.INF else at
+	if not world.is_free(p, 0.4):
+		p = Vector2(_bus_ride.position.x, _bus_ride.position.z)
+	_bus_ride = null
+	owner_node.position = Vector3(p.x, ParkMap.walk_height(p), p.y)
+	_set_party_visible(true, p)
+
+
+func _update_bus_ride(dt: float) -> void:
+	var b := _bus_ride
+	if not b.visible or b.away > 0.0 or not ParkMap.inside_bounds(Vector2(b.position.x, b.position.z), 8.0):
+		# Otobus haritadan cikiyor: son durakta in
+		var last: Dictionary = b.last_stop
+		_exit_bus(last.get("pos", Vector2(b.position.x, b.position.z)))
+		ui.toast("Otobüs harita dışına çıkıyor, %s durağında indin." % last.get("name", "son"))
+		return
+	owner_node.position = b.position
+	owner_node.rotation.y = b.rotation.y
+	if b.speed > 1.0 and not _dragging:
+		_cam_yaw = lerp_angle(_cam_yaw, b.rotation.y, minf(1.0, dt * 1.5))
 
 
 # ---------------------------------------------------------------- ses
@@ -1099,6 +1186,9 @@ func _update_owner(dt: float) -> void:
 	if _ride != null and _mode == "play":
 		_update_drive(dt)
 		return
+	if _bus_ride != null and _mode == "play":
+		_update_bus_ride(dt)
+		return
 	if _mode != "play":
 		_moving = false
 	elif ui.stick.length() > 0.15:
@@ -1204,6 +1294,20 @@ func _update_context() -> void:
 	for n in _npc_pets:
 		if Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
 			_near_npc = n
+	if _bus_ride != null:
+		if _bus_ride.at_stop != "":
+			ui.set_context("Otobüsten İn", "busexit", "come")
+		else:
+			ui.set_context("", "")
+		return
+	for b in _buses:
+		if b.at_stop != "" and b.visible and o.distance_to(Vector2(b.position.x, b.position.z)) < 7.5:
+			ui.set_context("%s Otobüsüne Bin" % b.line, "bus", "play")
+			return
+	for g in world.metro_gates:
+		if o.distance_to(g["pos"]) < 4.0:
+			ui.set_context("Metroya İn (%s)" % g["line"], "metro", "star")
+			return
 	if _ride != null:
 		if absf(_drive_speed) < 1.0:
 			ui.set_context("Araçtan İn", "exit", "come")
@@ -1469,6 +1573,18 @@ func _debug_shot() -> void:
 			var t := owner_node.position + Vector3(0, 0.8, 0)
 			cam.position = t + Vector3(sin(a) * dist, 0.9, cos(a) * dist)
 			cam.look_at(t)
+	if _args.has("busride"):
+		# Bir otobus durakta beklerken yanina git ve bin
+		for i in 400:
+			for b in _buses:
+				if b.at_stop != "" and b.visible and ParkMap.inside_bounds(Vector2(b.position.x, b.position.z), 20.0):
+					owner_node.position = b.position + Vector3(3, 0, 0)
+					_enter_bus()
+					break
+			if _bus_ride:
+				print("BINDI %s %s" % [_bus_ride.line, _bus_ride.at_stop])
+				break
+			await get_tree().create_timer(0.5).timeout
 	if _args.has("drive") and not _rides.is_empty():
 		owner_node.position = _rides[0].position + Vector3(1.5, 0, 0)
 		_enter_ride()
@@ -1477,7 +1593,8 @@ func _debug_shot() -> void:
 			if _args.get("cmd", "") == "stick":
 				ui.stick = Vector2(float(_args.get("sx", "-1")), float(_args.get("sy", "0")))
 			await get_tree().create_timer(2.0).timeout
-			print("IZ %d %s moving=%s queue=%d" % [i * 2, _owner_pos(), _moving, _queue.size()])
+			print("IZ %d %s moving=%s queue=%d%s" % [i * 2, _owner_pos(), _moving, _queue.size(),
+				(" otobus=%s durak=%s hiz=%.1f" % [_bus_ride.line, _bus_ride.at_stop, _bus_ride.speed]) if _bus_ride else ""])
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("more"):

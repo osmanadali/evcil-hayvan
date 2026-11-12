@@ -94,6 +94,13 @@ oluşturur, gövde ve dalların üstüne yüzlerce yaprak kartı dizer (`agac_lo
 **Sesler** `tools/make_sounds.py` ile sentezlenir (kayıt kullanılmaz): ortam (rüzgâr, kuş, uzak şehir), adım, bozuk para,
 fırlatma, düğme. Havlama, miyavlama, mırlama ve soluma ElevenLabs ses efekti üretimiyle yapıldı (`assets/sfx/*.mp3`).
 
+**Toplu taşıma** `tools/transit_build.py` ile üretilir (`assets/transit.json`): 427 ve 464 Subayevleri'nden kalkıp gerçek
+sokaklardan (Sandalcı, Kalender, Üçyıldız, Bando, Fahrettin Altay; dönüşte Şehit Makbule, Cihangir, Fethibey, Centilmen)
+geçer; 481, 479 ve 419 Fatih Caddesi'nden geçer. Durak adları ve sırası EGO'dan, konumlar OpenStreetMap'ten.
+Otobüse durakta binilir, istenen durakta inilir. M4 Meteoroloji istasyonunun A ve B girişleri gerçek yerlerinde;
+sonraki istasyonlar haritanın dışında olduğu için metroya henüz binilemiyor. Atatürk teleferik istasyonu tabelası var.
+Zincir markaların adları oyunda uydurma adlarla değiştirilir (`tools/osm_build.py`, `FAKE`).
+
 **Kaldırımlar** `tools/make_kerbs.py` ile üretilir: zemin maskesinden 14 cm yüksek kaldırım ve bordür modeli çıkarır
 (`assets/models/kaldirim.glb`); oyun aynı maskeden yürüme yüksekliğini hesaplar.
 
