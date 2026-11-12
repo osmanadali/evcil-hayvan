@@ -5,6 +5,7 @@ const ParkMap = preload("res://scripts/park_map.gd")
 const Kit = preload("res://scripts/kit.gd")
 const World = preload("res://scripts/world.gd")
 const Dog = preload("res://scripts/dog.gd")
+const PetModel = preload("res://scripts/pet_model.gd")
 const Person = preload("res://scripts/person.gd")
 const Npc = preload("res://scripts/npc.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
@@ -48,7 +49,8 @@ func _ready() -> void:
 	world = World.new()
 	add_child(world)
 
-	player = Dog.new()
+	player = PetModel.new()
+	player.kind = _args.get("kind", "kopek")
 	add_child(player)
 	_place_player(Vector2(0, -25))
 	player.rotation.y = PI
@@ -384,7 +386,7 @@ func _build_ui() -> void:
 	row.add_child(_button("Harita", func(): map_screen.open(Vector2(player.position.x, player.position.z))))
 	row.add_child(_button("Otur", _toggle_sit))
 	row.add_child(_button("Top At", _throw_ball))
-	row.add_child(_button("Şapka", func(): player.set_hat(not player.has_hat())))
+	row.add_child(_button("Şapka", func(): pass))
 	row.add_child(_button("Büyüt", func(): player.set_stage((player.stage + 1) % 3)))
 
 	map_screen = MapScreen.new()
@@ -401,18 +403,22 @@ func _debug_shot() -> void:
 		_place_player(Vector2(float(xy[0]), float(xy[1])))
 		_focus = player.position
 	if _args.has("hat"):
-		player.set_hat(true)
+		pass
 	if _args.has("stage"):
 		player.set_stage(int(_args["stage"]))
 	var view: String = _args.get("view", "")
 	if view != "" or _args.has("noui"):
 		ui.visible = false
-	if _args.has("sit"):
-		player.sitting = true
+	if _args.has("pose"):
+		player.pose = _args["pose"]
+	if _args.has("hop"):
+		player.hop()
 	if _args.has("throw"):
 		_throw_ball()
 	if _args.has("map"):
 		map_screen.open(Vector2(player.position.x, player.position.z))
+	if _args.has("run"):
+		_go(Vector2(player.position.x + 30.0, player.position.z))
 	var frames := int(_args.get("frames", "40"))
 	for i in frames:
 		await get_tree().process_frame
@@ -432,7 +438,8 @@ func _debug_shot() -> void:
 		elif view == "low":
 			set_process(false)
 			cam.fov = 45
-			cam.position = player.position + Vector3(2.5, 1.6, 4.5)
-			cam.look_at(player.position + Vector3(0, 0.9, -1.0))
+			var a := float(_args.get("ang", "0.5"))
+			cam.position = player.position + Vector3(sin(a) * 3.2, 1.3, cos(a) * 3.2)
+			cam.look_at(player.position + Vector3(0, 0.45, 0))
 	get_viewport().get_texture().get_image().save_png(_args["shot"])
 	get_tree().quit()
