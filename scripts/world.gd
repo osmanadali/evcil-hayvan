@@ -488,17 +488,25 @@ func _build_buildings() -> void:
 				uv2.append(Vector2(h, seed))
 				col.append(tint)
 			idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
-			# Yola bakan cephede gercek balkonlar (shader'daki balkon kapisi sutunlariyla ayni yerde)
-			if kind == "apartman" and solid and b.has("door") and ((a + bb) * 0.5).distance_to(Vector2(b["door"][0], b["door"][1])) < 0.2:
+			# Cephe ayrintilari (shader'daki pencere ve balkon sutunlariyla ayni yerde):
+			# uzun cephelerde gercek balkonlar, diger pencerelerin altinda cikintili denizlik
+			if kind == "apartman" and solid and length >= 6.0:
 				var floors := int((h - 0.7) / 3.0)
-				var k0 := int(ceil((run + 0.4) / 3.1))
-				var k1 := int(floor((run + length - 0.4) / 3.1)) - 1
+				var dir3 := Vector3(d.x, 0, d.y) / length
+				var k0 := int(ceil((run + 0.3) / 3.1))
+				var k1 := int(floor((run + length - 0.3) / 3.1)) - 1
 				for kc in range(k0, k1 + 1):
-					if kc % 3 != 1:
-						continue
 					var bc := a + d / length * ((kc + 0.5) * 3.1 - run)
-					for f in range(1, floors):
-						_balcony(ch, Vector3(bc.x, y_hi + f * 3.0 + 0.3, bc.y), Vector3(d.x, 0, d.y) / length, normal, tint)
+					for f in range(1, floors + 1):
+						var fy := y_hi + f * 3.0
+						if fy + 0.82 * 3.0 > y_hi + h - 0.7:
+							continue
+						if kc % 3 == 1 and length >= 9.0 and f < floors:
+							_balcony(ch, Vector3(bc.x, fy + 0.3, bc.y), dir3, normal, tint)
+						elif kc % 3 != 1:
+							_sill(ch, Vector3(bc.x, fy + 0.32 * 3.0, bc.y), dir3, normal)
+			if kind != "cami" and solid:
+				_cornice(ch, a, bb, y_hi + h, normal, tint)
 			run += length
 			if solid:
 				_add_segment(a, bb)
@@ -570,13 +578,14 @@ func _balcony(ch: Array, at_pos: Vector3, along: Vector3, out: Vector3, tint: Co
 	var col: PackedColorArray = ch[4]
 	var idx: PackedInt32Array = ch[5]
 	var up := Vector3.UP
-	var quad := func(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, nn: Vector3, c: Color) -> void:
+	var quad := func(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, nn: Vector3, c: Color, bars := 0.0) -> void:
 		var base := v.size()
 		v.append_array([p0, p1, p2, p3])
+		var uvs := [Vector2(0, 0), Vector2(bars, 0), Vector2(bars, 1), Vector2(0, 1)]
 		for k in 4:
 			n.append(nn)
-			uv.append(Vector2.ZERO)
-			uv2.append(Vector2(-1.0, 0.0))
+			uv.append(uvs[k])
+			uv2.append(Vector2(-2.0 if bars > 0.0 else -1.0, 0.0))
 			col.append(c)
 		idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3, base, base + 2, base + 1, base, base + 3, base + 2])
 	var w := 1.25
@@ -591,11 +600,45 @@ func _balcony(ch: Array, at_pos: Vector3, along: Vector3, out: Vector3, tint: Co
 	quad.call(a0, a1, b1, b0, up, slab)
 	quad.call(a0 - up * 0.14, a1 - up * 0.14, b1 - up * 0.14, b0 - up * 0.14, -up, slab.darkened(0.35))
 	quad.call(b0 - up * 0.14, b1 - up * 0.14, b1, b0, out, slab)
-	# Korkuluk: on ve iki yan
-	var hgt := up * 0.95
-	quad.call(b0, b1, b1 + hgt, b0 + hgt, out, rail)
-	quad.call(a0, b0, b0 + hgt, a0 + hgt, -along, rail)
-	quad.call(a1, b1, b1 + hgt, a1 + hgt, along, rail)
+	# Korkuluk: yarisi dolu (boyali panel), yarisi metal parmaklik
+	var hgt := up * 1.0
+	var metal := _rng.randf() < 0.55
+	var rail_c := Color(0.22, 0.2, 0.19) if metal else rail
+	quad.call(b0, b1, b1 + hgt, b0 + hgt, out, rail_c, w * 2.0 if metal else 0.0)
+	quad.call(a0, b0, b0 + hgt, a0 + hgt, -along, rail_c, dep if metal else 0.0)
+	quad.call(a1, b1, b1 + hgt, a1 + hgt, along, rail_c, dep if metal else 0.0)
+
+
+## Pencere denizligi: duvardan 7 cm tasan mermer.
+func _sill(ch: Array, at_pos: Vector3, along: Vector3, out: Vector3) -> void:
+	_slab(ch, at_pos - along * 0.82, at_pos + along * 0.82, out, 0.08, 0.05, Color(0.85, 0.84, 0.8))
+
+
+## Sacak bandi: cati kenarinda 25 cm tasan, 35 cm yuksek kusak.
+func _cornice(ch: Array, a: Vector2, b: Vector2, top: float, out: Vector3, tint: Color) -> void:
+	_slab(ch, Vector3(a.x, top, a.y), Vector3(b.x, top, b.y), out, 0.25, 0.35, tint.lightened(0.12))
+
+
+## Duvardan tasan dikdortgen kusak: ust, on ve alt yuz (duz renk).
+func _slab(ch: Array, p0: Vector3, p1: Vector3, out: Vector3, depth: float, height: float, c: Color) -> void:
+	var v: PackedVector3Array = ch[0]
+	var n: PackedVector3Array = ch[1]
+	var uv: PackedVector2Array = ch[2]
+	var uv2: PackedVector2Array = ch[3]
+	var col: PackedColorArray = ch[4]
+	var idx: PackedInt32Array = ch[5]
+	var up := Vector3.UP * height
+	var o := out * depth
+	for f in [[p0, p1, p1 + o, p0 + o, Vector3.UP, 0.0], [p0 + o - up, p1 + o - up, p1 + o, p0 + o, out, 0.0], [p0 - up, p0 + o - up, p1 + o - up, p1 - up, -Vector3.UP, 0.35]]:
+		var base := v.size()
+		var top_y: float = 0.0 if f[4] == Vector3.UP else -height
+		v.append_array([f[0] + Vector3(0, top_y if f[4] == Vector3.UP else 0, 0), f[1], f[2], f[3]])
+		for k in 4:
+			n.append(f[4])
+			uv.append(Vector2.ZERO)
+			uv2.append(Vector2(-1.0, 0.0))
+			col.append(c.darkened(f[5]))
+		idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3, base, base + 2, base + 1, base, base + 3, base + 2])
 
 
 func _mosque(poly: PackedVector2Array, c: Vector2, size: float, h: float) -> void:
@@ -1356,7 +1399,7 @@ func _build_doors() -> void:
 		var out := Vector2(dd[2], dd[3])
 		xf.append(Transform3D(Basis(Vector3.UP, atan2(out.x, out.y)), at(p)))
 		var label := ""
-		if b["name"] != "" and b["t"] == "apartman":
+		if b["name"] != "" and b["t"] == "apartman" and str(b["name"]) != str(b["no"]):
 			label = b["name"]
 		if b["no"] != "":
 			label = ("No: " + str(b["no"])) if label == "" else label + "  No: " + str(b["no"])

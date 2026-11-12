@@ -2049,6 +2049,12 @@ func _debug_shot() -> void:
 			_mode = "debug"
 			cam.position = wc + Vector3(8, 30, 48) * float(_args.get("dist", "1"))
 			cam.look_at(wc)
+		elif view == "look":
+			# Dunyada serbest bakis: --look=x,y,z,hx,hy,hz
+			_mode = "debug"
+			var e: PackedStringArray = _args["look"].split(",")
+			cam.position = Vector3(float(e[0]), float(e[1]), float(e[2]))
+			cam.look_at(Vector3(float(e[3]), float(e[4]), float(e[5])))
 		elif view == "eye" and _home:
 			# Ev icinde sabit bakis: --eye=x,z,hedefx,hedefz (yerel metre)
 			_mode = "debug"
