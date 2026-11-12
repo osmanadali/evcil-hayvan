@@ -25,7 +25,9 @@ func _lane(a: int, b: int, at_b: bool) -> Vector2:
 	var pb := ParkMap.nodes[b]
 	var dir := (pb - pa).normalized()
 	var w := ParkMap.road_width(a, b)
-	return (pb if at_b else pa) + Vector2(-dir.y, dir.x) * minf(w * 0.22, 2.2)
+	# Park edilen sokaklarda (5-9 m) kenarlar dolu: ortaya yakin git
+	var off := clampf(w * 0.5 - 3.0, 0.0, 2.2) if w >= 5.0 and w <= 9.0 else minf(w * 0.22, 2.2)
+	return (pb if at_b else pa) + Vector2(-dir.y, dir.x) * off
 
 
 func _pick() -> void:

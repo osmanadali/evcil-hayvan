@@ -1,0 +1,23 @@
+{
+ "kaynak": "EGO Genel Müdürlüğü, ego.gov.tr/tr/hareketsaatleri?hat_no=<no> (12.11.2026 tarihinde okundu)",
+ "hatlar": {
+  "427": {"ad": "SUBAYEVLERİ-ULUS-15 TEMMUZ KIZILAY MİLLİ İRADE MEYDANI-A.AYRANCI", "km": 24, "dakika": 110,
+   "haritada_gidis": ["Subayevleri Hareket Noktası", "Sandalcı Sk.", "Toygar Börekçi İlköğretim Okulu", "Gölbaşı Sk.", "Kalender Sk.", "Üçyıldız Cd.", "Üçyıldız Pazar Yeri", "Bando Sk.", "Fahrettin Altay Cd.", "Market Durağı"],
+   "haritada_donus": ["Market Durağı", "Fahrettin Altay Cd.", "Şehit Makbule Sk.", "Üç Yıldız Pazar Yeri", "Üçyıldız Cd.", "Kalender Sk.", "Cihangir Cd.", "Aksa Camii", "Fethi Bey Sk.", "Centilmen Sk."],
+   "sonrasi": "Atatürk Anadolu İHL, Veteriner Fakültesi, Dışkapı, Ulus, Opera, Sıhhiye, Kızılay, Güvenpark, Meclis, Aşağı Ayrancı"},
+  "464": {"ad": "SUBAYEVLERİ-ULUS-EMEK-BAHÇELİEVLER", "km": 25, "dakika": 75,
+   "haritada_gidis": ["Subayevleri Hareket Noktası", "Sandalcı Sk.", "Toygar Börekçi İlköğretim Okulu", "Gölbaşı Sk.", "Kalender Sk.", "Üçyıldız Cd.", "Üçyıldız Pazar Yeri", "Bando Sk.", "Fahrettin Altay Cd.", "Market Durağı"],
+   "haritada_donus": ["Market Durağı", "Fahrettin Altay Cd.", "Şehit Makbule Sk.", "Üç Yıldız Pazar Yeri", "Üçyıldız Cd.", "Kalender Sk.", "Cihangir Cd.", "Aksa Cami", "Fethi Bey Sk.", "Centilmen Sk."],
+   "sonrasi": "Dışkapı, Ulus, Opera, Ankara Büyükşehir Belediyesi, Beşevler, Emek, Bahçelievler"},
+  "481": {"ad": "UYANIŞ-ASFALT-15 TEMMUZ KIZILAY MİLLİ İRADE MEYDANI-BALGAT-CEYHUN A.K.CAD", "km": 43, "dakika": 170,
+   "haritada": "Fatih Caddesi üzerinden geçer (Kavacık Subayevleri'nde Teleferik ve Atatürk Bahçesi durakları)"},
+  "479": {"ad": "UYANIŞ-PINARBAŞI-İSKİTLER-EMNİYET SARAYI-AŞTİ-BEŞTEPE", "km": 34, "dakika": 95,
+   "haritada": "Fatih Caddesi üzerinden geçer (Teleferik ve Atatürk Bahçesi durakları)"},
+  "419": {"ad": "AKTEPE-İSKİTLER-EMNİYET SARAYI-AŞTİ-ÇUKURAMBAR-YÜZÜNCÜYIL", "km": 36, "dakika": 90,
+   "haritada": "Fatih Caddesi üzerinden geçer (Kalaba Lisesi, Fatih Köprüsü; dönüşte Teleferik ve Atatürk Bahçesi)"},
+  "263": {"ad": "ETLİK-AŞAĞI EĞLENCE-BAKANLIK", "km": 31, "dakika": 75,
+   "haritada": "Geçmez: Ovacık, Etlik, Aşağı Eğlence, Dışkapı, Ulus, Kızılay güzergahı oyun haritasının dışında"}
+ },
+ "metro": {"M4": "Keçiören metrosu: Meteoroloji istasyonu haritanın batı kenarında (OSM), Belediye istasyonu haritanın 400 m kuzeyinde",
+  "M1": "Kızılay-Batıkent: oyun haritasında yok", "Ankaray": "Dikimevi-AŞTİ: oyun haritasında yok"}
+}

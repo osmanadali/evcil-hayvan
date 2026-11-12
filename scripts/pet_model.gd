@@ -12,11 +12,11 @@ const Z := Vector3.BACK
 const KINDS := {
 	"kopek": {"model": "res://assets/models/kopek.glb", "size": 0.95, "hat": Vector3(-0.03, 0.745, 0.4), "hat_scale": 0.48, "back_scale": 0.6, "paw_scale": 0.6,
 		"mouth": Vector3(-0.03, 0.58, 0.5), "neck": Vector3(0, 0.53, 0.3), "neck_r": 0.12, "shoulder": Vector3(0, 0.45, 0.28),
-		"wag": 1.0, "step": 1.0, "lie_drop": 0.26, "head_yaw": 0.0, "face": Vector3(-0.03, 0.672, 0.485), "face_w": 0.045, "back": Vector3(0, 0.565, 0.02),
+		"wag": 1.0, "step": 1.0, "lie_drop": 0.26, "head_yaw": 0.0, "leg": 0.37, "face": Vector3(-0.03, 0.672, 0.485), "face_w": 0.045, "back": Vector3(0, 0.565, 0.02),
 		"paws": {"fl2": Vector3(-0.11, 0.04, 0.33), "fr2": Vector3(0.11, 0.04, 0.33), "bl2": Vector3(-0.08, 0.04, -0.2), "br2": Vector3(0.12, 0.04, -0.2)}},
 	"kedi": {"model": "res://assets/models/kedi.glb", "size": 0.5, "hat": Vector3(0.03, 0.81, 0.4), "hat_scale": 0.42, "back_scale": 0.55, "paw_scale": 0.6,
 		"mouth": Vector3(0.06, 0.66, 0.5), "neck": Vector3(0.01, 0.6, 0.3), "neck_r": 0.13, "shoulder": Vector3(0, 0.48, 0.27),
-		"wag": 0.25, "step": 1.25, "lie_drop": 0.24, "head_yaw": 0.25, "face": Vector3(0.05, 0.735, 0.49), "face_w": 0.04, "back": Vector3(0, 0.655, 0.0),
+		"wag": 0.25, "step": 1.25, "lie_drop": 0.24, "head_yaw": 0.25, "leg": 0.33, "face": Vector3(0.05, 0.735, 0.49), "face_w": 0.04, "back": Vector3(0, 0.655, 0.0),
 		"paws": {"fl2": Vector3(-0.1, 0.04, 0.28), "fr2": Vector3(0.1, 0.04, 0.27), "bl2": Vector3(-0.1, 0.04, -0.22), "br2": Vector3(0.1, 0.04, -0.22)}},
 }
 
@@ -139,7 +139,10 @@ func _process(dt: float) -> void:
 	var move := clampf(speed / 3.0, 0.0, 1.0)
 	var run := clampf((speed - 2.5) / 2.0, 0.0, 1.0)
 	if speed > 0.05:
-		_phase += dt * (5.5 + speed * 2.4) * _cfg["step"]
+		# Bir adimda alinan yol = 2 * bacak boyu * sin(salinim); faz hizi buna gore
+		var amp_now := clampf(0.3 + speed * 0.1, 0.3, 0.8)
+		var stride := 2.0 * float(_cfg["leg"]) * scale.x * sin(amp_now) * (1.0 + 0.9 * run)
+		_phase += dt * PI * speed / maxf(stride, 0.05)
 	var still := speed < 0.05
 	for k in _w:
 		var on: bool = still and (pose == k or (k == "lie" and pose == "sleep"))
@@ -154,8 +157,9 @@ func _process(dt: float) -> void:
 	var air := sin(_hop_t * PI) * _hop_h if _hop_t < 1.0 else 0.0
 
 	# Bacaklar: capraz adim; kosarken on-arka birlikte (dortnala)
-	var sw := sin(_phase) * (0.55 + 0.25 * run) * move
-	var sw2 := sin(_phase + PI * (1.0 - run * 0.7)) * (0.55 + 0.25 * run) * move
+	var amp_leg := clampf(0.3 + speed * 0.1, 0.3, 0.8) * clampf(speed / 0.4, 0.0, 1.0)
+	var sw := sin(_phase) * amp_leg
+	var sw2 := sin(_phase + PI * (1.0 - run * 0.7)) * amp_leg
 	var lift := cos(_phase)
 	var tuck := air * 1.6
 	_turn("fl1", [[X, sw + 0.6 * sit - 1.35 * lie - tuck]])

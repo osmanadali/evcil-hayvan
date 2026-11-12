@@ -26,6 +26,13 @@ var world: Node3D
 var ui: CanvasLayer
 var map_screen: Control
 var env: Environment
+var sun: DirectionalLight3D
+var moon: DirectionalLight3D
+var _sky_mat: PanoramaSkyMaterial
+var clock := 10.0            # oyun saati (0-24)
+var night := 0.0
+var _night_sent := -1.0
+const DAY_SECONDS := 1200.0  # bir oyun gunu 20 dakika surer
 var cam: Camera3D
 var owner_node: Node3D
 var owner_model: Node3D
@@ -46,6 +53,7 @@ var _cam_pitch := 0.27
 var _press_pos := Vector2.ZERO
 var _press_moved := 0.0
 var _press_time := 0.0
+var _routing := false      # harita rotasi izleniyor (yurume hizinda)
 var _direct := false       # son hedefe duz cizgiyle mi gidiliyor
 var _menu_angle := 0.6
 var _photo := {"yaw": 0.5, "pitch": 0.22, "dist": 4.2}
@@ -57,6 +65,10 @@ var _fly_to := Vector3.ZERO
 var _fly_t := 1.0
 var _fly_d := 1.0
 var _fly_delay := 0.0
+var _ball_vel := Vector3.ZERO
+var _ball_live := false
+const GRAVITY := 9.8
+const ROUTE_SPEED := 2.1     # haritadan secilen rotada yurume hizi
 var _yarn: Node3D
 var _bowl: Node3D
 var _bowl_t := 0.0
@@ -78,6 +90,8 @@ func _ready() -> void:
 		var kv := a.trim_prefix("--").split("=")
 		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 
+	if _args.has("clock"):
+		clock = float(_args["clock"])
 	state = GameState.new()
 	add_child(state)
 	if _args.has("shot"):
@@ -169,6 +183,7 @@ func _build_environment() -> void:
 	var sky_mat := PanoramaSkyMaterial.new()
 	sky_mat.panorama = load("res://assets/sky.hdr")
 	sky_mat.energy_multiplier = 1.0
+	_sky_mat = sky_mat
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
@@ -195,7 +210,7 @@ func _build_environment() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var sun := DirectionalLight3D.new()
+	sun = DirectionalLight3D.new()
 	sun.light_color = Color(1.0, 0.93, 0.8)
 	sun.light_energy = 1.0
 	sun.shadow_enabled = true
@@ -209,6 +224,39 @@ func _build_environment() -> void:
 	var az := deg_to_rad(SUN_AZIMUTH)
 	var to_sun := Basis(Vector3.UP, SKY_TURN) * Vector3(sin(az) * cos(el), sin(el), -cos(az) * cos(el))
 	sun.look_at_from_position(to_sun * 50.0, Vector3.ZERO)
+	moon = DirectionalLight3D.new()
+	moon.light_color = Color(0.62, 0.72, 1.0)
+	moon.light_energy = 0.0
+	moon.shadow_enabled = false
+	add_child(moon)
+	moon.look_at_from_position(Vector3(-20, 40, 25), Vector3.ZERO)
+
+
+## Gun donumu: saat ilerler; gunes dogudan dogar, batidan batar, gece ay isigi ve lambalar.
+func _update_daylight(dt: float) -> void:
+	clock = fposmod(clock + dt * 24.0 / DAY_SECONDS, 24.0)
+	var t := (clock - 6.0) / 12.0                      # 0 = gun dogumu, 1 = gun batimi
+	var el := sin(t * PI) * 62.0                       # derece; gece eksi
+	var day := smoothstep(-10.0, 12.0, el)
+	var az := lerpf(-PI * 0.5, PI * 0.5, clampf(t, -0.5, 1.5))    # dogu -> guney -> bati
+	var e := deg_to_rad(maxf(el, 4.0))
+	var to_sun := Vector3(-sin(az) * cos(e), sin(e), cos(az) * cos(e))
+	sun.look_at_from_position(to_sun * 50.0, Vector3.ZERO)
+	var low := 1.0 - smoothstep(4.0, 28.0, el)           # ufka yakinken kizil
+	sun.light_color = Color(1.0, 0.93, 0.8).lerp(Color(1.0, 0.55, 0.3), low)
+	sun.light_energy = smoothstep(-2.0, 10.0, el)
+	sun.shadow_enabled = el > 0.0
+	moon.light_energy = 0.5 * (1.0 - day)
+	_sky_mat.energy_multiplier = lerpf(0.1, 1.0, day)
+	env.ambient_light_color = Color(0.3, 0.38, 0.62).lerp(Color(0.6, 0.68, 0.82), day).lerp(Color(0.8, 0.6, 0.5), low * day * 0.5)
+	env.ambient_light_energy = lerpf(0.6, 0.8, day)
+	env.fog_light_color = Color(0.05, 0.07, 0.12).lerp(Color(0.7, 0.8, 0.92), day)
+	# Gokyuzu gorselindeki gunes de ayni yone donsun
+	env.sky_rotation = Vector3(0, atan2(to_sun.x, to_sun.z) - deg_to_rad(SUN_AZIMUTH) + PI, 0)
+	night = 1.0 - day
+	if absf(night - _night_sent) > 0.01:
+		_night_sent = night
+		world.set_night(night)
 
 
 func _make_ball(hex: String, r: float) -> Node3D:
@@ -532,6 +580,7 @@ func _pointer_up(pos: Vector2) -> void:
 		else:
 			_go(hit)
 			_direct = true
+			_routing = false
 
 
 ## Ekrandaki noktanin araziyle kesisimi (Vector2) ya da null.
@@ -562,7 +611,8 @@ func _ground_hit(screen: Vector2):
 ## Haritadan secilen yere yollari izleyerek yuru.
 func walk_to(p: Vector2) -> void:
 	_direct = false
-	_queue = ParkMap.find_route(_owner_pos(), p)
+	_routing = true
+	_queue = world.find_path(_owner_pos(), p)
 	_go(_queue.pop_front())
 
 
@@ -751,6 +801,8 @@ func _throw_to(hit: Vector2) -> void:
 	_fly_d = 0.55 + o.distance_to(land) * 0.06
 	_fly_t = 0.0
 	_fly_delay = 0.3
+	_ball_live = true
+	_ball_vel = Vector3.ZERO
 	_thrown.position = _fly_from
 	a.fetch(_thrown, land, _fly_d + _fly_delay)
 
@@ -849,6 +901,8 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	if world:
+		_update_daylight(dt)
 	AudioServer.set_bus_mute(0, not state.d["sound"])
 	if not _ready_done:
 		return
@@ -919,6 +973,7 @@ func _update_owner(dt: float) -> void:
 	elif ui.stick.length() > 0.15:
 		# Cubuk az itilince yurur, sonuna kadar itilince kosar
 		limit = lerpf(1.5, WALK_SPEED, clampf((ui.stick.length() - 0.35) / 0.55, 0.0, 1.0))
+		_routing = false
 		# Hareket cubugu: kameraya gore yon
 		var fwd := Vector2(-sin(_cam_yaw), -cos(_cam_yaw))
 		var right := Vector2(cos(_cam_yaw), -sin(_cam_yaw))
@@ -933,7 +988,9 @@ func _update_owner(dt: float) -> void:
 	if _moving and d < 1.0 and not _queue.is_empty():
 		_go(_queue.pop_front())
 	elif _moving and d > 0.15:
-		var sp := minf(limit, 1.0 + d * 2.5)
+		if _routing:
+			limit = ROUTE_SPEED
+		var sp := minf(limit, 1.0 + d * 2.5) if _queue.is_empty() else limit
 		var np: Vector2 = world.resolve(p + to / d * minf(sp * dt, d), 0.35, p)
 		var moved := np.distance_to(p) / maxf(dt, 0.0001)
 		owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
@@ -955,20 +1012,55 @@ func _update_owner(dt: float) -> void:
 		owner_model.speed = 0.0
 
 
+## Atilan esyanin fizigi: egik atis, yerde sekme, yuvarlanma ve surtunme.
 func _update_thrown(dt: float) -> void:
-	if _fly_t >= 1.0 or not _thrown:
+	if not _ball_live or not _thrown:
 		return
 	if _fly_delay > 0.0:
 		_fly_delay -= dt
 		_thrown.global_position = owner_model.hand.global_position
-		_fly_from = _thrown.global_position
+		if _fly_delay <= 0.0:
+			# Birakma ani: hedefe _fly_d saniyede varacak ilk hiz
+			var from := _thrown.global_position
+			var d := _fly_to - from
+			_ball_vel = Vector3(d.x / _fly_d, d.y / _fly_d + 0.5 * GRAVITY * _fly_d, d.z / _fly_d)
 		return
 	if _thrown.get_meta("held", false):
-		_fly_t = 1.0
+		_ball_live = false
 		return
-	_fly_t = minf(_fly_t + dt / _fly_d, 1.0)
-	_thrown.position = _fly_from.lerp(_fly_to, _fly_t) + Vector3(0, sin(_fly_t * PI) * (1.5 + _fly_d * 1.6), 0)
-	_thrown.rotate_x(dt * 9.0)
+	_ball_vel.y -= GRAVITY * dt
+	var pos := _thrown.position + _ball_vel * dt
+	# Duvar, cit, araba: carpip geri donsun
+	var flat := Vector2(pos.x, pos.z)
+	var fixed: Vector2 = world.resolve(flat, 0.14, Vector2(_thrown.position.x, _thrown.position.z))
+	if fixed.distance_to(flat) > 0.01 and pos.y < ParkMap.walk_height(fixed) + 2.5:
+		var n := (fixed - flat).normalized()
+		var hv := Vector2(_ball_vel.x, _ball_vel.z)
+		hv = (hv - 2.0 * hv.dot(n) * n) * 0.45
+		_ball_vel.x = hv.x
+		_ball_vel.z = hv.y
+		pos.x = fixed.x
+		pos.z = fixed.y
+	var ground := ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.13
+	if pos.y <= ground:
+		pos.y = ground
+		if _ball_vel.y < -1.4:
+			_ball_vel.y = -_ball_vel.y * 0.48          # sekme
+			_ball_vel.x *= 0.72
+			_ball_vel.z *= 0.72
+			_sfx("adim%d" % (randi() % 4 + 1), -14.0, 1.6)
+		else:
+			_ball_vel.y = 0.0                           # yuvarlanma: surtunme yavaslatir
+			var hv2 := Vector2(_ball_vel.x, _ball_vel.z)
+			hv2 = hv2.move_toward(Vector2.ZERO, 3.2 * dt)
+			_ball_vel.x = hv2.x
+			_ball_vel.z = hv2.y
+			if hv2.length() < 0.08:
+				_ball_live = false
+	_thrown.position = pos
+	var roll := Vector2(_ball_vel.x, _ball_vel.z)
+	if roll.length() > 0.05:
+		_thrown.rotate(Vector3(roll.y, 0, -roll.x).normalized(), roll.length() * dt / 0.13)
 
 
 func _update_context() -> void:

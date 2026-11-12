@@ -5,6 +5,7 @@ shader_type spatial;
 // Oyuncu ile kamera arasina giren duvarlar delinir (focus).
 uniform vec3 focus = vec3(0.0, -1000.0, 0.0);
 uniform float see_radius = 5.5;
+uniform float night = 0.0;       // 0 gunduz, 1 gece: pencerelerde isik yanar
 uniform sampler2D t_wall : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_roof : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_flat : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -84,6 +85,7 @@ void fragment() {
 		vec2 lo = ground ? vec2(0.16, 0.1) : (balcony ? vec2(0.2, 0.12) : vec2(0.26, 0.32));
 		vec2 hi = ground ? vec2(0.84, 0.8) : (balcony ? vec2(0.8, 0.82) : vec2(0.74, 0.8));
 		float win = box(cell, lo, hi) * top_ok;
+		float lit = 0.0;
 		if (win > 0.5) {
 			vec2 q = (cell - lo) / (hi - lo);
 			float frame = 1.0 - box(q, vec2(0.06, 0.07), vec2(0.94, 0.93));
@@ -100,12 +102,15 @@ void fragment() {
 			}
 			col = mix(glass, vec3(0.9, 0.9, 0.88), clamp(frame + mull, 0.0, 1.0));
 			rough = mix(0.3, 0.8, clamp(frame + mull, 0.0, 1.0));
+			// Gece: evlerin bir kismi isik yakar (her pencerenin kendi saati var)
+			lit = step(hash(id + 31.0), 0.25 + 0.5 * night) * step(0.35, night + 0.3 * hash(id + 17.0) - 0.15) * (1.0 - clamp(frame + mull, 0.0, 1.0));
 		}
 		// Pencere denizligi
 		col = mix(col, vec3(0.8, 0.79, 0.76), box(cell, vec2(lo.x - 0.03, lo.y - 0.035), vec2(hi.x + 0.03, lo.y)) * top_ok * (balcony ? 0.0 : 1.0));
 		NORMAL_MAP = mix(texture(n_wall, UV * vec2(0.22, 0.22) + seed * 7.0).rgb, vec3(0.5, 0.5, 1.0), win);
 		NORMAL_MAP_DEPTH = 1.3;
 		ALBEDO = col;
+		EMISSION = mix(vec3(1.0, 0.74, 0.4), vec3(0.85, 0.9, 1.0), step(0.8, hash(id + 3.0))) * lit * night * 1.3;
 		ROUGHNESS = rough;
 		SPECULAR = 0.4;
 	}

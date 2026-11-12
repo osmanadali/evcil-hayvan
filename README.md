@@ -94,6 +94,12 @@ oluşturur, gövde ve dalların üstüne yüzlerce yaprak kartı dizer (`agac_lo
 **Sesler** `tools/make_sounds.py` ile sentezlenir (kayıt kullanılmaz): ortam (rüzgâr, kuş, uzak şehir), adım, bozuk para,
 fırlatma, düğme. Havlama, miyavlama, mırlama ve soluma ElevenLabs ses efekti üretimiyle yapıldı (`assets/sfx/*.mp3`).
 
+**Kaldırımlar** `tools/make_kerbs.py` ile üretilir: zemin maskesinden 14 cm yüksek kaldırım ve bordür modeli çıkarır
+(`assets/models/kaldirim.glb`); oyun aynı maskeden yürüme yüksekliğini hesaplar.
+
+**Gün dönümü:** bir oyun günü 20 dakika sürer; güneş doğudan doğup batıdan batar, gece ay ışığı, pencere ışıkları ve sokak
+lambaları yanar. **Otobüs ve metro verisi** `data/ego_hatlari.json` içinde (EGO'nun resmi sitesinden; henüz oyunda araç yok).
+
 **İnsan karakterleri** Tripo'dan değil, MakeHuman'in CC0 lisanslı verisinden (temel gövde, ten, giysi, saç) üretilir:
 `python3 tools/make_human.py <mh_klasörü> kadin assets/models/kadin.glb`. Araç yalnızca veri dosyalarını okur; gövdeyi
 biçimlendirir, giysileri gövdeye oturtur, Mixamo adlı iskeleti ve ağırlıkları ekler, tişörtteki logoyu siler. Gereken veri:

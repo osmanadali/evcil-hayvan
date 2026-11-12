@@ -343,6 +343,8 @@ func _follow(dt: float, od: float) -> void:
 
 func _fetch(dt: float) -> void:
 	_t -= dt
+	if is_instance_valid(_item) and _t <= 0.0:
+		_land = Vector2(_item.global_position.x, _item.global_position.z)   # yere dustu: seken topu kovala
 	var d := _move(_land, 6.4, dt)
 	if _t > 0.0 and _t < 0.3 and d < 1.6 and not _air_catch:
 		_air_catch = true

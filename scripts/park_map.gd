@@ -3,10 +3,12 @@ extends RefCounted
 ## Veri OpenStreetMap'ten tools/osm_build.py ile uretilir (assets/city.json).
 ## Koordinatlar metre; Vector2(x, z). Kuzey = -z, kamera guneyden kuzeye bakar.
 
+const SIDEWALK_H := 0.14     # kaldirim yuksekligi
 const WATER_LIFT := 0.07      # su yuzeyi zeminin bu kadar ustunde
 const SPLAT_CENTER := Vector2.ZERO
 
 static var loaded := false
+static var mask_b: Image                # zemin maskesi (R asfalt, G asfalt+kaldirim)
 static var BOUNDS_MIN := Vector2(-430, -360)
 static var BOUNDS_MAX := Vector2(430, 360)
 static var SPLAT_EXTENT := 1080.0
@@ -69,6 +71,9 @@ static func load_data() -> void:
 		for i in height_n:
 			var c := img.get_pixel(i, j)
 			heights[j * height_n + i] = float(hd["min"]) + (c.r8 * 256.0 + c.g8) / 65535.0 * float(hd["range"])
+	mask_b = (load("res://assets/splat_b.png") as Texture2D).get_image()
+	if mask_b.is_compressed():
+		mask_b.decompress()
 	for k in data["spots"]:
 		var s: Dictionary = data["spots"][k]
 		spots[k] = Vector2(s["pos"][0], s["pos"][1])
@@ -146,7 +151,22 @@ static func terrain_height(p: Vector2) -> float:
 
 
 static func walk_height(p: Vector2) -> float:
-	return terrain_height(p)
+	return terrain_height(p) + sidewalk_raise(p)
+
+
+## Kaldirim yuksekligi: zemin maskesinden (tools/make_kerbs.py ile ayni kural).
+static func sidewalk_raise(p: Vector2) -> float:
+	if mask_b == null:
+		return 0.0
+	var n := mask_b.get_width()
+	var f := (p / SPLAT_EXTENT + Vector2(0.5, 0.5)) * n - Vector2(0.5, 0.5)
+	var x := clampi(int(floorf(f.x)), 0, n - 2)
+	var y := clampi(int(floorf(f.y)), 0, n - 2)
+	var tx := clampf(f.x - x, 0.0, 1.0)
+	var ty := clampf(f.y - y, 0.0, 1.0)
+	var c := mask_b.get_pixel(x, y).lerp(mask_b.get_pixel(x + 1, y), tx).lerp(
+			mask_b.get_pixel(x, y + 1).lerp(mask_b.get_pixel(x + 1, y + 1), tx), ty)
+	return SIDEWALK_H * smoothstep(0.0, 0.015, minf(c.g - 0.5, 0.5 - c.r))
 
 
 static func nearest_node(p: Vector2, need_links := true) -> int:

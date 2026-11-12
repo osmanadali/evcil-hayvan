@@ -55,7 +55,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -151,6 +151,99 @@ func _wet(p: Vector2) -> bool:
 
 func is_free(p: Vector2, r := 0.4) -> bool:
 	return ParkMap.inside_bounds(p, 3.0) and not _wet(p) and resolve(p, r, p).distance_to(p) < 0.05
+
+
+## Her yone yurunebilen en kisa yol: 3 m'lik izgarada A*, sonra gorus hattiyla sadelestirme.
+var _grid: AStarGrid2D
+
+func find_path(from: Vector2, to: Vector2) -> Array[Vector2]:
+	const CELL_M := 3.0
+	if _grid == null:
+		_grid = AStarGrid2D.new()
+		var size := Vector2i(((ParkMap.BOUNDS_MAX - ParkMap.BOUNDS_MIN) / CELL_M).ceil())
+		_grid.region = Rect2i(Vector2i.ZERO, size)
+		_grid.cell_size = Vector2(CELL_M, CELL_M)
+		_grid.offset = ParkMap.BOUNDS_MIN + Vector2(CELL_M, CELL_M) * 0.5
+		_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		_grid.update()
+		for y in size.y:
+			for x in size.x:
+				if not is_free(_grid.get_point_position(Vector2i(x, y)), 0.9):
+					_grid.set_point_solid(Vector2i(x, y), true)
+	var cell := func(p: Vector2) -> Vector2i:
+		var c := Vector2i(((p - ParkMap.BOUNDS_MIN) / CELL_M).floor()).clamp(Vector2i.ZERO, _grid.region.size - Vector2i.ONE)
+		if _grid.is_point_solid(c):
+			# En yakin bos hucre
+			for r in range(1, 8):
+				for dy in range(-r, r + 1):
+					for dx in range(-r, r + 1):
+						var n := c + Vector2i(dx, dy)
+						if _grid.region.has_point(n) and not _grid.is_point_solid(n):
+							return n
+		return c
+	var pts := _grid.get_point_path(cell.call(from), cell.call(to))
+	if pts.is_empty():
+		return ParkMap.find_route(from, to)
+	# Gorus hatti olan noktalari atla
+	var out: Array[Vector2] = []
+	var at_p := from
+	var i := 0
+	while i < pts.size():
+		var j := mini(pts.size() - 1, i + 40)
+		while j > i and not _clear_line(at_p, pts[j]):
+			j -= 1
+		out.append(pts[j])
+		at_p = pts[j]
+		i = j + 1
+	if is_free(to, 0.4):
+		out.append(to)
+	return out
+
+
+func _clear_line(a: Vector2, b: Vector2) -> bool:
+	var n := int(a.distance_to(b) / 1.5) + 1
+	for k in range(1, n + 1):
+		if not is_free(a.lerp(b, float(k) / n), 0.7):
+			return false
+	return true
+
+
+## Gece miktari (0 gunduz, 1 gece): pencere isiklari ve sokak lambasi parlamalari.
+var _lamp_glow: MultiMeshInstance3D
+
+func set_night(v: float) -> void:
+	for m in _see_through:
+		m.set_shader_parameter("night", v)
+	if _lamp_glow == null and not _street_lamps.is_empty():
+		var q := QuadMesh.new()
+		q.size = Vector2(2.2, 2.2)
+		var gm := StandardMaterial3D.new()
+		gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		gm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		gm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		var grad := GradientTexture2D.new()
+		grad.fill = GradientTexture2D.FILL_RADIAL
+		grad.fill_from = Vector2(0.5, 0.5)
+		grad.fill_to = Vector2(1.0, 0.5)
+		grad.gradient = Gradient.new()
+		grad.gradient.set_color(0, Color(1.0, 0.85, 0.55, 1.0))
+		grad.gradient.set_color(1, Color(1.0, 0.7, 0.3, 0.0))
+		gm.albedo_texture = grad
+		q.material = gm
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = q
+		mm.instance_count = _street_lamps.size()
+		for i in _street_lamps.size():
+			mm.set_instance_transform(i, Transform3D(Basis(), _street_lamps[i].origin + Vector3(0, 6.5, 0)))
+		_lamp_glow = MultiMeshInstance3D.new()
+		_lamp_glow.multimesh = mm
+		_lamp_glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_lamp_glow)
+	if _lamp_glow:
+		_lamp_glow.visible = v > 0.25
+		(_lamp_glow.multimesh.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color = Color(1, 1, 1, clampf(v * 1.4 - 0.3, 0.0, 1.0))
 
 
 ## Kamera ile oyuncu arasina giren bina ve agaclari deler.
@@ -750,6 +843,25 @@ func _build_pitches() -> void:
 
 # ---------------------------------------------------------------- sokaklar
 
+## Yuksek kaldirimlar (tools/make_kerbs.py): parcali model, uzaktakiler cizilmez.
+func _build_kerbs() -> void:
+	if not ResourceLoader.exists("res://assets/models/kaldirim.glb"):
+		return
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load("res://assets/tex/kaldirim.jpg")
+	m.normal_enabled = true
+	m.normal_texture = load("res://assets/tex/kaldirim_n.jpg")
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.9
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var inst: Node3D = _scene("kaldirim").instantiate()
+	add_child(inst)
+	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_end = 170.0
+
+
 func _build_streets() -> void:
 	# Ana caddelerde lamba, sokaklarda kaldirim agaci
 	var nodes := ParkMap.nodes
@@ -1141,7 +1253,7 @@ func _build_cars() -> void:
 			while s < length - 8.0:
 				for side in [-1.0, 1.0]:
 					if _rng.randf() < 0.3:
-						var p: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6)) + perp * side * (w * 0.5 - 0.2)
+						var p: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6)) + perp * side * (w * 0.5 - 1.0)
 						if not ParkMap.inside_bounds(p, 4.0) or ParkMap.water_sd(p) < 3.0:
 							continue
 						var slope := atan2(gy(p + dir * 2.0) - gy(p - dir * 2.0), 4.0)
