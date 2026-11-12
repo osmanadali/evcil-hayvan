@@ -3,7 +3,7 @@ extends RefCounted
 ## Veri OpenStreetMap'ten tools/osm_build.py ile uretilir (assets/city.json).
 ## Koordinatlar metre; Vector2(x, z). Kuzey = -z, kamera guneyden kuzeye bakar.
 
-const WATER_Y := -0.45
+const WATER_Y := 0.04
 const SPLAT_CENTER := Vector2.ZERO
 
 static var loaded := false
@@ -106,12 +106,9 @@ static func clamp_bounds(p: Vector2) -> Vector2:
 	return p.clamp(BOUNDS_MIN + Vector2(2, 2), BOUNDS_MAX - Vector2(2, 2))
 
 
-## Sehir duz; yalnizca golet yatagi cukur.
-static func terrain_height(p: Vector2) -> float:
-	var sd := water_sd(p)
-	if sd > 5.0:
-		return 0.0
-	return -1.5 * (1.0 - smoothstep(-1.0, 1.2, sd))
+## Arazi duz kabul edilir (veride yukseklik yok); su, zeminin hemen ustunde bir yuzeydir.
+static func terrain_height(_p: Vector2) -> float:
+	return 0.0
 
 
 static func walk_height(p: Vector2) -> float:
@@ -143,21 +140,25 @@ static func find_route(from: Vector2, to: Vector2) -> Array[Vector2]:
 	dist.fill(1e9)
 	back.fill(-1)
 	dist[start] = 0.0
-	while true:
-		var cur := -1
-		var best := 1e9
-		for i in n:
-			if done[i] == 0 and dist[i] < best:
-				best = dist[i]
-				cur = i
-		if cur < 0 or cur == goal:
+	var frontier: Array[int] = [start]
+	while not frontier.is_empty():
+		var at := 0
+		for i in frontier.size():
+			if dist[frontier[i]] < dist[frontier[at]]:
+				at = i
+		var cur := frontier[at]
+		frontier.remove_at(at)
+		if cur == goal:
 			break
+		if done[cur] == 1:
+			continue
 		done[cur] = 1
 		for nb in links[cur]:
 			var nd := dist[cur] + nodes[cur].distance_to(nodes[nb])
 			if nd < dist[nb]:
 				dist[nb] = nd
 				back[nb] = cur
+				frontier.append(nb)
 	var out: Array[Vector2] = [to]
 	var k := goal
 	while k >= 0:

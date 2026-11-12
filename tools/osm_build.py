@@ -6,8 +6,8 @@ Koordinatlar: metre, x dogu, z guney; merkez CENTER. Veri (c) OpenStreetMap katk
 import sys, json, math, random, xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFilter
 
-CENTER = (39.99270, 32.87300)      # enlem, boylam
-HALF = (430.0, 360.0)              # oyun alaninin yari boyutu (dogu-bati, kuzey-guney)
+CENTER = (39.96950, 32.87150)      # enlem, boylam
+HALF = (650.0, 560.0)              # oyun alaninin yari boyutu (dogu-bati, kuzey-guney)
 MARGIN = 110.0                     # alanin disinda da cizilen serit
 EXTENT = 2 * max(HALF) + 2 * MARGIN
 PX = 2048
@@ -21,17 +21,18 @@ GREEN = lambda t: t.get('leisure') in ('park', 'garden', 'playground', 'pitch') 
     or t.get('natural') in ('wood', 'scrub', 'grassland')
 
 # Gercek haritaya eklenen oyun yerleri (bos alanlara yerlestirildi)
-SPOTS = {
-    'baslangic': {'pos': [229.0, -45.0], 'half': [1.0, 1.0]},
-    'bahce': {'pos': [214.0, -45.0], 'half': [10.0, 12.0]},       # kulube, havuz, oyuncaklar
-    'petshop': {'pos': [318.0, -160.0], 'half': [6.5, 5.0]},
-    'kafe': {'pos': [350.0, -146.0], 'half': [5.0, 6.0]},
-    'dondurmaci': {'pos': [247.0, -28.0]},
-    'cardak': {'pos': [238.0, -192.0]},
-    'cesme': {'pos': [248.0, 12.0]},
-    'oyun_alani': {'pos': [214.0, -186.0], 'half': [8.0, 6.5]},
-    'piknik': {'pos': [278.0, -138.0]},
+# Gercek haritaya eklenen oyun yerleri: [istenen konum, yari boyut]. Arac en yakin bos park cimini bulur.
+WANTED = {
+    'bahce': ([330.0, 150.0], [10.0, 12.0]),       # kulube, havuz, oyuncaklar
+    'petshop': ([370.0, 80.0], [7.0, 6.0]),
+    'kafe': ([410.0, 60.0], [6.0, 7.0]),
+    'dondurmaci': ([350.0, 200.0], [4.0, 4.0]),
+    'cardak': ([300.0, 210.0], [4.5, 4.5]),
+    'cesme': ([380.0, 150.0], [6.5, 6.5]),
+    'oyun_alani': ([330.0, 250.0], [8.0, 6.5]),
+    'piknik': ([290.0, 260.0], [4.0, 4.0]),
 }
+SPOTS = {}
 
 
 def load(path):
@@ -186,7 +187,7 @@ def raster(data):
 
 def preview(data, out):
     """Yer secmek icin: oyun alani, izgara ve bos alanlar."""
-    N = 1800; R = max(HALF) + 40; k = N / (2 * R)
+    N = 2400; R = max(HALF) + 40; k = N / (2 * R)
     P = lambda p: ((p[0] + R) * k, (p[1] + R) * k)
     im = Image.new('RGB', (N, N), (240, 238, 228)); d = ImageDraw.Draw(im)
     nodes = data['nodes']
@@ -196,13 +197,13 @@ def preview(data, out):
     for w in data['paths']: d.line([P(nodes[i]) for i in w['n']], fill=(200, 160, 110), width=2)
     for w in data['roads']: d.line([P(nodes[i]) for i in w['n']], fill=(255, 255, 255), width=max(2, int(w['w'] * k)))
     for b in data['buildings']: d.polygon([P(p) for p in b['p']], fill=(214, 170, 140), outline=(150, 110, 90))
-    for g in range(-400, 401, 50):
+    for g in range(-700, 701, 50):
         col = (120, 120, 200) if g % 100 == 0 else (200, 200, 230)
         d.line([P((g, -R)), P((g, R))], fill=col); d.line([P((-R, g)), P((R, g))], fill=col)
         if g % 100 == 0:
             d.text(P((g + 2, -R + 4)), str(g), fill=(0, 0, 160)); d.text(P((-R + 4, g + 2)), str(g), fill=(0, 0, 160))
     d.rectangle([P((-HALF[0], -HALF[1])), P((HALF[0], HALF[1]))], outline=(220, 40, 40), width=3)
-    for pl in data['places']: d.text(P(pl['pos']), pl['name'][:24], fill=(20, 80, 20))
+    for pl in data['places']: d.text(P(pl['pos']), pl['name'][:24].encode('ascii', 'replace').decode(), fill=(20, 80, 20))
     for name, s in data['spots'].items():
         p = P(s['pos']); d.ellipse([p[0] - 6, p[1] - 6, p[0] + 6, p[1] + 6], fill=(230, 30, 30)); d.text((p[0] + 8, p[1] - 6), name, fill=(200, 0, 0))
     im.save(out)
@@ -211,18 +212,39 @@ def preview(data, out):
 if __name__ == '__main__':
     data = build(sys.argv[1])
     raster(data)
-    # Eklenen yerlerin bos alanda oldugunu denetle
-    a = Image.open('assets/splat_a.png'); b = Image.open('assets/splat_b.png'); k = PX / EXTENT
-    for name, sp in data['spots'].items():
-        h = sp.get('half', [3.0, 3.0]); bad = []
-        for dx in (-1, 0, 1):
-            for dz in (-1, 0, 1):
-                q = (sp['pos'][0] + dx * h[0], sp['pos'][1] + dz * h[1])
+    # Oyun yerlerini istenen konuma en yakin bos park cimine yerlestir
+    a = Image.open('assets/splat_a.png').load(); b = Image.open('assets/splat_b.png').load(); k = PX / EXTENT
+    def clean(c, h, placed):
+        if abs(c[0]) + h[0] > HALF[0] - 10 or abs(c[1]) + h[1] > HALF[1] - 10:
+            return False
+        for o, oh in placed:
+            if abs(c[0] - o[0]) < h[0] + oh[0] + 6 and abs(c[1] - o[1]) < h[1] + oh[1] + 6:
+                return False
+        for i in range(5):
+            for j in range(5):
+                q = (c[0] + (i - 2) * h[0] * 0.55, c[1] + (j - 2) * h[1] * 0.55)
                 px = (int((q[0] + EXTENT / 2) * k), int((q[1] + EXTENT / 2) * k))
-                ra, ga, _ = a.getpixel(px); rb, gb, bb = b.getpixel(px)
-                inside = any(_in(q, bl['p']) for bl in data['buildings'])
-                if ra > 60 or ga < 150 or rb > 60 or gb > 60 or inside:
-                    bad.append((dx, dz, 'patika' if ra > 60 else 'su' if ga < 150 else 'bina' if inside else 'yol'))
-        print('  yer', name, 'TEMIZ' if not bad else bad)
+                ra, ga, _ = a[px]; rb, gb, bb = b[px]
+                if ra > 40 or ga < 170 or rb > 40 or gb > 40 or bb > 60:
+                    return False
+        return not any(_in(c, bl['p']) for bl in data['buildings'])
+    placed = []
+    for name, (want, h) in WANTED.items():
+        best = None
+        for r in range(0, 260, 4):
+            steps = max(1, int(2 * math.pi * r / 4))
+            for t in range(steps):
+                c = (want[0] + r * math.cos(t * 2 * math.pi / steps), want[1] + r * math.sin(t * 2 * math.pi / steps))
+                if clean(c, [h[0] + 2, h[1] + 2], placed):
+                    best = c; break
+            if best: break
+        if not best:
+            print('  YER BULUNAMADI', name); continue
+        placed.append((best, h))
+        data['spots'][name] = {'pos': [round(best[0], 1), round(best[1], 1)], 'half': h}
+        print('  yer %-11s istenen %s -> %s' % (name, want, data['spots'][name]['pos']))
+    g = data['spots']['bahce']
+    data['spots']['baslangic'] = {'pos': [g['pos'][0] + g['half'][0] + 3.0, g['pos'][1]], 'half': [1.0, 1.0]}
+    json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     if len(sys.argv) > 2:
         preview(data, sys.argv[2])

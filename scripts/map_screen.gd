@@ -134,7 +134,7 @@ func _ready() -> void:
 	sic.position = Vector2(16, 15)
 	sic.size = Vector2(30, 30)
 	search.add_child(sic)
-	var st := K.label(search, "Keçiören, Ankara", 24, K.BROWN)
+	var st := K.label(search, "Subayevleri, Keçiören", 24, K.BROWN)
 	st.position = Vector2(58, 0)
 	st.size = Vector2(400, 60)
 	var close := K.button(screen, "", "close", func(): visible = false, K.RED, Color.WHITE, Vector2(60, 60), 22, 30)

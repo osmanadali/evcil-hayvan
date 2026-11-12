@@ -23,6 +23,9 @@ void vertex() {
 
 void fragment() {
 	float sd = (texture(splat, (wpos.xz - splat_center) / splat_extent + 0.5).g - 0.5) * 8.0;
+	if (sd > 0.35) {
+		discard;   // kiyinin disi: su yuzeyi zeminin ustunde duz bir levha
+	}
 	float depth = clamp(-sd / 3.5, 0.0, 1.0);
 	vec3 col = mix(shallow, deep, depth);
 

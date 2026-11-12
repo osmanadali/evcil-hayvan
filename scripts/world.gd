@@ -222,56 +222,9 @@ func _block_model(holder: Node3D, p: Vector2, shrink := 0.82) -> void:
 
 # ---------------------------------------------------------------- zemin ve su
 
-func _axis(lo: float, hi: float, fine: Array) -> PackedFloat32Array:
-	var out := PackedFloat32Array()
-	var v := lo
-	while v < hi:
-		out.append(v)
-		var step := 8.0
-		for f in fine:
-			if v >= f.x - 8.0 and v <= f.y:
-				step = 1.5
-		v += step
-	out.append(hi)
-	return out
-
-
 func _build_ground() -> void:
-	var half := ParkMap.SPLAT_EXTENT * 0.5 + 60.0
-	var fx: Array = []
-	var fz: Array = []
-	for b in ParkMap.water_boxes:
-		var r: Rect2 = b
-		fx.append(Vector2(r.position.x, r.end.x))
-		fz.append(Vector2(r.position.y, r.end.y))
-	var xs := _axis(-half, half, fx)
-	var zs := _axis(-half, half, fz)
-	var nx := xs.size()
-	var nz := zs.size()
-	var verts := PackedVector3Array()
-	verts.resize(nx * nz)
-	for j in nz:
-		for i in nx:
-			var p := Vector2(xs[i], zs[j])
-			verts[j * nx + i] = Vector3(p.x, ParkMap.terrain_height(p), p.y)
-	var normals := PackedVector3Array()
-	normals.resize(verts.size())
-	var idx := PackedInt32Array()
-	for j in nz:
-		for i in nx:
-			var dx := verts[j * nx + mini(i + 1, nx - 1)] - verts[j * nx + maxi(i - 1, 0)]
-			var dz := verts[mini(j + 1, nz - 1) * nx + i] - verts[maxi(j - 1, 0) * nx + i]
-			normals[j * nx + i] = dz.cross(dx).normalized()
-			if i < nx - 1 and j < nz - 1:
-				var a := j * nx + i
-				idx.append_array([a, a + 1, a + nx + 1, a, a + nx + 1, a + nx])
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = verts
-	arr[Mesh.ARRAY_NORMAL] = normals
-	arr[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var plane := PlaneMesh.new()
+	plane.size = Vector2.ONE * (ParkMap.SPLAT_EXTENT + 400.0)
 	var m := ShaderMaterial.new()
 	m.shader = GROUND_SHADER
 	m.set_shader_parameter("splat_a", _splat_a)
@@ -281,7 +234,7 @@ func _build_ground() -> void:
 	m.set_shader_parameter("forest_floor", Color(0.52, 0.5, 0.44))   # binalar arasi zemin
 	m.set_shader_parameter("street_z", 1e6)
 	m.set_shader_parameter("avenue_x", 1e6)
-	Kit.add(self, mesh, m)
+	Kit.add(self, plane, m)
 
 
 func _build_water() -> void:
@@ -805,7 +758,7 @@ func _build_parks() -> void:
 		var box := Rect2(poly[0], Vector2.ZERO)
 		for p in poly:
 			box = box.expand(p)
-		var want := int(box.get_area() * 0.5 / 85.0)
+		var want := mini(int(box.get_area() * 0.5 / 110.0), 900)
 		for i in want:
 			var p := _random_in(poly, box)
 			if not _is_lawn(p) or _kept_out(p) or ParkMap.water_sd(p) < 2.5 or _mask(p)[0] > 0.02:
@@ -849,7 +802,7 @@ func _build_parks() -> void:
 	# Binalar arasinda seyrek agaclar
 	var mn := ParkMap.BOUNDS_MIN - Vector2(60, 60)
 	var mx := ParkMap.BOUNDS_MAX + Vector2(60, 60)
-	for i in 2600:
+	for i in 5200:
 		var p := Vector2(_rng.randf_range(mn.x, mx.x), _rng.randf_range(mn.y, mx.y))
 		var m := _mask(p)
 		if m[2] > 0.05 or m[3] > 0.05 or m[4] < 0.8 or resolve(p, 2.2, p).distance_to(p) > 0.05:
@@ -943,7 +896,7 @@ func _build_plants() -> void:
 		var box := Rect2(poly[0], Vector2.ZERO)
 		for p in poly:
 			box = box.expand(p)
-		var n := int(box.get_area() * 0.55)
+		var n := mini(int(box.get_area() * 0.55), 70000)
 		for i in n:
 			var p := Vector2(_rng.randf_range(box.position.x, box.end.x), _rng.randf_range(box.position.y, box.end.y))
 			if not _is_lawn(p):
@@ -987,7 +940,7 @@ func _build_pond_life() -> void:
 		var box: Rect2 = ParkMap.water_boxes[wi]
 		var tries := 0
 		var reeds := 0
-		while reeds < 120 and tries < 30000:
+		while reeds < 60 and tries < 6000:
 			tries += 1
 			var p := Vector2(_rng.randf_range(box.position.x, box.end.x), _rng.randf_range(box.position.y, box.end.y))
 			var sd := ParkMap.water_sd(p)
@@ -997,10 +950,10 @@ func _build_pond_life() -> void:
 				reeds += 1
 		var pads := 0
 		tries = 0
-		while pads < 22 and tries < 8000:
+		while pads < 12 and tries < 2000:
 			tries += 1
 			var p := Vector2(_rng.randf_range(box.position.x, box.end.x), _rng.randf_range(box.position.y, box.end.y))
-			if ParkMap.water_sd(p) > -1.6:
+			if ParkMap.water_sd(p) > -1.6 or not ParkMap.inside_bounds(p):
 				continue
 			Kit.cyl(self, 0.38, 0.38, 0.02, Vector3(p.x, ParkMap.WATER_Y + 0.02, p.y), Kit.mat("4c8a3f"), 10)
 			if pads % 2 == 0:
@@ -1008,8 +961,10 @@ func _build_pond_life() -> void:
 			pads += 1
 		# Ordekler: suyun icinde bir noktanin cevresinde yuzerler
 		var poly: PackedVector2Array = ParkMap.water[wi]
-		for i in 5:
+		for i in 3:
 			var c := _random_in(poly, box.grow(-8.0))
+			if not ParkMap.inside_bounds(c) or ParkMap.water_sd(c) > -2.0:
+				continue
 			var radius := clampf(-ParkMap.water_sd(c) - 1.5, 0.5, 6.0)
 			var d := Node3D.new()
 			add_child(d)

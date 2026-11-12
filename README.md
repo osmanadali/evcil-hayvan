@@ -1,11 +1,11 @@
 # Patili Gezinti
 
-Mobil (dikey), 3D, sakin tempolu bir evcil hayvan oyunu. Sahip karakterinle Ankara Keçiören'de dolaşırsın; köpeğin ve kedin seni takip eder,
+Mobil (dikey), 3D, sakin tempolu bir evcil hayvan oyunu. Sahip karakterinle Ankara Keçiören'deki Kavacık Subayevleri Mahallesi'nde dolaşırsın; köpeğin ve kedin seni takip eder,
 komutlarını dinler, oyun oynar, büyür. Godot 4.4 ile yazıldı, tamamen çevrimdışı çalışır.
 
 ![Oyun](docs/oyun.jpg)
-![Keçiören](docs/kecioren-ustten.jpg)
-![Gökçek Parkı](docs/gokcek-parki.jpg)
+![Subayevleri](docs/subayevleri-ustten.jpg)
+![Altınpark](docs/altinpark.jpg)
 
 ## Çalıştırma
 
@@ -17,10 +17,11 @@ Android için: Godot'da *Editor → Manage Export Templates* ile şablonları in
 ## Oyunda neler var
 
 - **Karakterler:** kadın ya da erkek sahip; köpek ve/veya kedi. İkinci hayvan Pet Shop'tan sahiplenilir.
-- **Harita: gerçek Keçiören.** Keçiören merkezinin yaklaşık 860 × 720 metrelik bölümü: Gökçek Parkı ve göleti, Kızlarpınarı Caddesi,
-  Bursa Caddesi ve çevre sokaklar, Keçiören Merkez Camii, Şenlik İlkokulu, Hacı Sabancı Ortaokulu, Fatih Stadyumu. Sokaklar, 750'den
-  fazla bina, park ve gölet OpenStreetMap verisinden gerçek konum ve ölçüleriyle üretilir (aşağıda).
-- **Oyun için eklenen yerler** (gerçekte yok, Gökçek Parkı'ndaki boş çimlere yerleştirildi): hayvan bahçesi (kulübe, havuz, oyuncaklar),
+- **Harita: gerçek Kavacık Subayevleri Mahallesi (Keçiören).** Yaklaşık 1300 × 1120 metre: Subayevleri merkezinden Kavacık tarafına
+  tüm sokaklar (Fatih Caddesi, Fahrettin Altay Caddesi, Kavacık Sokak ve 46 sokak daha), 1.100 bina, Kavacık Subayevleri Camii, okullar,
+  Hulusi Sayın ve Ahmet Önder parkları, Çubuk Çayı, Atatürk Botanik Bahçesi ve Altınpark'ın göletli batı bölümü. Hepsi OpenStreetMap
+  verisinden gerçek konum ve ölçüleriyle üretilir (aşağıda).
+- **Oyun için eklenen yerler** (gerçekte yok, Altınpark'taki boş çimlere yerleştirildi): hayvan bahçesi (kulübe, havuz, oyuncaklar),
   Pet Shop, kafe, dondurmacı, çardak, çeşme, köpek oyun alanı, piknik alanı.
 - **Komutlar:** Sev, Mama, Top At (köpek koşar, havada yakalayabilir), Yumak (kedi), Gel, Otur, Yat, Uyu, Oynat (iki hayvan kovalamaca oynar).
   Yerdeki bir oyuncağın yanındaysan top yerine o atılır.
@@ -34,18 +35,18 @@ Android için: Godot'da *Editor → Manage Export Templates* ile şablonları in
 
 ## Harita nasıl üretildi
 
-Veri: (c) OpenStreetMap katkıcıları, ODbL lisansı. Ham veri `data/kecioren.osm` içinde.
+Veri: (c) OpenStreetMap katkıcıları, ODbL lisansı. Ham veri `data/subayevleri.osm` içinde (`tools/osm_clip.py` ile kırpıldı).
 
 ```bash
-python3 tools/osm_build.py data/kecioren.osm
+python3 tools/osm_build.py data/subayevleri.osm
 ```
 
 Bu komut `assets/city.json` (yollar, binalar, parklar, yer adları), zemin boyama dokularını ve harita uygulamasındaki görseli üretir.
 Başka bir bölge için `tools/osm_build.py` içindeki `CENTER` (enlem, boylam) ve `HALF` (yarı boyut, metre) değerlerini değiştirmek,
-o bölgenin `.osm` dosyasını indirmek ve `SPOTS` içindeki oyun yerlerini boş alanlara taşımak yeterli (araç boş olup olmadıklarını denetler).
+o bölgenin `.osm` dosyasını indirmek ve `WANTED` içindeki oyun yerlerinin istenen konumlarını vermek yeterli (araç en yakın boş park çimini kendi bulur).
 
 Sınırlar: bina yükseklikleri veride yok, kat sayısı taban alanına göre tahmin ediliyor; cepheler gerçek binalara benzemez, hepsi aynı
-apartman stilinde çizilir. Arazi düz kabul edildi (Keçiören'in gerçek eğimi yok). Araç trafiği yok.
+apartman stilinde çizilir. Arazi düz kabul edildi (mahallenin gerçek eğimi yok). Araç trafiği yok.
 
 ## Modeller nasıl üretildi
 

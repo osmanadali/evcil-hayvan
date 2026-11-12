@@ -78,7 +78,7 @@ func _ready() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	loading.add_child(bg)
 	var lt := Label.new()
-	lt.text = "Patili Gezinti\n\nKeçiören hazırlanıyor…"
+	lt.text = "Patili Gezinti\n\nSubayevleri hazırlanıyor…"
 	lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lt.add_theme_font_size_override("font_size", 44)
@@ -291,7 +291,7 @@ func _start_game(owner_kind: String, pet_kind: String, pet_name: String) -> void
 	_enter_play()
 	ui.toast("Hoş geldin! Yürümek için bir yere dokun.")
 	ui.toast("Dostunu sevmek için üzerine dokun.")
-	ui.toast("Haritayı aç: Gökçek Parkı'ndaki Pet Shop'ta mama ve aksesuar var.")
+	ui.toast("Haritayı aç: Altınpark'taki Pet Shop'ta mama ve aksesuar var.")
 
 
 func _enter_play() -> void:
@@ -310,14 +310,14 @@ func _spawn_npcs() -> void:
 	var tints := ["ffe6e0", "e6f0ff", "e8ffe6", "fff0d6", "f0e6ff", "ffffff", "ffe9c9", "dff3ff"]
 	var pets := [["kopek", "f4f4f4", 0.8], [], ["kedi", "c9c9c9", 0.9], ["kopek", "b08a66", 1.1], [], ["kopek", "5a5a5a", 0.9], [], []]
 	var park := ParkMap.spot("cesme")
-	for i in 18:
+	for i in 30:
 		var n := Npc.new()
 		var v := PersonModel.new()
 		v.kind = "kadin" if i % 2 == 0 else "erkek"
 		v.tint = Color(tints[i % tints.size()])
 		n.visual = v
 		# Yarisi parkin cevresinden, yarisi haritanin rastgele bir yerinden baslar
-		var from := park + Vector2(rng.randf_range(-90, 90), rng.randf_range(-200, 120)) if i < 10 else \
+		var from := park + Vector2(rng.randf_range(-120, 120), rng.randf_range(-120, 120)) if i < 12 else \
 			Vector2(rng.randf_range(ParkMap.BOUNDS_MIN.x, ParkMap.BOUNDS_MAX.x) * 0.9, rng.randf_range(ParkMap.BOUNDS_MIN.y, ParkMap.BOUNDS_MAX.y) * 0.9)
 		n.graph_node = ParkMap.nearest_node(from)
 		n.walk_speed = rng.randf_range(1.2, 1.6)
