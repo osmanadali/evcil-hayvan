@@ -13,6 +13,7 @@ const Bus = preload("res://scripts/bus.gd")
 const Minimap = preload("res://scripts/minimap.gd")
 const Home = preload("res://scripts/home.gd")
 const MetroRide = preload("res://scripts/metro_ride.gd")
+const CarPlay = preload("res://scripts/carplay.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -312,6 +313,18 @@ func _owner_pos() -> Vector2:
 
 
 func _place_owner(p: Vector2) -> void:
+	# Bina icine dusmesin: en yakin acik noktaya kay
+	if ParkMap.home == null and world and (world._inside_building(p) or not world.is_free(p, 0.4)):
+		var found := false
+		for r in range(2, 60, 2):
+			for k in 16:
+				var q := p + Vector2.from_angle(k * TAU / 16.0) * float(r)
+				if world.is_free(q, 0.6) and not world._inside_building(q):
+					p = q
+					found = true
+					break
+			if found:
+				break
 	owner_node.position = Vector3(p.x, ParkMap.walk_height(p), p.y)
 	_target = p
 
@@ -619,6 +632,8 @@ func _input(e: InputEvent) -> void:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
 					_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
+	if k.keycode == KEY_SPACE and _mode == "play" and _ride == null:
+		_jump()
 	if _mode == "metro" and _metro and (k.keycode == KEY_SPACE or k.keycode == KEY_ENTER):
 		_metro.fast = true
 	if k.keycode == KEY_ESCAPE:
@@ -670,6 +685,7 @@ func _pointer_move(rel: Vector2) -> void:
 	elif _mode == "play":
 		_cam_yaw -= rel.x * 0.006
 		if _ride != null and _fps:
+			_fps_yaw = clampf(_fps_yaw - rel.x * 0.005, -1.9, 1.9)
 			_fps_pitch = clampf(_fps_pitch - rel.y * 0.004, -0.8, 0.55)
 		else:
 			_cam_pitch = clampf(_cam_pitch + rel.y * 0.004, 0.1, 1.15)
@@ -747,7 +763,18 @@ func _go(p: Vector2) -> void:
 
 # ---------------------------------------------------------------- komutlar
 
+## Ziplama: gorsel olarak yukari; konum yerde kalir (engeller ayni).
+func _jump() -> void:
+	if _jump_h > 0.0 or _ride != null or _bus_ride != null:
+		return
+	_jump_v = 5.2
+	_jump_h = 0.001
+
+
 func _on_command(cmd: String) -> void:
+	if cmd == "jump":
+		_jump()
+		return
 	var a := _active()
 	var p: Dictionary = state.pet(a.kind)
 	if cmd.begins_with("feed:"):
@@ -876,6 +903,9 @@ var _last_speed := 0.0
 var _steer := 0.0
 var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
+var _jump_h := 0.0
+var _jump_v := 0.0
+var _fps_yaw := 0.0     # araç icinde bas cevirme (0 = ileri); birakinca yavasca ortalanir
 var _cockpit: Node3D
 var _cam_btn: Button
 var minimap: Control
@@ -1135,6 +1165,7 @@ func _toggle_fps() -> void:
 		return
 	_fps = not _fps
 	_fps_pitch = 0.0
+	_fps_yaw = 0.0
 	_cam_blend = 0.5
 	if not _fps:
 		_set_body_visible(_ride, true)
@@ -1147,7 +1178,9 @@ func _toggle_fps() -> void:
 ## Birinci sahis: arabada surucu koltugundan (on panel, direksiyon), iki tekerlikte surucunun gozunden.
 func _cockpit_camera() -> void:
 	var kind: String = _ride.get_meta("kind")
-	var look := Basis(Vector3.UP, angle_difference(_ride.rotation.y, _cam_yaw)) * Basis(Vector3.RIGHT, _fps_pitch)
+	if not _dragging:
+		_fps_yaw = lerpf(_fps_yaw, 0.0, minf(1.0, get_process_delta_time() * 1.5))
+	var look := Basis(Vector3.UP, _fps_yaw) * Basis(Vector3.RIGHT, _fps_pitch)
 	if kind == "araba":
 		if _cockpit == null:
 			_cockpit = _make_cockpit()
@@ -1155,9 +1188,18 @@ func _cockpit_camera() -> void:
 		_cockpit.visible = true
 		_set_body_visible(_ride, false)
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
-		wheel.rotation.z = -_steer * 2.6
+		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
+		wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
 		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
-		(_cockpit.get_node("Ekran") as Label3D).text = _carplay_text()
+		var cpn = _cockpit.get_node("CarPlayVP/CP")
+		cpn.player = _owner_pos()
+		cpn.heading = _ride.rotation.y
+		cpn.route = minimap.route
+		cpn.dest_name = minimap.dest_name
+		cpn.speed_kmh = absf(_drive_speed) * 3.6
+		cpn.clock = ui.clock_label.text
+		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
+			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
 		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.06), Vector3(-0.36, 1.18, 0.22))
 		cam.near = 0.05
 		cam.fov = 72.0
@@ -1215,17 +1257,35 @@ func _make_cockpit() -> Node3D:
 	speed.rotation.x = -0.35
 	speed.text = "0"
 	c.add_child(speed)
-	Kit.box(c, Vector3(0.3, 0.2, 0.03), Vector3(0.05, 0.9, -0.58), glow, Vector3(-0.25, 0, 0))
-	var screen := Label3D.new()
-	screen.name = "Ekran"
-	screen.font_size = 28
-	screen.pixel_size = 0.0011
-	screen.modulate = Color.WHITE
-	screen.position = Vector3(0.05, 0.905, -0.563)
-	screen.rotation.x = -0.25
-	screen.width = 260.0
-	screen.autowrap_mode = TextServer.AUTOWRAP_WORD
-	c.add_child(screen)
+	# CarPlay: SubViewport'ta cizilen canli ekran, on paneldeki dokunmatik ekrana doku olur
+	var vp := SubViewport.new()
+	vp.name = "CarPlayVP"
+	vp.size = Vector2i(640, 300)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.transparent_bg = false
+	var cp := CarPlay.new()
+	cp.name = "CP"
+	vp.add_child(cp)
+	c.add_child(vp)
+	var scr := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.34, 0.16)
+	scr.mesh = q
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.albedo_texture = vp.get_texture()
+	scr.material_override = sm
+	scr.position = Vector3(0.08, 0.95, -0.535)
+	scr.rotation.x = -0.28
+	c.add_child(scr)
+	Kit.box(c, Vector3(0.37, 0.19, 0.02), Vector3(0.08, 0.948, -0.548), Kit.mat("101113", 0.3), Vector3(-0.28, 0, 0))
+	# Gosterge paneli: iki kadran
+	for gx in [-0.45, -0.27]:
+		Kit.cyl(c, 0.05, 0.05, 0.005, Vector3(gx, 0.965, -0.545), Kit.mat("e8eef4", 0.4), 20, Vector3(PI / 2 - 0.35, 0, 0))
+	# Havalandirma izgaralari, torpido cizgisi
+	for vx in [-0.68, -0.08, 0.24, 0.66]:
+		Kit.box(c, Vector3(0.12, 0.05, 0.02), Vector3(vx, 0.86, -0.555), Kit.mat("111214", 0.5))
+	Kit.box(c, Vector3(0.5, 0.008, 0.01), Vector3(0.45, 0.72, -0.555), trim)
 	# Orta konsol, vites kolu
 	Kit.box(c, Vector3(0.22, 0.32, 0.7), Vector3(0.0, 0.42, -0.2), dash)
 	Kit.cyl(c, 0.012, 0.012, 0.16, Vector3(0.0, 0.66, -0.12), trim, 6)
@@ -1256,6 +1316,20 @@ func _make_cockpit() -> Node3D:
 		Kit.box(c, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), beige, Vector3(-0.55, 0, 0))
 		Kit.box(c, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), beige, Vector3(0.15, 0, 0))
 	Kit.box(c, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), beige)
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), beige)             # B diregi
+		Kit.box(c, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), beige)              # kapi ustu
+		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)               # pencere alti
+		Kit.box(c, Vector3(0.03, 0.02, 0.28), Vector3(sx * 0.75, 0.82, -0.1), Kit.mat("6c7076", 0.4))  # cam dugmeleri
+	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)       # arka koltuk
+	Kit.box(c, Vector3(1.4, 0.6, 0.12), Vector3(0, 0.82, 1.3), fabric, Vector3(0.15, 0, 0))
+	Kit.box(c, Vector3(1.5, 0.02, 1.6), Vector3(0, 0.38, 0.2), Kit.mat("26272a", 1.0))     # paspas/zemin
+	var il := OmniLight3D.new()
+	il.position = Vector3(0, 1.3, 0.0)
+	il.omni_range = 1.8
+	il.light_energy = 0.45
+	il.light_color = Color("fff1dc")
+	c.add_child(il)
 	Kit.box(c, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), Kit.mat("1b1c1e", 0.3))
 	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
 	var paint := Kit.mat("b8322c", 0.35)
@@ -1537,7 +1611,7 @@ func _set_nav(p: Vector2, label := "") -> void:
 
 
 func _update_minimap(dt: float) -> void:
-	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null
+	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null and not (_fps and _ride != null and _ride.get_meta("kind") == "araba")
 	# Sag altta, komut dugmelerinin ustunde
 	var vp := get_viewport().get_visible_rect().size
 	var bottom := 130.0 if ui._actions.visible else 60.0
@@ -1698,6 +1772,8 @@ func _travel(station: String, zone: String) -> void:
 		_metro.finished.connect(func(st: String): _metro_arrived(st))
 	_metro.cam = cam
 	_metro.owner_node = owner_node
+	_metro.owner_model = owner_model
+	_metro.auto = _args.has("fastride")
 	_metro.pets = []
 	for k in agents:
 		agents[k].set_process(false)
@@ -1734,7 +1810,7 @@ func _metro_arrived(station: String) -> void:
 func _spawn_at_gate(g: Dictionary) -> void:
 	var out: Vector2 = g["pos"] - g["toward"] * 4.8
 	# Bina ya da duvar icine dusmesin: cevrede bos bir kaldirim ara
-	if not world.is_free(out, 0.6):
+	if not world.is_free(out, 0.6) or world._inside_building(out):
 		var found := false
 		for r in range(2, 40, 2):
 			for k in 16:
@@ -1746,6 +1822,7 @@ func _spawn_at_gate(g: Dictionary) -> void:
 			if found:
 				break
 	_place_owner(out)
+	print("CIKIS ", g["name"], " ", out, " serbest=", world.is_free(out, 0.6), " binada=", world._inside_building(out))
 	owner_node.rotation.y = atan2(g["toward"].x, g["toward"].y)
 	var i := 0
 	for k in agents:
@@ -2082,8 +2159,10 @@ func _sparkle(at_pos: Vector3) -> void:
 func _process(dt: float) -> void:
 	if minimap:
 		_update_minimap(dt)
-	if _ready_done and _mode == "play" and not _args.has("cmd"):
+	if _ready_done and (_mode == "play" or _mode == "metro") and not _args.has("cmd"):
 		_keyboard_stick()
+	if _mode == "metro" and _metro:
+		_metro.stick = ui.stick
 	if world:
 		_update_daylight(dt)
 	AudioServer.set_bus_mute(0, not state.d["sound"])
@@ -2091,6 +2170,14 @@ func _process(dt: float) -> void:
 		return
 	_pet_cd -= dt
 	_update_owner(dt)
+	if _jump_h > 0.0 or _jump_v > 0.0:
+		_jump_v -= 18.0 * dt
+		_jump_h = maxf(_jump_h + _jump_v * dt, 0.0)
+		if _jump_h == 0.0:
+			_jump_v = 0.0
+			_sfx("adim%d" % (randi() % 4 + 1), -4.0)
+		if _ride == null:
+			owner_model.position.y = _jump_h
 	_update_street_life(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed

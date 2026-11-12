@@ -1921,7 +1921,26 @@ func _build_parks() -> void:
 		_multimesh(kinds[k][2], xf[k], col[k], true, 40.0, 0.0, cus[k], true)
 
 
+var _bpolys: Array = []    # [Rect2, PackedVector2Array]
+
+## Nokta bir binanin taban alaninin icinde mi (tum cokgen uzerinden; buyuk binalarda da dogru).
 func _inside_building(p: Vector2) -> bool:
+	if _bpolys.is_empty():
+		for b in ParkMap.data["buildings"]:
+			var poly := ParkMap.to_poly(b["p"])
+			if poly.size() < 3:
+				continue
+			var r := Rect2(poly[0], Vector2.ZERO)
+			for q in poly:
+				r = r.expand(q)
+			_bpolys.append([r.grow(0.5), poly])
+	for bp in _bpolys:
+		if (bp[0] as Rect2).has_point(p) and Geometry2D.is_point_in_polygon(p, bp[1]):
+			return true
+	return _inside_building_cell(p)
+
+
+func _inside_building_cell(p: Vector2) -> bool:
 	# Engel dogrularina cok yakin degilse ve cevresi kapaliysa bina icidir: dort yone isin atarak say
 	var hits := 0
 	var list: Array = _hash.get(Vector2i(floori(p.x / CELL), floori(p.y / CELL)), [])

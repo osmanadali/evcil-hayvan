@@ -293,6 +293,10 @@ func refresh() -> void:
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_actions.add_child(col)
+	if DisplayServer.is_touchscreen_available():
+		var jb := K.button(col, "Zıpla", "", func(): command.emit("jump"), GLASS, Color.WHITE, Vector2(76, 56), 18, 28)
+		jb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		_glass(jb)
 	var b := K.button(col, "", "come", func(): _on_action("come"), GLASS, Color.WHITE, Vector2(76, 76), 34, 38)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_glass(b)
