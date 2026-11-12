@@ -5,7 +5,12 @@ shader_type spatial;
 // Oyuncu ile kamera arasina giren duvarlar delinir (focus).
 uniform vec3 focus = vec3(0.0, -1000.0, 0.0);
 uniform float see_radius = 5.5;
-uniform float night = 0.0;       // 0 gunduz, 1 gece: pencerelerde isik yanar
+uniform float night = 0.0;
+// Evdeyken: bu kutunun icinde ve evin zemininden yukarida kalan bina parcalari cizilmez (ust katlar ve cati)
+uniform vec2 hide_c = vec2(0.0, 1e6);
+uniform vec2 hide_axis = vec2(1.0, 0.0);
+uniform vec2 hide_half = vec2(0.0, 0.0);
+uniform float hide_y = 1e6;       // 0 gunduz, 1 gece: pencerelerde isik yanar
 uniform sampler2D t_wall : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_roof : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_flat : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -28,6 +33,10 @@ void vertex() {
 }
 
 void fragment() {
+	vec2 hd = wpos.xz - hide_c;
+	if (wpos.y > hide_y && abs(dot(hd, hide_axis)) < hide_half.x && abs(dot(hd, vec2(-hide_axis.y, hide_axis.x))) < hide_half.y) {
+		discard;
+	}
 	// Kameradan oyuncuya giden cizginin cevresini bosalt
 	vec3 c = CAMERA_POSITION_WORLD;
 	vec3 cf = focus + vec3(0.0, 0.9, 0.0) - c;

@@ -115,6 +115,8 @@ func _block(c: Vector2, half: Vector2) -> void:
 
 ## Hareketi engellere ve suya gore duzeltir.
 func resolve(np: Vector2, r: float, old: Vector2) -> Vector2:
+	if ParkMap.home != null:
+		return ParkMap.home.resolve(np, r, old)
 	np = ParkMap.clamp_bounds(np)
 	var list: Array = _hash.get(Vector2i(floori(np.x / CELL), floori(np.y / CELL)), [])
 	for e in list:
@@ -150,6 +152,8 @@ func _wet(p: Vector2) -> bool:
 
 
 func is_free(p: Vector2, r := 0.4) -> bool:
+	if ParkMap.home != null:
+		return ParkMap.home.is_free(p, r)
 	return ParkMap.inside_bounds(p, 3.0) and not _wet(p) and resolve(p, r, p).distance_to(p) < 0.05
 
 
@@ -210,6 +214,16 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 
 ## Gece miktari (0 gunduz, 1 gece): pencere isiklari ve sokak lambasi parlamalari.
 var _lamp_glow: MultiMeshInstance3D
+
+## Evdeyken ust katlari ve catiyi gizler (bos dizi: hepsini geri getirir).
+func hide_above(c: Vector2, axis: Vector2, half: Vector2, y: float) -> void:
+	for m in _see_through:
+		if m.shader and m.shader.code.contains("hide_c"):
+			m.set_shader_parameter("hide_c", c)
+			m.set_shader_parameter("hide_axis", axis)
+			m.set_shader_parameter("hide_half", half)
+			m.set_shader_parameter("hide_y", y)
+
 
 func set_night(v: float) -> void:
 	for m in _see_through:

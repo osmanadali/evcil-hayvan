@@ -11,6 +11,7 @@ const PersonModel = preload("res://scripts/person_model.gd")
 const UiKit = preload("res://scripts/ui_kit.gd")
 const Bus = preload("res://scripts/bus.gd")
 const Minimap = preload("res://scripts/minimap.gd")
+const Home = preload("res://scripts/home.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -736,6 +737,10 @@ func _on_command(cmd: String) -> void:
 			_exit_bus()
 		"metro":
 			_open_metro()
+		"home_in":
+			_enter_home()
+		"home_out":
+			_exit_home()
 		"drive":
 			_enter_ride()
 		"exit":
@@ -1155,7 +1160,7 @@ func _set_nav(p: Vector2) -> void:
 
 
 func _update_minimap(dt: float) -> void:
-	minimap.visible = _mode == "play" and not map_screen.visible
+	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null
 	# Sag altta, komut dugmelerinin ustunde
 	var vp := get_viewport().get_visible_rect().size
 	var bottom := 200.0 if ui._actions.visible else 60.0
@@ -1180,6 +1185,66 @@ func _update_minimap(dt: float) -> void:
 	if _owner_pos().distance_to(_nav) < 6.0:
 		ui.toast("Vardın: %s" % minimap.dest_name)
 		_nav = Vector2.INF
+
+
+# ---------------------------------------------------------------- ev (ic mekan)
+
+## Ev: Subayevleri'nde Altinpark'a bakan 5 katli apartmanin (OSM bina 682) 2. kati.
+const HOME_BUILDING := Vector2(320.6, 66.3)
+const HOME_DOOR := Vector2(326.56, 56.62)
+const HOME_DOOR_OUT := Vector2(0.526, -0.85)
+const HOME_FLOOR := 2
+var _home: Node3D
+
+
+func _near_home_door() -> bool:
+	return ParkMap.zone == "" and ParkMap.home == null and _owner_pos().distance_to(HOME_DOOR + HOME_DOOR_OUT * 1.2) < 3.2
+
+
+func _enter_home() -> void:
+	if _home == null:
+		_home = Home.new()
+		# Yerel x ekseni binanin 32 derecelik kenari boyunca (balkon dogu-guneydoguya, parka bakar)
+		var b := deg_to_rad(212.0)
+		_home.rotation.y = -b
+		var ground := ParkMap.terrain_height(HOME_DOOR)
+		var center_local := Vector3(6.0 + 2.2, 0, 5.8)
+		var basis := Basis(Vector3.UP, -b)
+		var c3 := Vector3(HOME_BUILDING.x, ground + 0.6 + HOME_FLOOR * 3.1, HOME_BUILDING.y)
+		_home.position = c3 - basis * center_local
+		add_child(_home)
+	_home.visible = true
+	ParkMap.home = _home
+	# Binanin bu kattan yukarisi gorunmesin (yukaridan bakinca daire acik gorunur)
+	world.hide_above(HOME_BUILDING, Vector2(cos(deg_to_rad(-58.0)), sin(deg_to_rad(-58.0))), Vector2(12.5, 8.5), _home.global_position.y - 0.2)
+	_moving = false
+	_queue.clear()
+	var inside: Vector2 = _home.w2(_home.entrance_local)
+	_place_owner(inside)
+	owner_node.rotation.y = _home.rotation.y + PI
+	var i := 0
+	for k in agents:
+		agents[k].place(inside + Vector2(0.6 - 0.5 * i, 0.9).rotated(-_home.rotation.y))
+		i += 1
+	_cam_pitch = 0.9
+	ui.toast("Evdesin · 2. kat, daire 29")
+
+
+func _exit_home() -> void:
+	ParkMap.home = null
+	_home.visible = false
+	world.hide_above(Vector2(0, 1e6), Vector2(1, 0), Vector2.ZERO, 1e6)
+	var out := HOME_DOOR + HOME_DOOR_OUT * 2.2
+	_place_owner(out)
+	var i := 0
+	for k in agents:
+		agents[k].place(out + Vector2(1.0 + 0.6 * i, 0.5).rotated(i * 2.0))
+		i += 1
+	_cam_pitch = 0.27
+
+
+func _near_home_exit() -> bool:
+	return ParkMap.home != null and _owner_pos().distance_to(_home.w2(_home.entrance_local)) < 1.0
 
 
 # ---------------------------------------------------------------- metro (bolgeler arasi)
@@ -1704,6 +1769,12 @@ func _update_context() -> void:
 		if o.distance_to(g["pos"]) < 4.0:
 			ui.set_context("Metroya İn", "metro", "star")
 			return
+	if _near_home_exit():
+		ui.set_context("Dışarı Çık", "home_out", "come")
+		return
+	if _near_home_door():
+		ui.set_context("Eve Gir", "home_in", "home")
+		return
 	if _ride != null:
 		ui.set_context("", "")      # inmek: kamera dugmesinin yanindaki in dugmesi ya da E
 		return
@@ -1757,6 +1828,11 @@ func _update_camera(dt: float) -> void:
 		_:
 			_focus = _focus.lerp(owner_node.position, k)
 			var dist := CAM_DIST * _zoom
+			if ParkMap.home != null:
+				# Evde: yukaridan, tavan ve aradaki duvarlar gorunmez
+				dist = clampf(dist, 3.2, 6.0)
+				_cam_pitch = maxf(_cam_pitch, 0.75)
+				ParkMap.home.update_view(cam.global_position)
 			var pos := _focus + Vector3(0, 1.3, 0) + Vector3(sin(_cam_yaw) * cos(_cam_pitch), sin(_cam_pitch), cos(_cam_yaw) * cos(_cam_pitch)) * dist
 			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
 			cam.position = pos
@@ -1917,6 +1993,18 @@ func _debug_shot() -> void:
 		for k in agents:
 			agents[k].place(_owner_pos() + agents[k].slot)
 		_focus = owner_node.position
+	if _args.has("home"):
+		_enter_home()
+		if _args.has("room"):
+			var rp: PackedStringArray = _args["room"].split(",")
+			var lp := Vector2(float(rp[0]), float(rp[1]))
+			_place_owner(_home.w2(lp))
+			var i := 0
+			for k in agents:
+				agents[k].place(_home.w2(lp + Vector2(0.7 + 0.5 * i, 0.4)))
+				i += 1
+		for f in 3:
+			await get_tree().process_frame
 	var view: String = _args.get("view", "")
 	if view != "":
 		ui.visible = false
@@ -1961,6 +2049,16 @@ func _debug_shot() -> void:
 			_mode = "debug"
 			cam.position = wc + Vector3(8, 30, 48) * float(_args.get("dist", "1"))
 			cam.look_at(wc)
+		elif view == "eye" and _home:
+			# Ev icinde sabit bakis: --eye=x,z,hedefx,hedefz (yerel metre)
+			_mode = "debug"
+			var e: PackedStringArray = _args["eye"].split(",")
+			var p0: Vector2 = _home.w2(Vector2(float(e[0]), float(e[1])))
+			var p1: Vector2 = _home.w2(Vector2(float(e[2]), float(e[3])))
+			var fy := _home.global_position.y
+			cam.position = Vector3(p0.x, fy + 1.6, p0.y)
+			cam.look_at(Vector3(p1.x, fy + 1.0, p1.y))
+			cam.fov = 75.0
 		elif view == "low":
 			_mode = "debug"
 			var a := float(_args.get("ang", "0.5"))
@@ -2016,7 +2114,7 @@ func _debug_shot() -> void:
 				ui.stick = Vector2(float(_args.get("sx", "-1")), float(_args.get("sy", "0")))
 			await get_tree().create_timer(2.0).timeout
 			print("IZ %d %s moving=%s queue=%d%s" % [i * 2, _owner_pos(), _moving, _queue.size(),
-				(" otobus=%s durak=%s hiz=%.1f" % [_bus_ride.line, _bus_ride.at_stop, _bus_ride.speed]) if _bus_ride else ""])
+				(" otobus=%s durak=%s hiz=%.1f" % [_bus_ride.line, _bus_ride.at_stop, _bus_ride.speed]) if _bus_ride else (" ev_yerel=%s" % _home.local2(_owner_pos()) if ParkMap.home else "")])
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("more"):

@@ -178,7 +178,12 @@ static func terrain_height(p: Vector2) -> float:
 	return lerpf(lerpf(heights[i], heights[i + 1], tx), lerpf(heights[i + height_n], heights[i + height_n + 1], tx), ty)
 
 
+static var home: Node3D           # ic mekan (ev) etkinse; zemin yuksekligi ve carpisma oradan gelir
+
+
 static func walk_height(p: Vector2) -> float:
+	if home != null and home.has_point(p):
+		return home.global_position.y
 	return terrain_height(p) + sidewalk_raise(p)
 
 
