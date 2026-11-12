@@ -620,6 +620,14 @@ func _fence(a: Vector2, b: Vector2, hex: String, h := 0.9) -> void:
 		Kit.box(self, Vector3(length, 0.09, 0.06), at(mid, h * k), m, rot)
 
 
+## Suya dogru birim yon (su mesafe alaninin egiminden).
+func _water_dir(p: Vector2) -> Vector2:
+	var e := 1.0
+	var g := Vector2(ParkMap.water_sd(p + Vector2(e, 0)) - ParkMap.water_sd(p - Vector2(e, 0)),
+		ParkMap.water_sd(p + Vector2(0, e)) - ParkMap.water_sd(p - Vector2(0, e)))
+	return -g.normalized() if g.length() > 0.001 else Vector2(0, 1)
+
+
 func _bench(p: Vector2, rot_y: float) -> void:
 	_model("bank_lod", p, 1.9, rot_y)
 	_add_circle(Vector3(p.x, p.y, 0.8))
@@ -1213,6 +1221,16 @@ const SHOP_MODEL := {"eczane": "eczane", "market": "market"}
 const SHOP_TURN := {"eczane": 0.0, "market": 0.0, "firin": 0.0}   # modelin vitrini +Z'ye bakacak ek donus
 
 
+func _clear_lot(c: Vector2, half: float) -> bool:
+	for dx in [-1.0, 0.0, 1.0]:
+		for dz in [-1.0, 0.0, 1.0]:
+			var q := c + Vector2(dx, dz) * half
+			var m := _mask(q)
+			if m[3] > 0.42 or m[0] > 0.5 or not is_free(q, 0.6) or _inside_building(q) or _kept_out(q, 1.0):
+				return false
+	return true
+
+
 ## Gercek dukkan noktasi bos bir yerdeyse dukkan binasi koyar: vitrini en yakin yola bakar.
 func _shop_model(p: Vector2, model: String, title: String, st: Array) -> bool:
 	if not ResourceLoader.exists("res://assets/models/%s.glb" % model):
@@ -1230,12 +1248,16 @@ func _shop_model(p: Vector2, model: String, title: String, st: Array) -> bool:
 				best_d = q.distance_to(p)
 				best = q
 	var toward := (best - p).normalized() if best_d > 0.1 else Vector2(0, 1)
+	# Arsa: yol ve kaldirim disinda, binalara carpmayan 10 x 10 m'lik bos yer. Yoldan geriye dogru aranir.
 	var at_p := p
-	for i in 12:
-		if is_free(at_p, 5.0):
+	var found := false
+	at_p = best - toward * 9.0         # vitrin kaldirimin hemen arkasinda
+	for i in 8:
+		if _clear_lot(at_p, 5.2):
+			found = true
 			break
 		at_p -= toward * 1.5
-	if not is_free(at_p, 4.5):
+	if not found:
 		return false
 	var rot := atan2(toward.x, toward.y) + float(SHOP_TURN.get(model, 0.0))
 	var r := _root(at_p, rot)
@@ -1711,12 +1733,22 @@ func _build_parks() -> void:
 			while carry < length:
 				count += 1
 				var s := 1.0 if count % 2 == 0 else -1.0
-				var p := a + dir * carry + perp * s * 2.1
+				var on_path := a + dir * carry
+				var near_water := ParkMap.water_sd(on_path) < 28.0
+				if near_water:
+					# Su kenarindaki patika: bank suyun tarafina konur ve suya bakar
+					s = 1.0 if ParkMap.water_sd(on_path + perp * 3.0) < ParkMap.water_sd(on_path - perp * 3.0) else -1.0
+				var p := on_path + perp * s * 2.1
 				carry += 26.0
 				if not _is_lawn(p) or _kept_out(p, 0.5) or not is_free(p, 0.9):
 					continue
-				if count % 3 == 0:
+				if count % 3 == 0 and not near_water:
 					_lamp(p)
+				elif near_water:
+					var g := _water_dir(p)
+					if ParkMap.water_sd(p) < 1.5:
+						continue
+					_bench(p, atan2(g.x, g.y))
 				else:
 					_bench(p, atan2(-perp.x * s, -perp.y * s))
 			carry -= length

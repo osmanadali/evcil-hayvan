@@ -27,6 +27,8 @@ var setup: Control
 var photo_hud: Control
 var _cards := {}
 var _coins: Label
+var clock_label: Label
+var _clock_icon: Control
 var _actions: GridContainer
 var _context: Button
 var _context_cmd := ""
@@ -141,15 +143,17 @@ func _build_hud() -> void:
 	right.add_theme_constant_override("separation", 12)
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(right)
+	# Ust sag: saat ve menu (harita dugmesi yok: mini harita acar; para mini haritanin altinda)
 	var pill := K.box(right, GLASS, 26, 8)
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 8)
 	pill.add_child(row)
-	row.add_child(Icon.new("coin", Color.WHITE, 26))
-	_coins = K.label(row, "0", 23, Color.WHITE)
-	_glass(K.button(right, "", "map", func(): open_map.emit(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30))
+	_clock_icon = Icon.new("sun", Color("ffd36b"), 24)
+	row.add_child(_clock_icon)
+	clock_label = K.label(row, "10:00", 23, Color.WHITE)
+	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
 	_glass(K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30))
 
 	_toast = K.box(hud, Color(0.25, 0.19, 0.14, 0.9), 26, 16)
@@ -348,18 +352,10 @@ func _make_card(parent: Node, kind: String) -> Dictionary:
 	name_l.clip_text = true
 	var lvl := K.label(top, "", 16, Color("ffd9a0"))
 	var xp := K.bar(col, K.ORANGE, Vector2(100, 4))
-	var needs := HBoxContainer.new()
-	needs.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	needs.add_theme_constant_override("separation", 5)
-	col.add_child(needs)
-	var bars := {}
-	for n in state.NEEDS:
-		needs.add_child(Icon.new(NEED_ICONS[n], Color(NEED_COLORS[n]), 15))
-		var pb := K.bar(needs, Color(NEED_COLORS[n]), Vector2(22, 7))
-		pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bars[n] = pb
-	return {"button": b, "name": name_l, "level": lvl, "xp": xp, "bars": bars}
+	var bars := {}      # ihtiyaclar artik mini haritanin cevresinde
+	var mood := K.label(col, "", 14, Color(1, 1, 1, 0.8))
+	mood.name = "Mood"
+	return {"button": b, "name": name_l, "level": lvl, "xp": xp, "bars": bars, "mood": mood}
 
 
 func _update_cards() -> void:
@@ -373,10 +369,15 @@ func _update_cards() -> void:
 		c["name"].text = p["name"]
 		c["level"].text = "Sv %d" % state.level(kind)
 		c["xp"].value = state.level_progress(kind) * 100.0
+		# Kartta en dusuk ihtiyac yazilir ("Acikti", "Yorgun"...), hepsi iyiyse "Mutlu"
+		var low := ""
+		var low_v := 40.0
 		for n in state.NEEDS:
-			var pb: ProgressBar = c["bars"][n]
-			pb.value = p[n]
-			pb.modulate = Color(1, 0.55, 0.5) if float(p[n]) < 25.0 else Color.WHITE
+			if float(p[n]) < low_v:
+				low_v = float(p[n])
+				low = n
+		(c["mood"] as Label).text = {"hunger": "Acıktı", "energy": "Yorgun", "fun": "Sıkıldı", "clean": "Kirli"}.get(low, "Mutlu") if low != "" else "Mutlu"
+		(c["mood"] as Label).modulate = Color(1, 0.6, 0.55) if low != "" else Color(0.75, 1, 0.75)
 
 
 # ---------------------------------------------------------------- pencereler

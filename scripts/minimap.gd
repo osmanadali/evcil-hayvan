@@ -13,6 +13,12 @@ var player := Vector2.ZERO
 var heading := 0.0            # kamera yonu (radyan, main._cam_yaw)
 var route: Array = []         # [Vector2] navigasyon rotasi
 var dest_name := ""
+var needs := {}               # ihtiyac -> 0..100 (aktif hayvan)
+var coins := 0
+const NEED_ARCS := [        # [ihtiyac, renk, baslangic, bitis (derece; 0 = sag, saat yonu), simge]
+	["hunger", "f29f4b", 100.0, 172.0, "bone"], ["energy", "e9b93a", 188.0, 260.0, "bolt"],
+	["fun", "e0708f", 80.0, 8.0, "smile"], ["clean", "4f9fd9", -8.0, -80.0, "drop"]]
+var _coin_label: Label
 var _tex: Texture2D
 var _dist_label: Label
 
@@ -40,11 +46,25 @@ func _ready() -> void:
 	_dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dist_label.position = Vector2(0, SIZE + 4)
 	_dist_label.size = Vector2(SIZE, 24)
-	# Yazi daire disinda: kirpilmasin diye kardes dugum olarak eklenir
+	_coin_label = Label.new()
+	_coin_label.add_theme_font_size_override("font_size", 22)
+	_coin_label.add_theme_color_override("font_color", Color("ffe08a"))
+	_coin_label.add_theme_constant_override("outline_size", 7)
+	_coin_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	_coin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Yazilar ve yaylar daire disinda: kirpilmasin diye kardes dugum olarak eklenir
+	_ring = Control.new()
+	_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ring.draw.connect(_draw_ring)
 	call_deferred("_attach_label")
 
 
+var _ring: Control
+
+
 func _attach_label() -> void:
+	get_parent().add_child(_ring)
+	get_parent().add_child(_coin_label)
 	get_parent().add_child(_dist_label)
 
 
@@ -58,7 +78,15 @@ func _gui_input(e: InputEvent) -> void:
 
 func _process(_dt: float) -> void:
 	_layer.queue_redraw()
-	_dist_label.position = position + Vector2(-20, SIZE + 4)
+	_ring.position = position - Vector2(20, 20)
+	_ring.size = Vector2(SIZE + 40, SIZE + 40)
+	_ring.visible = visible
+	_ring.queue_redraw()
+	_coin_label.position = position + Vector2(-20, SIZE + 18)
+	_coin_label.size = Vector2(SIZE + 40, 28)
+	_coin_label.visible = visible
+	_coin_label.text = "₺ %d" % coins
+	_dist_label.position = position + Vector2(-20, SIZE + 46)
 	_dist_label.size = Vector2(SIZE + 40, 24)
 	_dist_label.visible = visible
 	if route.is_empty():
@@ -119,3 +147,18 @@ func _draw_map() -> void:
 	# Oyuncu oku (hep yukari bakar: harita kamerayla doner)
 	L.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -12), c + Vector2(9, 10), c + Vector2(0, 5), c + Vector2(-9, 10)]), Color("ffffff"))
 	L.draw_polyline(PackedVector2Array([c + Vector2(0, -12), c + Vector2(9, 10), c + Vector2(0, 5), c + Vector2(-9, 10), c + Vector2(0, -12)]), Color("1d6ef5"), 2.5, true)
+
+
+## Dairenin disinda GTA tarzi yaylar: solda aclik ve enerji, sagda eglence ve temizlik.
+func _draw_ring() -> void:
+	var c := Vector2(SIZE, SIZE) * 0.5 + Vector2(20, 20)
+	var r := SIZE * 0.5 + 11.0
+	for a in NEED_ARCS:
+		var v: float = clampf(float(needs.get(a[0], 100.0)) / 100.0, 0.0, 1.0)
+		var a0 := deg_to_rad(float(a[2]))
+		var a1 := deg_to_rad(float(a[3]))
+		var col := Color(a[1])
+		if v < 0.25:
+			col = col.lerp(Color("ff3b30"), 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008))
+		_ring.draw_arc(c, r, a0, a1, 24, Color(0, 0, 0, 0.45), 9.0, true)
+		_ring.draw_arc(c, r, a1, a1 + (a0 - a1) * v, 24, col, 7.0, true)

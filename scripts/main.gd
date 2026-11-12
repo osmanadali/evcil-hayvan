@@ -1158,10 +1158,17 @@ func _update_minimap(dt: float) -> void:
 	minimap.visible = _mode == "play" and not map_screen.visible
 	# Sag altta, komut dugmelerinin ustunde
 	var vp := get_viewport().get_visible_rect().size
-	var bottom := 200.0 if ui._actions.visible else 30.0
-	minimap.position = Vector2(vp.x - minimap.SIZE - 24.0, vp.y - minimap.SIZE - bottom - 26.0)
+	var bottom := 200.0 if ui._actions.visible else 60.0
+	minimap.position = Vector2(vp.x - minimap.SIZE - 40.0, vp.y - minimap.SIZE - bottom - 50.0)
 	minimap.player = _owner_pos()
 	minimap.heading = _cam_yaw
+	minimap.coins = int(state.d["coins"])
+	var pet: Dictionary = state.pet(state.d["active"])
+	for n in state.NEEDS:
+		minimap.needs[n] = float(pet[n])
+	if ui.clock_label:
+		ui.clock_label.text = "%02d:%02d" % [int(clock), int(fmod(clock, 1.0) * 60.0)]
+		ui._clock_icon.icon = "sun" if night < 0.5 else "moon"
 	if _nav == Vector2.INF:
 		minimap.route = []
 		return

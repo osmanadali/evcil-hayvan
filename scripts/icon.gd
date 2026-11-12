@@ -128,6 +128,11 @@ func _draw() -> void:
 		"sit":
 			_c(0.6, 0.3, 0.17)
 			draw_colored_polygon(_p([[0.42, 0.42], [0.74, 0.5], [0.72, 0.9], [0.2, 0.9], [0.24, 0.7]]), color)
+		"sun":
+			_c(0.5, 0.5, 0.22)
+			for k in 8:
+				var a := k * TAU / 8.0
+				_l([[0.5 + cos(a) * 0.32, 0.5 + sin(a) * 0.32], [0.5 + cos(a) * 0.46, 0.5 + sin(a) * 0.46]], 0.08)
 		"moon":
 			_c(0.5, 0.5, 0.38)
 			draw_circle(_p([[0.66, 0.4]])[0], 0.3 * minf(size.x, size.y), get_meta("bg", Color("fff8ec")))
