@@ -17,6 +17,9 @@ var speed := 0.0
 var force_speed := -1.0   # test: animasyonu bu hizla oynat
 var riding := ""          # "bisiklet" / "scooter": oturma ve pedal pozu
 var ride_speed := 0.0
+var ride_lean := -1.0      # surucunun one egilmesi (radyan); -1 = varsayilan
+var grips: Array = []     # [sol, sag] gidon tutaclarinin dunya konumu (surerken)
+var hand_twist := 1.2     # avucu asagi cevirmek icin on kol donusu
 var _pedal := 0.0
 var tint := Color.WHITE   # tisort rengi
 var hand: Node3D          # elde tasinan esya icin
@@ -207,7 +210,7 @@ func _ride_pose(dt: float) -> void:
 	var bike := riding == "bisiklet"
 	var moto := riding == "motosiklet"
 	_pedal += dt * ride_speed / 0.55 * (1.0 if bike else 0.0)
-	var lean := 0.32 if bike else (0.22 if moto else 0.08)
+	var lean := ride_lean if ride_lean >= 0.0 else (0.32 if bike else (0.22 if moto else 0.08))
 	_turn("Hips", [[X, lean * 0.5]])
 	_turn("Spine", [[X, lean * 0.6]])
 	_turn("Spine1", [[X, lean * 0.3]])
@@ -229,3 +232,53 @@ func _ride_pose(dt: float) -> void:
 		for f in FINGERS:
 			for n in 3:
 				_turn("%sHand%s%d" % [side, f, n + 1], [[d.inverse() * Z, -sx * 0.9]])
+		if grips.size() == 2:
+			var tgt: Vector3 = _skel.global_transform.affine_inverse() * (grips[0] if side == "Left" else grips[1])
+			_arm_ik(side, tgt)
+
+
+func _rot_between(u: Vector3, v: Vector3) -> Basis:
+	u = u.normalized()
+	v = v.normalized()
+	var ax := u.cross(v)
+	if ax.length() < 1e-5:
+		return Basis()
+	return Basis(ax.normalized(), acos(clampf(u.dot(v), -1.0, 1.0)))
+
+
+## Iki kemikli kol cozucusu: eli hedefe (iskelet uzayi) goturur, dirsek asagi-disari bakar,
+## avuc asagi doner (gidonu kavrar).
+func _arm_ik(side: String, target: Vector3) -> void:
+	var sx := 1.0 if side == "Left" else -1.0
+	var ia: int = _bones[side + "Arm"]
+	var iff: int = _bones[side + "ForeArm"]
+	var ih: int = _bones[side + "Hand"]
+	var gp := _skel.get_bone_global_pose(_skel.get_bone_parent(ia))
+	var off_f := _skel.get_bone_pose_position(iff)       # dirsegin kol icindeki yeri
+	var off_h := _skel.get_bone_pose_position(ih)        # bilegin on kol icindeki yeri
+	var a := off_f.length()
+	var b := off_h.length()
+	var sh := gp * _skel.get_bone_pose_position(ia)
+	target -= (target - sh).normalized() * 0.07      # bilek, avucun ortasindan el boyu kadar geride
+	var to := target - sh
+	var dist := clampf(to.length(), absf(a - b) + 0.01, a + b - 0.005)
+	var n := to.normalized()
+	var x := (a * a - b * b + dist * dist) / (2.0 * dist)
+	var hgt := sqrt(maxf(a * a - x * x, 0.0))
+	var pole := Vector3(sx * 0.7, -1.0, -0.2)
+	pole = (pole - n * pole.dot(n)).normalized()
+	var elbow := sh + n * x + pole * hgt
+	var wrist := sh + n * dist
+	# Ust kol
+	var bg := gp.basis.orthonormalized() * Basis(_skel.get_bone_pose_rotation(ia))
+	bg = _rot_between(bg * off_f, elbow - sh) * bg
+	_skel.set_bone_pose_rotation(ia, (gp.basis.orthonormalized().inverse() * bg).get_rotation_quaternion())
+	# On kol
+	var bf := bg * Basis(_skel.get_bone_pose_rotation(iff))
+	bf = _rot_between(bf * off_h, wrist - elbow) * bf
+	var axis := (wrist - elbow).normalized()
+	bf = Basis(axis, -sx * hand_twist) * bf
+	_skel.set_bone_pose_rotation(iff, (bg.inverse() * bf).get_rotation_quaternion())
+	# El: on kolla ayni dogrultuda, hafif asagi bukuk
+	var hrest := _skel.get_bone_rest(ih).basis.get_rotation_quaternion()
+	_skel.set_bone_pose_rotation(ih, hrest * Quaternion(Vector3.RIGHT, 0.15))

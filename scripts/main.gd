@@ -54,6 +54,7 @@ var _cam_pitch := 0.27
 var _press_pos := Vector2.ZERO
 var _press_moved := 0.0
 var _press_time := 0.0
+var _kb_stick := false     # klavye cubugu dolduruyor
 var _routing := false      # harita rotasi izleniyor (yurume hizinda)
 var _direct := false       # son hedefe duz cizgiyle mi gidiliyor
 var _menu_angle := 0.6
@@ -536,6 +537,61 @@ func _unhandled_input(e: InputEvent) -> void:
 		_pointer_move(e.relative)
 
 
+## Bilgisayar: WASD / oklar yurur, Shift kosar, E etkilesim, 1-2-3 sev-mama-top, Q komutlar, M harita, Esc menu,
+## C fotograf, fare tekeri yakinlastirir, sol tikla surukleyince kamera doner.
+func _input(e: InputEvent) -> void:
+	if not (e is InputEventKey) or e.echo or not _ready_done:
+		return
+	var k: InputEventKey = e
+	if not k.pressed:
+		return
+	if _mode == "play" and not ui.is_blocking() and not map_screen.visible:
+		match k.keycode:
+			KEY_E, KEY_F:
+				if ui._context.visible:
+					_on_command(ui._context_cmd)
+			KEY_1:
+				_on_command("pet")
+			KEY_2:
+				ui._on_action("food")
+			KEY_3:
+				_on_command("yarn" if state.d["active"] == "kedi" else "throw")
+			KEY_Q:
+				ui._on_action("more")
+			KEY_M:
+				map_screen.open(_owner_pos())
+			KEY_C:
+				_on_photo("enter")
+			KEY_TAB:
+				var pets: Array = state.owned_pets()
+				if pets.size() > 1:
+					_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
+	if k.keycode == KEY_ESCAPE:
+		if map_screen.visible:
+			map_screen.visible = false
+		elif ui.is_blocking():
+			ui.close_modal()
+		elif _mode == "play":
+			ui.open_pause()
+
+
+## Klavyeden hareket: dokunmatik cubuk kullanilmiyorsa ui.stick'i doldurur.
+func _keyboard_stick() -> void:
+	if ui._stick_id != -2:
+		return
+	var v := Vector2(
+		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
+		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+	if v == Vector2.ZERO:
+		if _kb_stick:
+			ui.stick = Vector2.ZERO
+			_kb_stick = false
+		return
+	var run := Input.is_physical_key_pressed(KEY_SHIFT) or _ride != null
+	ui.stick = v.normalized() * (1.0 if run else 0.55)
+	_kb_stick = true
+
+
 func _zoom_by(f: float) -> void:
 	if _mode == "photo":
 		_photo["dist"] = clampf(_photo["dist"] * f, 1.8, 12.0)
@@ -754,9 +810,12 @@ var _engine: AudioStreamPlayer
 ## binince karakter gizlenir mi, sele konumu (karakterin kayma payi), motor sesi.
 const RIDES := {
 	"araba": {"max": 14.0, "acc": 5.0, "base": 2.6, "r": 1.15, "hide": true, "seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
-	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, 0.8, 0.32), "engine": 1.6, "ad": "Scooter'a Bin"},
-	"motosiklet": {"max": 17.0, "acc": 5.5, "base": 1.4, "r": 0.55, "hide": false, "seat": Vector3(0, 0.8, 0.3), "engine": 1.35, "ad": "Motosiklete Bin"},
-	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, 0.97, 0.2), "engine": 0.0, "ad": "Bisiklete Bin"},
+	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, 0.8, 0.22), "lean": 0.5, "engine": 1.6, "ad": "Scooter'a Bin",
+		"grip": Vector3(0.27, 0.99, -0.38)},
+	"motosiklet": {"max": 17.0, "acc": 5.5, "base": 1.4, "r": 0.55, "hide": false, "seat": Vector3(0, 0.8, 0.12), "lean": 0.62, "engine": 1.35, "ad": "Motosiklete Bin",
+		"grip": Vector3(0.36, 0.98, -0.47)},
+	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, 0.97, 0.16), "lean": 0.6, "engine": 0.0, "ad": "Bisiklete Bin",
+		"grip": Vector3(0.3, 1.02, -0.36)},
 }
 
 
@@ -831,6 +890,7 @@ func _enter_ride() -> void:
 			agents[k].set_process(false)
 	else:
 		owner_model.riding = _ride.get_meta("kind")
+		owner_model.ride_lean = float(cfg.get("lean", -1.0))
 		# seat: sele ust yuzeyinin yuksekligi ve arac merkezine gore konumu; kalca kemigi selenin 9 cm ustunde
 		var seat: Vector3 = cfg["seat"]
 		owner_model.position = Vector3(0, seat.y + 0.09 - owner_model.hips_height(), seat.z)
@@ -859,6 +919,7 @@ func _exit_ride() -> void:
 	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
 	owner_model.visible = true
 	owner_model.riding = ""
+	owner_model.grips = []
 	owner_model.position = Vector3.ZERO
 	if hidden:
 		var i := 0
@@ -899,6 +960,9 @@ func _update_drive(dt: float) -> void:
 		# Iki tekerlekli: virajda iceri yatar
 		_ride.rotation.z = lerpf(_ride.rotation.z, -steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.35, minf(1.0, dt * 4.0))
 		owner_model.ride_speed = absf(_drive_speed)
+		if cfg.has("grip"):
+			var g: Vector3 = cfg["grip"]
+			owner_model.grips = [_ride.global_transform * Vector3(-g.x, g.y, g.z), _ride.global_transform * Vector3(g.x, g.y, g.z)]
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
 	if absf(_drive_speed) > 1.0 and not _dragging:
@@ -1169,6 +1233,8 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	if _ready_done and _mode == "play" and not _args.has("cmd"):
+		_keyboard_stick()
 	if world:
 		_update_daylight(dt)
 	AudioServer.set_bus_mute(0, not state.d["sound"])
@@ -1680,6 +1746,8 @@ func _debug_shot() -> void:
 		# Yuruyen karakteri yandan goster (animasyon denetimi)
 		_mode = "debug"
 		var ct := owner_node.position + Vector3(0, 0.85, 0)
+		if _args["chase"] == "hand":
+			ct = owner_model.hand.global_position
 		if _args["chase"] == "pet":
 			ct = agents[state.d["active"]].model.global_position + Vector3(0, 0.3, 0)
 		var ca := float(_args.get("ang", "0.5"))
