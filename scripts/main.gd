@@ -13,10 +13,8 @@ const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
 
-const WALK_SPEED := 3.6
+const WALK_SPEED := 4.2
 const CAM_OFFSET := Vector3(0, 10.5, 9.6)
-const POOL := Vector2(6.0, -51.0)
-const KENNEL := Vector2(-7.2, -46.2)
 
 var state: Node
 var world: Node3D
@@ -80,7 +78,7 @@ func _ready() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	loading.add_child(bg)
 	var lt := Label.new()
-	lt.text = "Patili Gezinti\n\nKasaba hazırlanıyor…"
+	lt.text = "Patili Gezinti\n\nKeçiören hazırlanıyor…"
 	lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lt.add_theme_font_size_override("font_size", 44)
@@ -92,6 +90,8 @@ func _ready() -> void:
 	add_child(cam)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	ParkMap.load_data()
+	state.set_places()
 	world = World.new()
 	add_child(world)
 
@@ -161,13 +161,14 @@ func _build_environment() -> void:
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.32
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.74, 0.76, 0.8)
+	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.72, 0.82, 0.9)
-	env.fog_density = 0.0018
+	env.fog_density = 0.0008
 	env.fog_sky_affect = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 1.05
@@ -181,7 +182,7 @@ func _build_environment() -> void:
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 70.0
+	sun.directional_shadow_max_distance = 90.0
 	add_child(sun)
 	sun.look_at_from_position(Vector3(6.5, 8.0, 3.5), Vector3.ZERO)
 
@@ -218,7 +219,7 @@ func _spawn_cast() -> void:
 	owner_model = PersonModel.new()
 	owner_model.kind = state.d["owner"]
 	owner_node.add_child(owner_model)
-	_place_owner(Vector2(0.6, -24.5))
+	_place_owner(ParkMap.spot("baslangic"))
 	owner_node.rotation.y = PI
 	var pets: Array = state.owned_pets()
 	if pets.is_empty():
@@ -290,7 +291,7 @@ func _start_game(owner_kind: String, pet_kind: String, pet_name: String) -> void
 	_enter_play()
 	ui.toast("Hoş geldin! Yürümek için bir yere dokun.")
 	ui.toast("Dostunu sevmek için üzerine dokun.")
-	ui.toast("Haritadan çarşıya git; Pet Shop'ta mama ve aksesuar var.")
+	ui.toast("Haritayı aç: Gökçek Parkı'ndaki Pet Shop'ta mama ve aksesuar var.")
 
 
 func _enter_play() -> void:
@@ -303,57 +304,51 @@ func _enter_play() -> void:
 
 
 func _spawn_npcs() -> void:
-	# Yuruyen insanlar (bazilarinin yaninda hayvani var)
-	var people := [
-		["kadin", "ffe6e0", ["kopek", "f4f4f4", 0.8], [Vector2(0, -25.5), Vector2(0.8, -20), Vector2(-0.8, -12), Vector2(0, -7.3),
-			Vector2(5.2, -5.2), Vector2(7.2, 0), Vector2(15, -1), Vector2(26, -5), Vector2(42, -8), Vector2(58, -11), Vector2(73, -15), Vector2(78, -10)]],
-		["erkek", "e6f0ff", [], [Vector2(-40, -6.5), Vector2(-39, -1), Vector2(-36, 5), Vector2(-31, 7), Vector2(-25, 7), Vector2(-21, 5),
-			Vector2(-14, 1), Vector2(-7.4, 0), Vector2(-5.2, 5.2), Vector2(0, 7.3), Vector2(-1, 14), Vector2(2, 21),
-			Vector2(9, 24), Vector2(13, 29), Vector2(11, 35), Vector2(8, 33.6)]],
-		["kadin", "e8ffe6", ["kedi", "c9c9c9", 0.9], [Vector2(18, -14.5), Vector2(12, -11), Vector2(5.2, -5.4), Vector2(0, -7.4),
-			Vector2(-5.2, -5.4), Vector2(-10, -13), Vector2(-14.2, -18.2)]],
-		["erkek", "fff0d6", ["kopek", "b08a66", 1.1], [Vector2(-50, -59), Vector2(-20, -59), Vector2(4, -59), Vector2(30, -59), Vector2(59.5, -59),
-			Vector2(60, -40), Vector2(60, -14)]],
-		["kadin", "f0e6ff", [], [Vector2(78, -8), Vector2(90, -10), Vector2(92, -22), Vector2(80, -26), Vector2(74, -18), Vector2(78, -8)]],
-		["erkek", "ffffff", ["kopek", "5a5a5a", 0.9], [Vector2(-20, 60), Vector2(-17, 54), Vector2(-12, 44), Vector2(-6, 30), Vector2(2, 21), Vector2(9, 24),
-			Vector2(13, 29), Vector2(26, 33), Vector2(42, 38), Vector2(58, 40)]],
-	]
-	for d in people:
+	# Sokaklarda ve parkta yuruyen insanlar (bazilarinin yaninda hayvani var)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var tints := ["ffe6e0", "e6f0ff", "e8ffe6", "fff0d6", "f0e6ff", "ffffff", "ffe9c9", "dff3ff"]
+	var pets := [["kopek", "f4f4f4", 0.8], [], ["kedi", "c9c9c9", 0.9], ["kopek", "b08a66", 1.1], [], ["kopek", "5a5a5a", 0.9], [], []]
+	var park := ParkMap.spot("cesme")
+	for i in 18:
 		var n := Npc.new()
 		var v := PersonModel.new()
-		v.kind = d[0]
-		v.tint = Color(d[1])
+		v.kind = "kadin" if i % 2 == 0 else "erkek"
+		v.tint = Color(tints[i % tints.size()])
 		n.visual = v
-		n.route = d[3]
+		# Yarisi parkin cevresinden, yarisi haritanin rastgele bir yerinden baslar
+		var from := park + Vector2(rng.randf_range(-90, 90), rng.randf_range(-200, 120)) if i < 10 else \
+			Vector2(rng.randf_range(ParkMap.BOUNDS_MIN.x, ParkMap.BOUNDS_MAX.x) * 0.9, rng.randf_range(ParkMap.BOUNDS_MIN.y, ParkMap.BOUNDS_MAX.y) * 0.9)
+		n.graph_node = ParkMap.nearest_node(from)
+		n.walk_speed = rng.randf_range(1.2, 1.6)
 		n.add_child(v)
 		add_child(n)
-		var pet_def: Array = d[2]
+		var pet_def: Array = pets[i % pets.size()]
 		if pet_def.size() > 0:
 			var np := _npc_pet(pet_def[0], Color(pet_def[1]), pet_def[2])
 			np.follow = n
-			np.place(n.route[0] + Vector2(0.8, 0.5))
-	# Kendi basina gezen hayvanlar
+			np.place(ParkMap.nodes[n.graph_node] + Vector2(0.8, 0.5))
+	# Parkta kendi basina gezen hayvanlar
 	var free := [
-		["kopek", "4a4038", 1.0, Vector2(32, 8.5), 3.5, 2.2], ["kopek", "ffe0b0", 0.75, Vector2(33.5, 7), 3.5, 2.6],
-		["kopek", "ffffff", 0.9, ParkMap.MEADOW, 6.5, 1.8], ["kedi", "ffffff", 1.0, ParkMap.PICNIC + Vector2(2.5, 1.5), 3.0, 1.2],
-		["kedi", "8a8a8a", 0.95, ParkMap.SQUARE + Vector2(-4, 8), 5.0, 3.4], ["kedi", "d8c8b0", 1.05, ParkMap.BEACH + Vector2(6, -4), 5.0, 1.6],
-		["kopek", "c9a070", 1.05, ParkMap.ORCHARD + Vector2(0, -16), 5.0, 2.0], ["kedi", "5f5048", 1.0, Vector2(-30, -62), 4.0, 1.4],
+		["kopek", "4a4038", 1.0, ParkMap.spot("oyun_alani"), 4.0, 2.2], ["kopek", "ffe0b0", 0.75, ParkMap.spot("oyun_alani") + Vector2(2, 1), 4.0, 2.6],
+		["kopek", "ffffff", 0.9, ParkMap.spot("cesme") + Vector2(10, 12), 7.0, 1.8], ["kedi", "ffffff", 1.0, ParkMap.spot("piknik") + Vector2(3, 2), 4.0, 1.2],
+		["kedi", "d8c8b0", 1.05, ParkMap.spot("cardak") + Vector2(-8, 6), 5.0, 1.6], ["kopek", "c9a070", 1.05, ParkMap.spot("petshop") + Vector2(6, 12), 6.0, 2.0],
 	]
-	var last: Node3D
 	for f in free:
 		var np := _npc_pet(f[0], Color(f[1]), f[2])
 		np.roam_center = f[3]
 		np.roam_radius = f[4]
 		np.walk_speed = f[5]
+		np.world = world
 		np.place(f[3])
-		last = np
 	# Kovalamaca oynayan kediler (biri kacar, digeri kovalar)
-	for c in [ParkMap.SQUARE + Vector2(-4, 8), ParkMap.GARDEN + Vector2(-9, 6)]:
+	for c in [ParkMap.spot("dondurmaci") + Vector2(14, 24), ParkMap.spot("kafe") + Vector2(-16, 12)]:
 		var runner := _npc_pet("kedi", Color("f2e2c4"), 0.9)
 		runner.roam_center = c
 		runner.roam_radius = 6.0
 		runner.walk_speed = 3.6
 		runner.short_pause = true
+		runner.world = world
 		runner.place(c)
 		var chaser := _npc_pet("kedi", Color("707070"), 0.95)
 		chaser.follow = runner
@@ -374,34 +369,36 @@ func _npc_pet(kind: String, tint: Color, size: float) -> Node3D:
 
 
 func _spawn_coins() -> void:
-	var lines: Array = []
-	for path in ParkMap.PATHS:
-		lines.append(path["pts"])
-	for r in ParkMap.ROADS:
-		var off: Array = []
-		for pt in r:
-			off.append(pt + (Vector2(0, 4.2) if r[0].y == r[1].y else Vector2(-4.2, 0)))
-		lines.append(off)
+	# Park yollarinda sik, sokaklarda seyrek altin
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	var id := 0
 	var gold := Kit.mat("e9b93a", 0.25)
-	for line in lines:
-		for i in line.size() - 1:
-			var a: Vector2 = line[i]
-			var b: Vector2 = line[i + 1]
-			var n := int(a.distance_to(b) / 13.0)
-			for k in n:
-				id += 1
-				var p := a.lerp(b, (k + 0.5) / n) + Vector2(rng.randf_range(-0.6, 0.6), rng.randf_range(-0.6, 0.6))
-				if state.d["found"].has(id) or ParkMap.water_blocked(p):
+	for group in [[ParkMap.data["paths"], 17.0, 0.0], [ParkMap.data["roads"], 46.0, 1.0]]:
+		for w in group[0]:
+			var ids: Array = w["n"]
+			var carry: float = group[1] * 0.5
+			for i in ids.size() - 1:
+				var a := ParkMap.nodes[int(ids[i])]
+				var b := ParkMap.nodes[int(ids[i + 1])]
+				var length := a.distance_to(b)
+				if length < 0.5:
 					continue
-				var c := Node3D.new()
-				c.position = Vector3(p.x, ParkMap.walk_height(p) + 0.55, p.y)
-				c.set_meta("id", id)
-				Kit.cyl(c, 0.2, 0.2, 0.05, Vector3.ZERO, gold, 14, Vector3(PI / 2, 0, 0))
-				add_child(c)
-				_coins.append(c)
+				var dir := (b - a) / length
+				while carry < length:
+					id += 1
+					var side: float = (float(w["w"]) * 0.5 + 1.3) * group[2]
+					var p := a + dir * carry + Vector2(-dir.y, dir.x) * side + Vector2(rng.randf_range(-0.4, 0.4), rng.randf_range(-0.4, 0.4))
+					carry += group[1]
+					if state.d["found"].has(id) or not world.is_free(p, 0.3):
+						continue
+					var c := Node3D.new()
+					c.position = Vector3(p.x, ParkMap.walk_height(p) + 0.55, p.y)
+					c.set_meta("id", id)
+					Kit.cyl(c, 0.2, 0.2, 0.05, Vector3.ZERO, gold, 14, Vector3(PI / 2, 0, 0))
+					add_child(c)
+					_coins.append(c)
+				carry -= length
 
 
 # ---------------------------------------------------------------- girdi
@@ -559,9 +556,9 @@ func _on_command(cmd: String) -> void:
 				a.play_with(a.buddy)
 				ui.toast("Kovalamaca başladı!")
 		"wash":
-			a.wash(POOL)
+			a.wash(world.pool_pos)
 		"bed":
-			a.place(KENNEL + Vector2(1.0, 1.6))
+			a.place(world.kennel_pos + Vector2(1.0, 1.6))
 			a.command("sleep")
 			ui.toast("%s kulübesinde uyuyor…" % p["name"])
 		"shop":
@@ -800,12 +797,13 @@ func _process(dt: float) -> void:
 			_slow_t = 0.3
 			state.visit(_owner_pos())
 			_update_context()
-			world.update_occluders(_owner_pos(), _mode != "photo")
+
 		_save_t += dt
 		if _save_t > 20.0:
 			_save_t = 0.0
 			state.save_game()
 	_update_camera(dt)
+	world.set_focus(owner_node.position, _mode == "play")
 
 
 func _update_owner(dt: float) -> void:
@@ -860,13 +858,13 @@ func _update_context() -> void:
 	for n in _npc_pets:
 		if Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
 			_near_npc = n
-	if o.distance_to(ParkMap.PETSHOP + Vector2(0, 7.0)) < 4.5:
+	if o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
 		ui.set_context("Pet Shop'a Gir", "shop", "cart")
-	elif o.distance_to(ParkMap.KIOSK + Vector2(0, 2.5)) < 3.6:
+	elif o.distance_to(ParkMap.spot("dondurmaci") + Vector2(0, 2.5)) < 3.6:
 		ui.set_context("Dondurma Al  (10)", "icecream", "star")
-	elif o.distance_to(POOL) < 4.2 and not a.is_busy():
+	elif o.distance_to(world.pool_pos) < 4.2 and not a.is_busy():
 		ui.set_context("Havuzda Yıka", "wash", "drop")
-	elif o.distance_to(KENNEL) < 3.8 and not a.is_busy():
+	elif o.distance_to(world.kennel_pos) < 3.8 and not a.is_busy():
 		ui.set_context("Kulübede Uyut", "bed", "moon")
 	elif _near_npc and not a.is_busy():
 		ui.set_context("Arkadaşıyla Oynat", "npcplay", "play")
@@ -879,9 +877,10 @@ func _update_camera(dt: float) -> void:
 	match _mode:
 		"menu":
 			_menu_angle += dt * 0.06
-			var c := Vector3(0, 1.5, -31)
+			var g := ParkMap.spot("cesme")
+			var c := Vector3(g.x, 1.5, g.y)
 			_focus = _focus.lerp(c, k)
-			cam.position = c + Vector3(sin(_menu_angle) * 17.0, 7.5, cos(_menu_angle) * 17.0)
+			cam.position = c + Vector3(sin(_menu_angle) * 24.0, 11.0, cos(_menu_angle) * 24.0)
 			cam.look_at(c)
 		"photo":
 			var a := _active()
@@ -1027,7 +1026,7 @@ func _debug_flow() -> void:
 	ui.back_to_menu.emit()
 	ui.continue_game.emit()
 	print("AKIS tamam: sahip=%s hayvanlar=%s aktif=%s giyilen=%s mesafe=%.0f" % [state.d["owner"], state.owned_pets(), state.d["active"],
-		state.pet("kedi")["worn"], _owner_pos().distance_to(Vector2(0.6, -24.5))])
+		state.pet("kedi")["worn"], _owner_pos().distance_to(ParkMap.spot("baslangic"))])
 
 ## Ekran goruntusu: -- --shot=dosya.png [--screen=menu|setup|play|shop|acc|pets|quests|closet|map|photo|pause]
 ## [--view=top|wide|low] [--at=x,z] [--both] [--level=n] [--wear=id,id] [--cmd=sit] [--pet=kedi] [--frames=n]
@@ -1093,8 +1092,8 @@ func _debug_shot() -> void:
 			env.fog_enabled = false
 			world.hide_clouds()
 			cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-			cam.size = float(_args.get("size", "236"))
-			cam.position = Vector3(float(_args.get("cx", "20")), 150, float(_args.get("cz", "-6")))
+			cam.size = float(_args.get("size", "900"))
+			cam.position = Vector3(float(_args.get("cx", "0")), 300, float(_args.get("cz", "0")))
 			cam.rotation = Vector3(-PI / 2, 0, 0)
 		elif view == "wide":
 			var wc := Vector3(float(_args.get("cx", "0")), 0, float(_args.get("cz", "0")))

@@ -437,12 +437,12 @@ func open_quests() -> void:
 		var pb := K.bar(row, K.GREEN, Vector2(110, 14))
 		pb.value = prog / q[2] * 100.0
 		pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	K.label(body, "Keşif: %d / %d yer" % [state.d["places"].size(), state.PLACES.size()], 24, K.MUTED)
+	K.label(body, "Keşif: %d / %d yer" % [state.d["places"].size(), state.places.size()], 24, K.MUTED)
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 8)
 	flow.add_theme_constant_override("v_separation", 8)
 	body.add_child(flow)
-	for pl in state.PLACES:
+	for pl in state.places:
 		var found: bool = state.d["places"].has(pl[0])
 		var chip := K.box(flow, K.GREEN if found else K.SOFT, 18, 10)
 		K.label(chip, pl[0] if found else "? ? ?", 19, Color.WHITE if found else K.MUTED)
@@ -568,7 +568,7 @@ func _build_menu() -> void:
 	title.offset_top = 150
 	title.offset_bottom = 420
 	title.add_theme_constant_override("line_spacing", -18)
-	var sub := K.outline(K.label(menu, "Dostunla birlikte kasabayı keşfet", 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER), 10, Color("6b4a2f"))
+	var sub := K.outline(K.label(menu, "Dostunla birlikte Keçiören'i keşfet", 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER), 10, Color("6b4a2f"))
 	sub.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	sub.offset_top = 430
 	sub.offset_bottom = 480

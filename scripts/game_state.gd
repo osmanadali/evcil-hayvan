@@ -19,13 +19,6 @@ const FOODS := {
 	"konserve": ["Konserve", 14, 60, 5],
 	"odul": ["Ödül Bisküvisi", 6, 12, 18],
 }
-# Kesfedilecek yerler: [ad, merkez, yaricap]
-const PLACES := [
-	["Ev", Vector2(0, -40), 14.0], ["Leylak Sokağı", Vector2(0, -63), 9.0], ["Çeşme Meydanı", Vector2(0, 0), 8.0],
-	["Gölet", Vector2(-34, -4), 10.0], ["Köpek Oyun Alanı", Vector2(32, 8), 8.0], ["Çiçek Bahçesi", Vector2(22, -16), 8.0],
-	["Çarşı Meydanı", Vector2(84, -16), 13.0], ["Meyve Bahçesi", Vector2(72, 60), 18.0], ["Seyir Tepesi", Vector2(6, 32), 5.0],
-	["Kumsal", Vector2(-23, 66), 12.0], ["Orman Kampı", Vector2(-56, -30), 7.0], ["Piknik Alanı", Vector2(-16, -20), 6.0],
-]
 # Gunluk gorevler: [anahtar, aciklama, hedef, odul]
 const QUESTS := [
 	["pet", "Hayvanını 5 kez sev", 5, 20], ["fetch", "3 kez oyun oyna", 3, 25], ["feed", "Hayvanını besle", 1, 15],
@@ -33,11 +26,24 @@ const QUESTS := [
 ]
 
 var d := {}
+var places: Array = []   # kesfedilecek yerler: [ad, merkez, yaricap]
 
 
 func _ready() -> void:
 	reset()
 	load_game()
+
+
+## Kesfedilecek yerleri harita verisinden doldurur.
+func set_places() -> void:
+	const ParkMap = preload("res://scripts/park_map.gd")
+	const SPOT_NAMES := {"bahce": "Bahçe", "petshop": "Pet Shop", "kafe": "Park Kafe", "dondurmaci": "Dondurmacı",
+		"cardak": "Çardak", "cesme": "Çeşme", "oyun_alani": "Köpek Oyun Alanı", "piknik": "Piknik Alanı"}
+	places.clear()
+	for k in SPOT_NAMES:
+		places.append([SPOT_NAMES[k], ParkMap.spot(k), 9.0])
+	for pl in ParkMap.data["places"]:
+		places.append([pl["name"], Vector2(pl["pos"][0], pl["pos"][1]), float(pl["r"]) + 12.0])
 
 
 func reset() -> void:
@@ -154,7 +160,7 @@ func _roll_day() -> void:
 
 
 func visit(p: Vector2) -> void:
-	for pl in PLACES:
+	for pl in places:
 		var c: Vector2 = pl[1]
 		if p.distance_to(c) < pl[2] and not d["places"].has(pl[0]):
 			d["places"].append(pl[0])

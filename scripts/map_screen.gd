@@ -8,26 +8,17 @@ const K = preload("res://scripts/ui_kit.gd")
 const Icon = preload("res://scripts/icon.gd")
 const MAP_PX := 1024.0
 
-# ad, haritadaki yer, varis noktasi, renk, simge
-const PINS := [
-	["Ev", Vector2(0, -36), Vector2(0, -29), "d9523f", "home"],
-	["Arka Bahçe", Vector2(0, -48), Vector2(0, -46), "6aa84f", "bone"],
-	["Çeşme Meydanı", Vector2(0, 0), Vector2(0, 4.5), "4f8fd9", "drop"],
-	["Gölet", Vector2(-29, -7), Vector2(-39.5, -6), "38a6c9", "drop"],
-	["Köpek Oyun Alanı", Vector2(32, 8), Vector2(27, 6), "f29f4b", "ball"],
-	["Dondurmacı", Vector2(18, 16), Vector2(15.4, 14.2), "e88fb0", "star"],
-	["Çiçek Bahçesi", Vector2(22, -16), Vector2(18.6, -14.2), "a78bd4", "heart"],
-	["Piknik Alanı", Vector2(-16, -20), Vector2(-14, -18), "6aa84f", "smile"],
-	["Seyir Tepesi", Vector2(6, 32), Vector2(7, 33.2), "5fb3a8", "camera"],
-	["Pet Shop", Vector2(84, -35), Vector2(84, -28.5), "f29f4b", "cart"],
-	["Kafe", Vector2(103, -16), Vector2(95, -16), "8f5a3c", "smile"],
-	["Çarşı Meydanı", Vector2(84, -16), Vector2(78, -14), "8d8f92", "pin"],
-	["Meyve Bahçesi", Vector2(72, 60), Vector2(72, 45), "c8452f", "star"],
-	["Kumsal", Vector2(-23, 66), Vector2(-20, 61), "e0b23e", "smile"],
-	["İskele", Vector2(-36, 68), Vector2(-29, 68), "a8774a", "pin"],
-	["Orman Kampı", Vector2(-56, -30), Vector2(-54, -28), "4c8a3f", "moon"],
+const SPOT_PINS := [
+	["Bahçe", "bahce", Vector2(11.5, 0), "6aa84f", "bone"], ["Pet Shop", "petshop", Vector2(0, 6.5), "f29f4b", "cart"],
+	["Park Kafe", "kafe", Vector2(-7, 0), "8f5a3c", "smile"], ["Dondurmacı", "dondurmaci", Vector2(0, 3), "e88fb0", "star"],
+	["Çardak", "cardak", Vector2(0, 4.5), "a78bd4", "heart"], ["Çeşme", "cesme", Vector2(0, 4), "4f8fd9", "drop"],
+	["Köpek Oyun Alanı", "oyun_alani", Vector2(9.5, 0), "f29f4b", "ball"], ["Piknik Alanı", "piknik", Vector2(2.5, 2), "6aa84f", "smile"],
 ]
-const STREETS := [["Leylak Sokağı", Vector2(-10, -63), 0.0], ["Çarşı Caddesi", Vector2(64, 5), PI / 2]]
+const KIND_STYLE := {"park": ["4c8a3f", "heart"], "saha": ["5fb3a8", "ball"], "cami": ["4f8fd9", "moon"], "okul": ["e0b23e", "star"]}
+
+# ad, haritadaki yer, varis noktasi, renk, simge (harita verisinden doldurulur)
+var PINS: Array = []
+var STREETS: Array = []
 
 var _view: Control
 var _canvas: Control
@@ -46,6 +37,16 @@ var _me_world := Vector2.ZERO
 
 
 func _ready() -> void:
+	ParkMap.load_data()
+	for sp in SPOT_PINS:
+		var c: Vector2 = ParkMap.spot(sp[1])
+		PINS.append([sp[0], c, c + sp[2], sp[3], sp[4]])
+	for pl in ParkMap.data["places"]:
+		var c := Vector2(pl["pos"][0], pl["pos"][1])
+		var st: Array = KIND_STYLE.get(pl["kind"], ["8d8f92", "pin"])
+		PINS.append([pl["name"], c, ParkMap.nodes[ParkMap.nearest_node(c)], st[0], st[1]])
+	for sdata in ParkMap.data["streets"]:
+		STREETS.append([sdata["name"], Vector2(sdata["pos"][0], sdata["pos"][1]), float(sdata["rot"])])
 	visible = false
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	var dim := ColorRect.new()
@@ -79,6 +80,7 @@ func _ready() -> void:
 	for s in STREETS:
 		var sl := K.label(_canvas, s[0], 15, Color("8d8f92"), HORIZONTAL_ALIGNMENT_CENTER)
 		sl.size = Vector2(220, 20)
+		sl.scale = Vector2(0.45, 0.45)
 		sl.pivot_offset = Vector2(110, 10)
 		sl.position = _to_px(s[1]) - Vector2(110, 10)
 		sl.rotation = s[2]
@@ -132,7 +134,7 @@ func _ready() -> void:
 	sic.position = Vector2(16, 15)
 	sic.size = Vector2(30, 30)
 	search.add_child(sic)
-	var st := K.label(search, "Papatya Kasabası", 24, K.BROWN)
+	var st := K.label(search, "Keçiören, Ankara", 24, K.BROWN)
 	st.position = Vector2(58, 0)
 	st.size = Vector2(400, 60)
 	var close := K.button(screen, "", "close", func(): visible = false, K.RED, Color.WHITE, Vector2(60, 60), 22, 30)
@@ -177,6 +179,12 @@ func _ready() -> void:
 	go.offset_top = -39
 	go.offset_bottom = 39
 	go.name = "Go"
+	var credit := K.outline(K.label(_view, "© OpenStreetMap katkıcıları", 15, K.MUTED), 4)
+	credit.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
+	credit.offset_left = 26
+	credit.offset_top = -206
+	credit.offset_bottom = -184
+	credit.offset_right = 300
 	_select(-1)
 
 
@@ -187,7 +195,7 @@ func open(player_pos: Vector2) -> void:
 	_select(-1)
 	await get_tree().process_frame
 	_zoom_min = maxf(_view.size.x, _view.size.y) / MAP_PX
-	_zoom = _zoom_min * 1.6
+	_zoom = _zoom_min * 3.2
 	_center_on(_me.position)
 
 
@@ -201,23 +209,23 @@ func _to_px(w: Vector2) -> Vector2:
 
 
 func _apply() -> void:
-	_zoom = clampf(_zoom, _zoom_min, _zoom_min * 5.0)
+	_zoom = clampf(_zoom, _zoom_min, _zoom_min * 9.0)
 	_canvas.scale = Vector2.ONE * _zoom
 	var lo := _view.size - Vector2(MAP_PX, MAP_PX) * _zoom
 	_canvas.position = _canvas.position.clamp(lo, Vector2.ZERO)
 	# Simgeler ekranda ayni boyda kalir; isimler yakinlastirinca gorunur
-	var names := _zoom > _zoom_min * 1.35
+	var names := _zoom > _zoom_min * 2.4
 	for i in _pins.size():
 		_pins[i].scale = Vector2.ONE / _zoom * (1.25 if i == _selected else 1.0)
 		_pins[i].get_child(2).visible = names or i == _selected
 	for s in _streets:
-		s.visible = _zoom > _zoom_min * 1.8
+		s.visible = _zoom > _zoom_min * 2.2
 	_me.scale = Vector2.ONE / _zoom
 
 
 func _zoom_at(factor: float, pivot: Vector2) -> void:
 	var before := (pivot - _canvas.position) / _zoom
-	_zoom = clampf(_zoom * factor, _zoom_min, _zoom_min * 5.0)
+	_zoom = clampf(_zoom * factor, _zoom_min, _zoom_min * 9.0)
 	_canvas.position = pivot - before * _zoom
 	_apply()
 
@@ -299,7 +307,7 @@ func select_by_name(pin_name: String) -> void:
 	for i in PINS.size():
 		if PINS[i][0] == pin_name:
 			_select(i)
-			_zoom = _zoom_min * 2.4
+			_zoom = _zoom_min * 4.0
 			_center_on(_to_px(PINS[i][1]))
 
 
