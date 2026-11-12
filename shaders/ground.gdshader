@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode specular_disabled;
+
 
 // Zemin: fotograf tabanli dokular, mesafe alani maskeleriyle karistirilir (kenarlar keskin kalir).
 // splat_a: R patika, G kiyi (0.5 = kiyi, +-4 m), B kum      splat_b: R asfalt, G asfalt+kaldirim, B sehir zemini (park disi)
@@ -15,6 +15,9 @@ uniform sampler2D t_pavers : source_color, filter_linear_mipmap_anisotropic, rep
 uniform sampler2D t_yard : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_gravel : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_sand : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n_grass : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n_asphalt : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n_pavers : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 
 varying vec3 wpos;
 
@@ -30,6 +33,8 @@ float edge(float v, float w) { return smoothstep(0.5 - w, 0.5 + w, v); }
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	TANGENT = normalize(cross(vec3(0.0, 0.0, 1.0), NORMAL));
+	BINORMAL = normalize(cross(NORMAL, TANGENT));
 }
 
 void fragment() {
@@ -43,7 +48,7 @@ void fragment() {
 
 	// Cim: iki olcekte ornekle (tekrar belli olmasin), buyuk lekelerle canlilik degissin
 	vec3 grass = texture(t_grass, p * 0.27).rgb * 0.6 + texture(t_grass, p * 0.061 + 3.7).rgb * 0.4;
-	grass *= mix(vec3(0.82, 1.18, 0.62), vec3(1.08, 1.22, 0.7), macro) * 1.45;
+	grass *= mix(vec3(0.82, 1.18, 0.62), vec3(1.08, 1.22, 0.7), macro) * 1.12;
 	grass = mix(grass, grass * vec3(1.12, 1.0, 0.72), smoothstep(0.55, 0.9, vnoise(p * 0.12 + 9.0)) * 0.5);
 
 	// Binalar arasi: beton ve toprak karisimi, yer yer ot
@@ -79,6 +84,14 @@ void fragment() {
 	float cloud = vnoise(p * 0.012 + vec2(TIME * 0.008, TIME * 0.005));
 	col *= 1.0 - 0.18 * smoothstep(0.55, 0.8, cloud);
 
+	// Yuzey kabartisi: cim, kaldirim ve asfalt
+	float on_pave = edge(b.g, 0.006);
+	vec3 nm = texture(n_grass, p * 0.27).rgb;
+	nm = mix(nm, vec3(0.5, 0.5, 1.0), edge(b.b, 0.03) * 0.7);
+	nm = mix(nm, texture(n_pavers, p * 0.5).rgb, on_pave);
+	nm = mix(nm, texture(n_asphalt, p * 0.16).rgb, on_road);
+	NORMAL_MAP = nm;
+	NORMAL_MAP_DEPTH = 1.2;
 	ALBEDO = col;
-	ROUGHNESS = 1.0;
+	ROUGHNESS = mix(1.0, 0.82, on_road);
 }

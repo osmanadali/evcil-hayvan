@@ -8,6 +8,8 @@ uniform float see_radius = 5.5;
 uniform sampler2D t_wall : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_roof : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D t_flat : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n_wall : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n_roof : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 
 varying vec3 wpos;
 varying vec3 wnormal;
@@ -18,6 +20,10 @@ float box(vec2 p, vec2 lo, vec2 hi) { return step(lo.x, p.x) * step(p.x, hi.x) *
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnormal = NORMAL;
+	// Kabarti dokulari icin teget: duvarda yatay, catida egim boyunca
+	vec3 t = abs(NORMAL.y) < 0.95 ? cross(vec3(0.0, 1.0, 0.0), NORMAL) : vec3(1.0, 0.0, 0.0);
+	TANGENT = normalize(t);
+	BINORMAL = normalize(cross(NORMAL, TANGENT));
 }
 
 void fragment() {
@@ -36,12 +42,18 @@ void fragment() {
 	vec3 tint = pow(COLOR.rgb, vec3(2.2));
 	float seed = UV2.y;
 	float h = UV2.x;
-	if (wnormal.y > 0.5) {
+	if (h < 0.0) {
+		// Balkon parcalari: duz renk
+		ALBEDO = tint * (0.9 + 0.1 * texture(t_wall, wpos.xz * 0.3).r);
+		ROUGHNESS = 0.9;
+	} else if (wnormal.y > 0.5) {
 		if (seed < 0.5) {
 			// Kiremit: sira yonu egime gore
 			vec2 dir = normalize(wnormal.xz + vec2(0.0001));
 			vec2 ruv = vec2(dot(wpos.xz, vec2(-dir.y, dir.x)), dot(wpos.xz, dir) * 1.15) * 0.42;
 			ALBEDO = texture(t_roof, ruv).rgb * vec3(0.95, 0.82, 0.78) * (0.85 + 0.3 * hash(vec2(seed * 91.0, 3.0)));
+			NORMAL_MAP = texture(n_roof, ruv).rgb;
+			NORMAL_MAP_DEPTH = 1.5;
 		} else {
 			ALBEDO = texture(t_flat, wpos.xz * 0.2).rgb * vec3(1.15, 1.13, 1.1);
 		}
@@ -67,7 +79,7 @@ void fragment() {
 		float top_ok = step(UV.y, h - 0.7);
 		vec3 col = wall;
 		float rough = 0.92;
-		bool balcony = !ground && col_r > 0.62;
+		bool balcony = !ground && mod(id.x, 3.0) == 1.0;
 		// Pencere / balkon kapisi
 		vec2 lo = ground ? vec2(0.16, 0.1) : (balcony ? vec2(0.2, 0.12) : vec2(0.26, 0.32));
 		vec2 hi = ground ? vec2(0.84, 0.8) : (balcony ? vec2(0.8, 0.82) : vec2(0.74, 0.8));
@@ -91,17 +103,8 @@ void fragment() {
 		}
 		// Pencere denizligi
 		col = mix(col, vec3(0.8, 0.79, 0.76), box(cell, vec2(lo.x - 0.03, lo.y - 0.035), vec2(hi.x + 0.03, lo.y)) * top_ok * (balcony ? 0.0 : 1.0));
-		if (balcony && top_ok > 0.5) {
-			// Balkon: doseme, korkuluk ve golgesi
-			float slab = box(cell, vec2(0.1, 0.06), vec2(0.9, 0.12));
-			float rail = box(cell, vec2(0.1, 0.12), vec2(0.9, 0.42));
-			float bars = step(0.5, fract(UV.x * 7.0)) * 0.35 + 0.5;
-			col = mix(col, col * 0.62, box(cell, vec2(0.1, 0.42), vec2(0.9, 0.5)) * 0.8);
-			col = mix(col, tint * plaster * 0.9 * bars + vec3(0.1) * (1.0 - bars), rail * 0.92);
-			col = mix(col, vec3(0.74, 0.73, 0.7), slab);
-			col = mix(col, vec3(0.82, 0.82, 0.8), box(cell, vec2(0.1, 0.405), vec2(0.9, 0.425)));
-			rough = mix(rough, 0.9, max(rail, slab));
-		}
+		NORMAL_MAP = mix(texture(n_wall, UV * vec2(0.22, 0.22) + seed * 7.0).rgb, vec3(0.5, 0.5, 1.0), win);
+		NORMAL_MAP_DEPTH = 1.3;
 		ALBEDO = col;
 		ROUGHNESS = rough;
 		SPECULAR = 0.4;

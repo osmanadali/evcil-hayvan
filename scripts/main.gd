@@ -15,7 +15,10 @@ const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
 
 const WALK_SPEED := 4.2
-const CAM_OFFSET := Vector3(0, 10.5, 9.6)
+const CAM_DIST := 7.2
+const SKY_TURN := 2.5          # gokyuzu donusu (radyan)
+const SUN_ELEVATION := 47.9   # gokyuzu gorselindeki gunes: yukseklik ve yatay aci (derece)
+const SUN_AZIMUTH := 34.2
 
 var state: Node
 var world: Node3D
@@ -37,6 +40,11 @@ var _queue: Array[Vector2] = []
 var _touches := {}
 var _focus := Vector3.ZERO
 var _zoom := 1.0
+var _cam_yaw := 0.0        # 0 = kuzeye bakar
+var _cam_pitch := 0.27
+var _press_pos := Vector2.ZERO
+var _press_moved := 0.0
+var _press_time := 0.0
 var _menu_angle := 0.6
 var _photo := {"yaw": 0.5, "pitch": 0.22, "dist": 4.2}
 var _marker: MeshInstance3D
@@ -97,8 +105,8 @@ func _ready() -> void:
 	world = World.new()
 	add_child(world)
 
-	cam.fov = 50.0
-	cam.far = 500.0
+	cam.fov = 60.0
+	cam.far = 900.0
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.28
 	ring.outer_radius = 0.38
@@ -154,38 +162,39 @@ func _notification(what: int) -> void:
 
 func _build_environment() -> void:
 	env = Environment.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.25, 0.48, 0.85)
-	sky_mat.sky_horizon_color = Color(0.74, 0.85, 0.94)
-	sky_mat.ground_bottom_color = Color(0.4, 0.55, 0.42)
-	sky_mat.ground_horizon_color = Color(0.74, 0.85, 0.94)
+	# Fotograf tabanli gokyuzu (Poly Haven, CC0); gunesi kameranin arkasina almak icin dondurulur
+	var sky_mat := PanoramaSkyMaterial.new()
+	sky_mat.panorama = load("res://assets/sky.hdr")
+	sky_mat.energy_multiplier = 1.0
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
+	env.sky_rotation = Vector3(0, SKY_TURN, 0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.62, 0.68, 0.8)
-	env.ambient_light_energy = 0.62
+	env.ambient_light_color = Color(0.6, 0.68, 0.82)
+	env.ambient_light_energy = 0.8
 	env.glow_enabled = true
-	env.glow_intensity = 0.25
+	env.glow_intensity = 0.2
 	env.glow_bloom = 0.02
-	env.glow_hdr_threshold = 1.05
+	env.glow_hdr_threshold = 1.1
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_white = 5.0
-	env.tonemap_exposure = 1.08
+	env.tonemap_exposure = 1.0
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.72, 0.82, 0.9)
-	env.fog_density = 0.0008
+	env.fog_light_color = Color(0.7, 0.8, 0.92)
+	env.fog_density = 0.0006
+	env.fog_aerial_perspective = 0.6
 	env.fog_sky_affect = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.12
-	env.adjustment_contrast = 1.12
+	env.adjustment_saturation = 1.06
+	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.light_color = Color(1.0, 0.93, 0.8)
-	sun.light_energy = 1.25
+	sun.light_energy = 1.0
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
@@ -193,7 +202,10 @@ func _build_environment() -> void:
 	sun.shadow_bias = 0.06
 	sun.shadow_normal_bias = 1.5
 	add_child(sun)
-	sun.look_at_from_position(Vector3(7.5, 6.5, 4.5), Vector3.ZERO)
+	var el := deg_to_rad(SUN_ELEVATION)
+	var az := deg_to_rad(SUN_AZIMUTH)
+	var to_sun := Basis(Vector3.UP, SKY_TURN) * Vector3(sin(az) * cos(el), sin(el), -cos(az) * cos(el))
+	sun.look_at_from_position(to_sun * 50.0, Vector3.ZERO)
 
 
 func _make_ball(hex: String, r: float) -> Node3D:
@@ -300,7 +312,7 @@ func _start_game(owner_kind: String, pet_kind: String, pet_name: String) -> void
 	_coins.clear()
 	_spawn_coins()
 	_enter_play()
-	ui.toast("Hoş geldin! Yürümek için bir yere dokun.")
+	ui.toast("Hoş geldin! Soldaki çubukla yürü, ekranı sürükleyerek etrafına bak.")
 	ui.toast("Dostunu sevmek için üzerine dokun.")
 	ui.toast("Haritayı aç: Altınpark'taki Pet Shop'ta mama ve aksesuar var.")
 
@@ -438,11 +450,11 @@ func _unhandled_input(e: InputEvent) -> void:
 			if _touches.size() == 1:
 				_pointer_down(e.position)
 			else:
-				_dragging = false
+				_press_moved = 1000.0
 		else:
 			_touches.erase(e.index)
 			if _touches.is_empty():
-				_dragging = false
+				_pointer_up(e.position)
 	elif e is InputEventScreenDrag and touch:
 		if _touches.size() >= 2 and _touches.has(e.index):
 			var other: Vector2 = e.position
@@ -451,64 +463,66 @@ func _unhandled_input(e: InputEvent) -> void:
 					other = _touches[k]
 			_zoom_by(maxf(other.distance_to(_touches[e.index]), 1.0) / maxf(other.distance_to(e.position), 1.0))
 		elif _dragging:
-			_pointer_move(e.position, e.relative)
+			_pointer_move(e.relative)
 		_touches[e.index] = e.position
 	elif e is InputEventMouseButton and not touch:
 		if e.button_index == MOUSE_BUTTON_LEFT:
 			if e.pressed:
 				_pointer_down(e.position)
 			else:
-				_dragging = false
+				_pointer_up(e.position)
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_by(0.92)
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom_by(1.08)
 	elif e is InputEventMouseMotion and not touch and _dragging:
-		_pointer_move(e.position, e.relative)
+		_pointer_move(e.relative)
 
 
 func _zoom_by(f: float) -> void:
 	if _mode == "photo":
 		_photo["dist"] = clampf(_photo["dist"] * f, 1.8, 12.0)
 	else:
-		_zoom = clampf(_zoom * f, 0.5, 1.6)
+		_zoom = clampf(_zoom * f, 0.45, 2.6)
 
 
+## Surukleme kamerayi cevirir; kisa dokunus yurutur, hayvani sevdirir ya da atis hedefini secer.
 func _pointer_down(pos: Vector2) -> void:
 	_dragging = true
+	_press_pos = pos
+	_press_moved = 0.0
+	_press_time = Time.get_ticks_msec() / 1000.0
+
+
+func _pointer_move(rel: Vector2) -> void:
+	_press_moved += rel.length()
 	if _mode == "photo":
-		return
-	if _mode == "closet":
+		_photo["yaw"] -= rel.x * 0.008
+		_photo["pitch"] = clampf(_photo["pitch"] + rel.y * 0.006, 0.03, 1.2)
+	elif _mode == "play":
+		_cam_yaw -= rel.x * 0.006
+		_cam_pitch = clampf(_cam_pitch + rel.y * 0.004, 0.1, 1.15)
+
+
+func _pointer_up(pos: Vector2) -> void:
+	_dragging = false
+	if _mode != "play" or _press_moved > 16.0 or Time.get_ticks_msec() / 1000.0 - _press_time > 0.45:
 		return
 	var hit = _ground_hit(pos)
 	if _aim:
 		_aim = false
-		_dragging = false
 		if hit != null:
 			_throw_to(hit)
 		return
-	# Hayvana dokunma: sec ve sev
 	for k in agents:
 		var a: Node3D = agents[k]
 		if cam.unproject_position(a.position + Vector3(0, 0.35, 0)).distance_to(pos) < 64.0:
-			_dragging = false
 			_select_pet(k)
 			_do_pet()
 			return
 	if hit != null:
 		_queue.clear()
 		_go(hit)
-
-
-func _pointer_move(pos: Vector2, rel: Vector2) -> void:
-	if _mode == "photo":
-		_photo["yaw"] -= rel.x * 0.008
-		_photo["pitch"] = clampf(_photo["pitch"] + rel.y * 0.006, 0.03, 1.2)
-	elif _mode == "play":
-		var hit = _ground_hit(pos)
-		if hit != null:
-			_queue.clear()
-			_go(hit)
 
 
 ## Ekrandaki noktanin araziyle kesisimi (Vector2) ya da null.
@@ -822,6 +836,7 @@ func _process(dt: float) -> void:
 			_slow_t = 0.3
 			state.visit(_owner_pos())
 			_update_context()
+			world.face_signs(cam.position)
 
 		_save_t += dt
 		if _save_t > 20.0:
@@ -837,6 +852,18 @@ func _update_owner(dt: float) -> void:
 	var d := to.length()
 	if _mode != "play":
 		_moving = false
+	elif ui.stick.length() > 0.15:
+		# Hareket cubugu: kameraya gore yon
+		var fwd := Vector2(-sin(_cam_yaw), -cos(_cam_yaw))
+		var right := Vector2(cos(_cam_yaw), -sin(_cam_yaw))
+		var dir: Vector2 = (right * ui.stick.x - fwd * ui.stick.y).normalized()
+		_queue.clear()
+		_target = p + dir * (1.0 + 2.5 * ui.stick.length())
+		_moving = true
+		_stuck = 0.0
+		_marker.visible = false
+		to = _target - p
+		d = to.length()
 	if _moving and d < 1.0 and not _queue.is_empty():
 		_go(_queue.pop_front())
 	elif _moving and d > 0.15:
@@ -921,13 +948,16 @@ func _update_camera(dt: float) -> void:
 			pass
 		"closet":
 			var a := _active()
-			_focus = _focus.lerp(a.position + Vector3(0, -0.7, 0), k)
-			cam.position = _focus + Vector3(0.6, 3.0, 3.6)
-			cam.look_at(_focus)
+			_focus = _focus.lerp(a.position, k)
+			cam.position = _focus + Vector3(1.4, 2.2, 3.4)
+			cam.look_at(_focus + Vector3(1.1, 0.9, 0))
 		_:
 			_focus = _focus.lerp(owner_node.position, k)
-			cam.position = _focus + CAM_OFFSET * _zoom
-			cam.look_at(_focus + Vector3(0, 0.9, 0))
+			var dist := CAM_DIST * _zoom
+			var pos := _focus + Vector3(0, 1.3, 0) + Vector3(sin(_cam_yaw) * cos(_cam_pitch), sin(_cam_pitch), cos(_cam_yaw) * cos(_cam_pitch)) * dist
+			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
+			cam.position = pos
+			cam.look_at(_focus + Vector3(0, 1.55, 0))
 
 
 # ---------------------------------------------------------------- fotograf ve dolap

@@ -44,6 +44,10 @@ var _setup_pet := "kopek"
 var _name_edit: LineEdit
 var _refresh_t := 0.0
 var _flash: ColorRect
+var stick := Vector2.ZERO       # hareket cubugu (-1..1)
+var _stick_base: Panel
+var _stick_knob: Panel
+var _stick_id := -2
 
 
 func _ready() -> void:
@@ -125,34 +129,33 @@ func _build_hud() -> void:
 	cards.add_theme_constant_override("separation", 10)
 	hud.add_child(cards)
 
-	var right := VBoxContainer.new()
+	var right := HBoxContainer.new()
 	right.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	right.offset_left = -176
+	right.offset_left = -640
 	right.offset_right = -16
 	right.offset_top = top
-	right.alignment = BoxContainer.ALIGNMENT_BEGIN
+	right.offset_bottom = top + 76
+	right.alignment = BoxContainer.ALIGNMENT_END
 	right.add_theme_constant_override("separation", 12)
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(right)
 	var pill := K.box(right, K.CREAM, 28, 10, 6)
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 8)
 	pill.add_child(row)
 	row.add_child(Icon.new("coin", Color.WHITE, 34))
 	_coins = K.label(row, "0", 28, K.BROWN)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_SHRINK_END
-	col.add_theme_constant_override("separation", 12)
-	right.add_child(col)
-	K.button(col, "", "map", func(): open_map.emit(), K.CREAM, K.BLUE, Vector2(76, 76), 30, 38)
-	K.button(col, "", "list", func(): open_quests(), K.CREAM, K.GREEN, Vector2(76, 76), 30, 38)
-	K.button(col, "", "shirt", func(): open_closet(), K.CREAM, K.ORANGE, Vector2(76, 76), 30, 38)
-	K.button(col, "", "camera", func(): photo.emit("enter"), K.CREAM, K.BROWN, Vector2(76, 76), 30, 38)
-	K.button(col, "", "pause", func(): open_pause(), K.CREAM, K.MUTED, Vector2(76, 76), 30, 38)
+	K.button(right, "", "map", func(): open_map.emit(), K.CREAM, K.BLUE, Vector2(76, 76), 30, 38)
+	K.button(right, "", "list", func(): open_quests(), K.CREAM, K.GREEN, Vector2(76, 76), 30, 38)
+	K.button(right, "", "shirt", func(): open_closet(), K.CREAM, K.ORANGE, Vector2(76, 76), 30, 38)
+	K.button(right, "", "camera", func(): photo.emit("enter"), K.CREAM, K.BROWN, Vector2(76, 76), 30, 38)
+	K.button(right, "", "pause", func(): open_pause(), K.CREAM, K.MUTED, Vector2(76, 76), 30, 38)
 
 	_toast = K.box(hud, Color(0.25, 0.19, 0.14, 0.9), 26, 16)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_toast.offset_top = 270
+	_toast.offset_top = 112
 	_toast.offset_left = -300
 	_toast.offset_right = 300
 	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -163,24 +166,83 @@ func _build_hud() -> void:
 	_toast_label.custom_minimum_size = Vector2(520, 0)
 
 	var bottom := VBoxContainer.new()
-	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom.offset_left = 16
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	bottom.offset_left = -700
 	bottom.offset_right = -16
 	bottom.offset_top = -300
-	bottom.offset_bottom = -34
+	bottom.offset_bottom = -20
 	bottom.alignment = BoxContainer.ALIGNMENT_END
 	bottom.add_theme_constant_override("separation", 12)
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(bottom)
-	_context = K.button(bottom, " ", "star", func(): command.emit(_context_cmd), K.ORANGE, Color.WHITE, Vector2(320, 76), 26, 38)
-	_context.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_context = K.button(bottom, " ", "star", func(): command.emit(_context_cmd), K.ORANGE, Color.WHITE, Vector2(320, 70), 26, 35)
+	_context.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_context.visible = false
 	_actions = GridContainer.new()
 	_actions.columns = 4
 	_actions.add_theme_constant_override("h_separation", 10)
 	_actions.add_theme_constant_override("v_separation", 10)
-	_actions.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_actions.size_flags_horizontal = Control.SIZE_SHRINK_END
 	bottom.add_child(_actions)
+
+	# Hareket cubugu (sol alt)
+	_stick_base = K.panel(hud, Color(1, 0.97, 0.92, 0.38), 90, 3, Color(1, 1, 1, 0.6))
+	_stick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stick_base.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_stick_base.offset_left = 50
+	_stick_base.offset_right = 230
+	_stick_base.offset_top = -230
+	_stick_base.offset_bottom = -50
+	_stick_knob = K.panel(_stick_base, Color(1, 0.97, 0.92, 0.9), 38, 0, Color.WHITE, 6)
+	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stick_knob.size = Vector2(76, 76)
+	_stick_knob.position = Vector2(52, 52)
+
+
+## Hareket cubugu: dokunmayi (ya da fareyi) dogrudan izler, boylece ikinci parmak kamerayi cevirebilir.
+func _input(e: InputEvent) -> void:
+	if not hud.visible or is_blocking():
+		stick = Vector2.ZERO
+		_stick_id = -2
+		return
+	var touch := DisplayServer.is_touchscreen_available()
+	var pos := Vector2.ZERO
+	var id := -1
+	var down := false
+	var up := false
+	var move := false
+	if e is InputEventScreenTouch and touch:
+		pos = e.position
+		id = e.index
+		down = e.pressed
+		up = not e.pressed
+	elif e is InputEventScreenDrag and touch:
+		pos = e.position
+		id = e.index
+		move = true
+	elif e is InputEventMouseButton and not touch and e.button_index == MOUSE_BUTTON_LEFT:
+		pos = e.position
+		down = e.pressed
+		up = not e.pressed
+	elif e is InputEventMouseMotion and not touch:
+		pos = e.position
+		move = true
+	else:
+		return
+	var rect := _stick_base.get_global_rect()
+	var center := rect.get_center()
+	if down and _stick_id == -2 and pos.distance_to(center) < rect.size.x * 0.75:
+		_stick_id = id
+	if _stick_id == id and (down or move):
+		var v := (pos - center) / (rect.size.x * 0.5)
+		stick = v.limit_length(1.0)
+		_stick_knob.position = Vector2(52, 52) + stick * 52.0
+		get_viewport().set_input_as_handled()
+	elif _stick_id == id and up:
+		_stick_id = -2
+		stick = Vector2.ZERO
+		_stick_knob.position = Vector2(52, 52)
+		get_viewport().set_input_as_handled()
 
 
 func set_context(text: String, cmd: String, icon := "star") -> void:
@@ -221,7 +283,7 @@ func refresh() -> void:
 		list.append(["Oynat", "play", "play", K.GREEN])
 	for a in list:
 		var cmd: String = a[2]
-		K.button(_actions, a[0], a[1], func(): _on_action(cmd), K.CREAM, a[3], Vector2(162, 78), 23, 26)
+		K.button(_actions, a[0], a[1], func(): _on_action(cmd), K.CREAM, a[3], Vector2(150, 68), 22, 26)
 
 
 func _on_action(cmd: String) -> void:
@@ -320,7 +382,9 @@ func _open_modal(title: String, top := 150.0, bottom := 150.0) -> VBoxContainer:
 	K.full(dim)
 	_modal.add_child(dim)
 	var p := K.panel(_modal, K.CREAM, 44, 0, Color.WHITE, 16)
-	K.full(p, 28, top, 28, bottom)
+	var vs := get_viewport().get_visible_rect().size
+	var side := maxf((vs.x - 820.0) * 0.5, 28.0)
+	K.full(p, side, minf(top, 36.0) if top < 200.0 else 150.0, side, minf(bottom, 36.0) if bottom < 200.0 else 150.0)
 	var head := HBoxContainer.new()
 	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	head.offset_left = 30
@@ -464,10 +528,10 @@ func _open_food() -> void:
 		_food_pop = null
 		return
 	_food_pop = K.box(hud, K.CREAM, 30, 14, 10)
-	_food_pop.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_food_pop.offset_left = -260
-	_food_pop.offset_right = 260
-	_food_pop.offset_bottom = -330
+	_food_pop.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_food_pop.offset_left = -540
+	_food_pop.offset_right = -20
+	_food_pop.offset_bottom = -190
 	_food_pop.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
@@ -498,11 +562,11 @@ func open_closet(slot := "") -> void:
 	elif _modal or _food_pop:
 		close_modal()
 	_closet = K.panel(self, K.CREAM, 44, 0, Color.WHITE, 16)
-	_closet.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_closet.offset_left = 16
+	_closet.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	_closet.offset_left = -560
 	_closet.offset_right = -16
-	_closet.offset_top = -560
-	_closet.offset_bottom = -24
+	_closet.offset_top = 16
+	_closet.offset_bottom = -16
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 12)
 	K.full(col, 22, 18, 22, 18)
@@ -565,33 +629,33 @@ func _build_menu() -> void:
 	menu.add_child(shade)
 	var title := K.outline(K.label(menu, "Patili\nGezinti", 96, Color("fff3d6"), HORIZONTAL_ALIGNMENT_CENTER), 22, Color("6b4a2f"))
 	title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	title.offset_top = 150
-	title.offset_bottom = 420
+	title.offset_top = 70
+	title.offset_bottom = 330
 	title.add_theme_constant_override("line_spacing", -18)
 	var sub := K.outline(K.label(menu, "Dostunla birlikte Keçiören'i keşfet", 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER), 10, Color("6b4a2f"))
 	sub.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	sub.offset_top = 430
-	sub.offset_bottom = 480
+	sub.offset_top = 330
+	sub.offset_bottom = 376
 	var paw := Icon.new("paw", Color("fff3d6"), 70)
 	paw.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	paw.offset_left = -35
 	paw.offset_right = 35
-	paw.offset_top = 70
-	paw.offset_bottom = 140
+	paw.offset_top = 14
+	paw.offset_bottom = 78
 	menu.add_child(paw)
 	var box := VBoxContainer.new()
 	box.name = "Box"
 	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	box.offset_left = -220
 	box.offset_right = 220
-	box.offset_top = -420
-	box.offset_bottom = -150
+	box.offset_top = -300
+	box.offset_bottom = -50
 	box.alignment = BoxContainer.ALIGNMENT_END
 	box.add_theme_constant_override("separation", 18)
 	menu.add_child(box)
-	var cont := K.button(box, "Devam Et", "play", func(): continue_game.emit(), K.GREEN, Color.WHITE, Vector2(440, 100), 34, 40)
+	var cont := K.button(box, "Devam Et", "play", func(): continue_game.emit(), K.GREEN, Color.WHITE, Vector2(440, 88), 32, 40)
 	cont.name = "Continue"
-	K.button(box, "Yeni Oyun", "paw", func(): show_screen("setup"), K.CREAM, K.BROWN, Vector2(440, 100), 34, 40)
+	K.button(box, "Yeni Oyun", "paw", func(): show_screen("setup"), K.CREAM, K.BROWN, Vector2(440, 88), 32, 40)
 
 
 func _build_setup() -> void:
@@ -603,11 +667,15 @@ func _build_setup() -> void:
 	K.full(shade)
 	setup.add_child(shade)
 	var p := K.panel(setup, K.CREAM, 48, 0, Color.WHITE, 16)
-	K.full(p, 30, 180, 30, 180)
+	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	p.offset_left = -400
+	p.offset_right = 400
+	p.offset_top = -340
+	p.offset_bottom = 340
 	var col := VBoxContainer.new()
 	col.name = "Col"
-	col.add_theme_constant_override("separation", 16)
-	K.full(col, 30, 28, 30, 28)
+	col.add_theme_constant_override("separation", 10)
+	K.full(col, 30, 20, 30, 22)
 	p.add_child(col)
 	_fill_setup()
 
@@ -617,7 +685,7 @@ func _fill_setup() -> void:
 	var old_name := _name_edit.text if _name_edit else ""
 	for c in col.get_children():
 		c.queue_free()
-	K.label(col, "Yeni Oyun", 40, K.BROWN, HORIZONTAL_ALIGNMENT_CENTER)
+	K.label(col, "Yeni Oyun", 36, K.BROWN, HORIZONTAL_ALIGNMENT_CENTER)
 	K.label(col, "Sen kimsin?", 24, K.MUTED)
 	_choice(col, [["Kadın", "kadin", "walk"], ["Erkek", "erkek", "walk"]], _setup_owner, func(v): _setup_owner = v)
 	K.label(col, "İlk dostun", 24, K.MUTED)
@@ -627,7 +695,7 @@ func _fill_setup() -> void:
 	_name_edit.text = old_name
 	_name_edit.placeholder_text = "Pamuk" if _setup_pet == "kopek" else "Limon"
 	_name_edit.max_length = 12
-	_name_edit.custom_minimum_size = Vector2(0, 80)
+	_name_edit.custom_minimum_size = Vector2(0, 70)
 	_name_edit.add_theme_font_size_override("font_size", 30)
 	_name_edit.add_theme_color_override("font_color", K.BROWN)
 	_name_edit.add_theme_color_override("font_placeholder_color", K.MUTED)
@@ -642,11 +710,11 @@ func _fill_setup() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	col.add_child(row)
-	K.button(row, "Geri", "come", func(): show_screen("menu"), K.SOFT, K.BROWN, Vector2(180, 92), 28, 34)
+	K.button(row, "Geri", "come", func(): show_screen("menu"), K.SOFT, K.BROWN, Vector2(180, 84), 28, 34)
 	var go := K.button(row, "Başla", "play", func():
 		var n := _name_edit.text.strip_edges()
 		start_game.emit(_setup_owner, _setup_pet, n if n != "" else _name_edit.placeholder_text),
-		K.GREEN, Color.WHITE, Vector2(0, 92), 32, 34)
+		K.GREEN, Color.WHITE, Vector2(0, 84), 32, 34)
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
@@ -659,7 +727,7 @@ func _choice(parent: Node, options: Array, current: String, cb: Callable) -> voi
 		var on := id == current
 		var b := K.button(row, o[0], o[2], func():
 			cb.call(id)
-			_fill_setup(), K.ORANGE if on else K.SOFT, Color.WHITE if on else K.BROWN, Vector2(0, 130), 30, 30, true)
+			_fill_setup(), K.ORANGE if on else K.SOFT, Color.WHITE if on else K.BROWN, Vector2(0, 88), 30, 30)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
@@ -683,8 +751,8 @@ func _build_photo_hud() -> void:
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 16
 	bottom.offset_right = -16
-	bottom.offset_top = -270
-	bottom.offset_bottom = -40
+	bottom.offset_top = -230
+	bottom.offset_bottom = -24
 	bottom.alignment = BoxContainer.ALIGNMENT_END
 	bottom.add_theme_constant_override("separation", 16)
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -696,7 +764,7 @@ func _build_photo_hud() -> void:
 	for p in [["Dur", "stand"], ["Otur", "sit"], ["Yat", "lie"], ["Zıpla", "hop"], ["Bana Bak", "look"]]:
 		var id: String = p[1]
 		K.button(poses, p[0], "", func(): photo.emit("pose:" + id), K.CREAM, K.BROWN, Vector2(124, 66), 21, 24)
-	var shutter := K.button(bottom, "", "camera", func(): photo.emit("take"), Color.WHITE, K.BROWN, Vector2(120, 120), 40, 60)
+	var shutter := K.button(bottom, "", "camera", func(): photo.emit("take"), Color.WHITE, K.BROWN, Vector2(104, 104), 38, 52)
 	shutter.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 

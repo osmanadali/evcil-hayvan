@@ -56,7 +56,7 @@ func _ready() -> void:
 
 	# Telefon govdesi
 	var phone := K.panel(self, Color("26242b"), 64, 3, Color("4a4753"), 18)
-	K.full(phone, 30, 90, 30, 90)
+	K.full(phone, 150, 24, 150, 24)   # yatay ekranda tablet gorunumu
 	var screen := K.panel(phone, Color("f4f1ea"), 50)
 	K.full(screen, 14, 14, 14, 14)
 	screen.clip_contents = true
@@ -195,7 +195,7 @@ func open(player_pos: Vector2) -> void:
 	_select(-1)
 	await get_tree().process_frame
 	_zoom_min = maxf(_view.size.x, _view.size.y) / MAP_PX
-	_zoom = _zoom_min * 3.2
+	_zoom = _zoom_min * 2.6
 	_center_on(_me.position)
 
 

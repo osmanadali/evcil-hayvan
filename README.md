@@ -1,16 +1,20 @@
 # Patili Gezinti
 
-Mobil (dikey), 3D, sakin tempolu bir evcil hayvan oyunu. Sahip karakterinle Ankara Keçiören'deki Kavacık Subayevleri Mahallesi'nde dolaşırsın; köpeğin ve kedin seni takip eder,
+Tablet için (yatay), 3D, sakin tempolu bir evcil hayvan oyunu. Sahip karakterinle Ankara Keçiören'deki Kavacık Subayevleri Mahallesi'nde dolaşırsın; köpeğin ve kedin seni takip eder,
 komutlarını dinler, oyun oynar, büyür. Godot 4.4 ile yazıldı, tamamen çevrimdışı çalışır.
 
 ![Oyun](docs/oyun.jpg)
 ![Subayevleri](docs/subayevleri-ustten.jpg)
 ![Altınpark](docs/altinpark.jpg)
 ![Sokaklar](docs/sokaklar.jpg)
+![Ekranlar](docs/ekranlar.jpg)
 
 ## Çalıştırma
 
-Godot 4.4 ile `project.godot` dosyasını aç ve F5'e bas. Fareyle tıklamak dokunmanın yerini tutar, tekerlek yakınlaştırır.
+Godot 4.4 ile `project.godot` dosyasını aç ve F5'e bas.
+
+**Kontroller:** sol alttaki çubuk yürütür (kameraya göre), ekranı sürüklemek kamerayı döndürür, iki parmak (ya da tekerlek) yakınlaştırır,
+kısa dokunuş o noktaya yürütür ya da hayvanı sevdirir.
 
 Android için: Godot'da *Editor → Manage Export Templates* ile şablonları indir, Android SDK yolunu ayarla,
 *Project → Export → Android* ile APK al (hazır ayar `export_presets.cfg` içinde).
@@ -68,7 +72,8 @@ Birebir cephe için sokak fotoğraflarından ya da lisanslı 3D şehir verisinde
 
 ## Dokular
 
-Zemin ve bina dokuları (çim, asfalt, kilit parke, sıva, kiremit, beton, çakıl, kum) Poly Haven'dan alındı (CC0, `assets/tex/`).
+Zemin ve bina dokuları (çim, asfalt, kilit parke, sıva, kiremit, beton, çakıl, kum; 2K renk ve kabartı dokuları) ile gökyüzü
+(`assets/sky.hdr`) Poly Haven'dan alındı (CC0).
 Zemin maskeleri mesafe alanı olarak saklanır; bu sayede yol ve kaldırım kenarları yakından bakınca da keskin kalır.
 
 ## Modeller nasıl üretildi

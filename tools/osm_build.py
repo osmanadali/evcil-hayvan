@@ -10,7 +10,7 @@ CENTER = (39.96950, 32.87150)      # enlem, boylam
 HALF = (650.0, 560.0)              # oyun alaninin yari boyutu (dogu-bati, kuzey-guney)
 MARGIN = 110.0                     # alanin disinda da cizilen serit
 EXTENT = 2 * max(HALF) + 2 * MARGIN
-PX = 2048
+PX = 4096
 M_LAT = 111_132.0
 M_LON = 111_320.0 * math.cos(math.radians(CENTER[0]))
 
@@ -298,7 +298,7 @@ def raster(data):
     walk_all = Image.fromarray(np.maximum(np.asarray(walk), np.asarray(asphalt)), 'L')
     Image.merge('RGB', (sdf(foot, 6.0), inv(sdf(wat, 4.0)), sdf(sandbox, 6.0))).save('assets/splat_a.png')    # patika, kiyi, kum
     Image.merge('RGB', (sdf(asphalt, 6.0), sdf(walk_all, 6.0), sdf(urban, 6.0))).save('assets/splat_b.png')   # asfalt, kaldirim, sehir zemini
-    Image.merge('RGB', (sdf(built, 6.0), L(), L())).resize((1024, 1024), Image.BILINEAR).save('assets/splat_c.png')  # bina yakinligi (golgeleme)
+    Image.merge('RGB', (sdf(built, 6.0), L(), L())).resize((2048, 2048), Image.BILINEAR).save('assets/splat_c.png')  # bina yakinligi (golgeleme)
 
     # Harita uygulamasi gorseli
     m = Image.new('RGB', (PX, PX), (236, 233, 224))

@@ -38,6 +38,7 @@ var _bush_col: Array[Color] = []
 var _tree_fixed: Array = []
 var _keep_out: Array = []          # [merkez, yari boyut] agac dikilmeyen dikdortgenler
 var _street_lamps: Array[Transform3D] = []
+var _signs: Array[Node3D] = []
 var car_mesh: Mesh
 var car_base := Transform3D()
 var _ducks: Array = []
@@ -54,7 +55,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants", "clouds"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -270,6 +271,8 @@ func _build_ground() -> void:
 	m.set_shader_parameter("splat_c", load("res://assets/splat_c.png"))
 	for pair in [["t_grass", "cim"], ["t_asphalt", "asfalt"], ["t_pavers", "kaldirim"], ["t_yard", "zemin"], ["t_gravel", "patika"], ["t_sand", "kum"]]:
 		m.set_shader_parameter(pair[0], load("res://assets/tex/%s.jpg" % pair[1]))
+	for pair in [["n_grass", "cim_n"], ["n_asphalt", "asfalt_n"], ["n_pavers", "kaldirim_n"]]:
+		m.set_shader_parameter(pair[0], load("res://assets/tex/%s.jpg" % pair[1]))
 	Kit.add(self, mesh, m)
 
 
@@ -314,6 +317,8 @@ func _build_buildings() -> void:
 	mat.set_shader_parameter("t_wall", load("res://assets/tex/siva.jpg"))
 	mat.set_shader_parameter("t_roof", load("res://assets/tex/kiremit.jpg"))
 	mat.set_shader_parameter("t_flat", load("res://assets/tex/zemin.jpg"))
+	mat.set_shader_parameter("n_wall", load("res://assets/tex/siva_n.jpg"))
+	mat.set_shader_parameter("n_roof", load("res://assets/tex/kiremit_n.jpg"))
 	_see_through.append(mat)
 	var chunks := {}
 	for b in ParkMap.data["buildings"]:
@@ -376,6 +381,17 @@ func _build_buildings() -> void:
 				uv2.append(Vector2(h, seed))
 				col.append(tint)
 			idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+			# Yola bakan cephede gercek balkonlar (shader'daki balkon kapisi sutunlariyla ayni yerde)
+			if kind == "apartman" and solid and b.has("door") and ((a + bb) * 0.5).distance_to(Vector2(b["door"][0], b["door"][1])) < 0.2:
+				var floors := int((h - 0.7) / 3.0)
+				var k0 := int(ceil((run + 0.4) / 3.1))
+				var k1 := int(floor((run + length - 0.4) / 3.1)) - 1
+				for kc in range(k0, k1 + 1):
+					if kc % 3 != 1:
+						continue
+					var bc := a + d / length * ((kc + 0.5) * 3.1 - run)
+					for f in range(1, floors):
+						_balcony(ch, Vector3(bc.x, y_hi + f * 3.0 + 0.3, bc.y), Vector3(d.x, 0, d.y) / length, normal, tint)
 			run += length
 			if solid:
 				_add_segment(a, bb)
@@ -436,6 +452,43 @@ func _build_buildings() -> void:
 		# Gorunen kopya delinebilir; golgeyi delinmeyen ayri bir kopya duşurur
 		Kit.add(self, mesh, mat).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		Kit.add(self, mesh, Kit.mat("d9d2c4")).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+
+
+## Balkon: doseme ve uc tarafi kapali korkuluk. UV2.x = -1 shader'a "duz renk" der.
+func _balcony(ch: Array, at_pos: Vector3, along: Vector3, out: Vector3, tint: Color) -> void:
+	var v: PackedVector3Array = ch[0]
+	var n: PackedVector3Array = ch[1]
+	var uv: PackedVector2Array = ch[2]
+	var uv2: PackedVector2Array = ch[3]
+	var col: PackedColorArray = ch[4]
+	var idx: PackedInt32Array = ch[5]
+	var up := Vector3.UP
+	var quad := func(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, nn: Vector3, c: Color) -> void:
+		var base := v.size()
+		v.append_array([p0, p1, p2, p3])
+		for k in 4:
+			n.append(nn)
+			uv.append(Vector2.ZERO)
+			uv2.append(Vector2(-1.0, 0.0))
+			col.append(c)
+		idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3, base, base + 2, base + 1, base, base + 3, base + 2])
+	var w := 1.25
+	var dep := 1.05
+	var slab := Color(0.72, 0.71, 0.68)
+	var rail := tint.darkened(0.12)
+	var a0 := at_pos - along * w
+	var a1 := at_pos + along * w
+	var b0 := a0 + out * dep
+	var b1 := a1 + out * dep
+	# Doseme (ust, alt, on)
+	quad.call(a0, a1, b1, b0, up, slab)
+	quad.call(a0 - up * 0.14, a1 - up * 0.14, b1 - up * 0.14, b0 - up * 0.14, -up, slab.darkened(0.35))
+	quad.call(b0 - up * 0.14, b1 - up * 0.14, b1, b0, out, slab)
+	# Korkuluk: on ve iki yan
+	var hgt := up * 0.95
+	quad.call(b0, b1, b1 + hgt, b0 + hgt, out, rail)
+	quad.call(a0, b0, b0 + hgt, a0 + hgt, -along, rail)
+	quad.call(a1, b1, b1 + hgt, a1 + hgt, along, rail)
 
 
 func _mosque(poly: PackedVector2Array, c: Vector2, size: float, h: float) -> void:
@@ -770,7 +823,16 @@ func _sign(p: Vector2, text: String, plate: String, ink: String, height := 2.7, 
 	if badge != "":
 		Kit.box(r, Vector3(0.62, 0.62, 0.07), Vector3(0, height + hgt * 0.5 + 0.42, 0.05), Kit.mat(plate, 0.6))
 		_text(r, badge, Vector3(0, height + hgt * 0.5 + 0.42, 0.1), Color(ink), 0.42)
+	_signs.append(r)
 	return r
+
+
+## Yakindaki tabelalari kameraya dondurur (kamera artik donebiliyor).
+func face_signs(cam_pos: Vector3) -> void:
+	for sg in _signs:
+		var d := cam_pos - sg.position
+		if absf(d.x) < 90.0 and absf(d.z) < 90.0:
+			sg.rotation.y = atan2(d.x, d.z)
 
 
 func _build_details() -> void:
@@ -936,6 +998,7 @@ func _build_doors() -> void:
 			var w := label.length() * size * 0.6 + 0.24
 			Kit.box(r, Vector3(w, size * 1.7, 0.04), Vector3(0, 2.95, 0), Kit.mat("1a4fa0", 0.6))
 			_text(r, label, Vector3(0, 2.95, 0.03), Color.WHITE, size).visibility_range_end = 40.0
+			_signs.append(r)
 	_multimesh(mesh, xf, _plain(xf), false, 64.0, 90.0)
 
 
