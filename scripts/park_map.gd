@@ -3,7 +3,7 @@ extends RefCounted
 ## Veri OpenStreetMap'ten tools/osm_build.py ile uretilir (assets/city.json).
 ## Koordinatlar metre; Vector2(x, z). Kuzey = -z, kamera guneyden kuzeye bakar.
 
-const WATER_Y := 0.04
+const WATER_LIFT := 0.07      # su yuzeyi zeminin bu kadar ustunde
 const SPLAT_CENTER := Vector2.ZERO
 
 static var loaded := false
@@ -17,6 +17,9 @@ static var water: Array = []            # PackedVector2Array listesi
 static var water_boxes: Array = []      # Rect2 (genisletilmis)
 static var spots := {}                  # ad -> Vector2
 static var spot_half := {}              # ad -> Vector2
+static var heights := PackedFloat32Array()   # arazi yuksekligi izgarasi (metre, harita merkezine gore)
+static var height_n := 0
+static var height_extent := 1.0
 
 
 static func load_data() -> void:
@@ -46,6 +49,16 @@ static func load_data() -> void:
 		for p in poly:
 			box = box.expand(p)
 		water_boxes.append(box.grow(6.0))
+	# Arazi yuksekligi: assets/height.png (16 bit, R = ust bayt, G = alt bayt)
+	var hd: Dictionary = data["height"]
+	var img: Image = (load("res://assets/height.png") as Texture2D).get_image()
+	height_n = int(hd["n"])
+	height_extent = hd["extent"]
+	heights.resize(height_n * height_n)
+	for j in height_n:
+		for i in height_n:
+			var c := img.get_pixel(i, j)
+			heights[j * height_n + i] = float(hd["min"]) + (c.r8 * 256.0 + c.g8) / 65535.0 * float(hd["range"])
 	for k in data["spots"]:
 		var s: Dictionary = data["spots"][k]
 		spots[k] = Vector2(s["pos"][0], s["pos"][1])
@@ -106,9 +119,15 @@ static func clamp_bounds(p: Vector2) -> Vector2:
 	return p.clamp(BOUNDS_MIN + Vector2(2, 2), BOUNDS_MAX - Vector2(2, 2))
 
 
-## Arazi duz kabul edilir (veride yukseklik yok); su, zeminin hemen ustunde bir yuzeydir.
-static func terrain_height(_p: Vector2) -> float:
-	return 0.0
+## Gercek arazi yuksekligi (SRTM verisinden, harita merkezine gore metre).
+static func terrain_height(p: Vector2) -> float:
+	var f := (p / height_extent + Vector2(0.5, 0.5)) * height_n - Vector2(0.5, 0.5)
+	var x := clampi(int(f.x), 0, height_n - 2)
+	var y := clampi(int(f.y), 0, height_n - 2)
+	var tx := clampf(f.x - x, 0.0, 1.0)
+	var ty := clampf(f.y - y, 0.0, 1.0)
+	var i := y * height_n + x
+	return lerpf(lerpf(heights[i], heights[i + 1], tx), lerpf(heights[i + height_n], heights[i + height_n + 1], tx), ty)
 
 
 static func walk_height(p: Vector2) -> float:

@@ -6,6 +6,7 @@ komutlarını dinler, oyun oynar, büyür. Godot 4.4 ile yazıldı, tamamen çev
 ![Oyun](docs/oyun.jpg)
 ![Subayevleri](docs/subayevleri-ustten.jpg)
 ![Altınpark](docs/altinpark.jpg)
+![Sokaklar](docs/sokaklar.jpg)
 
 ## Çalıştırma
 
@@ -21,6 +22,11 @@ Android için: Godot'da *Editor → Manage Export Templates* ile şablonları in
   tüm sokaklar (Fatih Caddesi, Fahrettin Altay Caddesi, Kavacık Sokak ve 46 sokak daha), 1.100 bina, Kavacık Subayevleri Camii, okullar,
   Hulusi Sayın ve Ahmet Önder parkları, Çubuk Çayı, Atatürk Botanik Bahçesi ve Altınpark'ın göletli batı bölümü. Hepsi OpenStreetMap
   verisinden gerçek konum ve ölçüleriyle üretilir (aşağıda).
+- **Eğim gerçek.** Arazi yüksekliği açık SRTM verisinden geliyor: haritanın en alçak ve en yüksek noktası arasında 74 metre fark var.
+  Sokaklar, binalar, ağaçlar ve su bu eğime oturur.
+- **Tabelalar ve sokak ayrıntıları veriden:** 98 mavi sokak tabelası, 54 işletme/durak tabelası (eczaneler, marketler, lokantalar, banka,
+  akaryakıt, taksi durakları, otobüs durakları ve bekleme yerleri, metro), adı olan binaların levhaları, trafik ışıkları, yaya geçitleri,
+  otoparklar, duvar ve çitler, köprü korkulukları, oyun parkları.
 - **Oyun için eklenen yerler** (gerçekte yok, Altınpark'taki boş çimlere yerleştirildi): hayvan bahçesi (kulübe, havuz, oyuncaklar),
   Pet Shop, kafe, dondurmacı, çardak, çeşme, köpek oyun alanı, piknik alanı.
 - **Komutlar:** Sev, Mama, Top At (köpek koşar, havada yakalayabilir), Yumak (kedi), Gel, Otur, Yat, Uyu, Oynat (iki hayvan kovalamaca oynar).
@@ -45,8 +51,12 @@ Bu komut `assets/city.json` (yollar, binalar, parklar, yer adları), zemin boyam
 Başka bir bölge için `tools/osm_build.py` içindeki `CENTER` (enlem, boylam) ve `HALF` (yarı boyut, metre) değerlerini değiştirmek,
 o bölgenin `.osm` dosyasını indirmek ve `WANTED` içindeki oyun yerlerinin istenen konumlarını vermek yeterli (araç en yakın boş park çimini kendi bulur).
 
+Yükseklik: `data/dem/` içindeki açık yükseklik karoları (Mapzen/AWS Terrain Tiles, SRTM tabanlı, yaklaşık 30 m çözünürlük); araç bunlardan
+`assets/height.png` üretir. Çözünürlük kaba olduğu için kısa rampalar ve istinat duvarları görünmez, genel eğim doğrudur.
+
 Sınırlar: bina yükseklikleri veride yok, kat sayısı taban alanına göre tahmin ediliyor; cepheler gerçek binalara benzemez, hepsi aynı
-apartman stilinde çizilir. Arazi düz kabul edildi (mahallenin gerçek eğimi yok). Araç trafiği yok.
+apartman stilinde çizilir. Tabelalar düz yazılı levhalardır (logo yok) ve hepsi güneye, kameraya bakar. Yalnızca OpenStreetMap'e
+işlenmiş işletmeler görünür. Araç trafiği yok.
 
 ## Modeller nasıl üretildi
 
@@ -84,7 +94,7 @@ Yeni bir hayvan türü eklemek için: Tripo'da düz duran, bacakları ayrık bir
 - **Telefonda denenmedi.** Buradaki ekran görüntüleri yazılımsal çizimle alındı; telefonda renkler ve hız farklı olabilir.
 - **Ses yok.** Müzik ve efekt eklenmedi.
 - **Yol bulma basit.** Dokunarak yürürken karakter düz gider, engele takılabilir; haritadan "Yürü" ise yolları izler.
-- **Sokaklar sade.** Binalar arasında araç, tabela, dükkân vitrini gibi ayrıntılar yok.
+- **Araç yok.** Sokaklarda tabela, durak ve trafik ışığı var; araç ve dükkân vitrini yok.
 - **Hareketler kodla üretildiği için** hazır animasyonlar kadar akıcı değil; özellikle insan yürüyüşü geliştirilebilir.
 - **Ev yok.** Hayvanların bahçesi parkın içinde; oyuncunun evi tanımlı değil.
 - Fotoğraflar telefonda galeriye düşmeyebilir (depolama izni gerekir).

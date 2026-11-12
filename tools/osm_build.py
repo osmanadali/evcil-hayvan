@@ -44,7 +44,12 @@ def load(path):
         ids = [n.get('ref') for n in w.findall('nd') if n.get('ref') in nodes]
         if len(ids) >= 2:
             ways.append((tags, ids))
-    return nodes, ways
+    tagged = []
+    for n in root.iter('node'):
+        tags = {t.get('k'): t.get('v') for t in n.findall('tag')}
+        if tags:
+            tagged.append((tags, n.get('id')))
+    return nodes, ways, tagged
 
 
 def near(pts, extra=0.0):
@@ -69,7 +74,7 @@ def _in(q, poly):
 
 
 def build(path):
-    nodes, ways = load(path)
+    nodes, ways, tagged = load(path)
     rnd = random.Random(7)
     graph_nodes, index = [], {}
     def nid(i):
@@ -78,14 +83,22 @@ def build(path):
             graph_nodes.append([round(nodes[i][0], 2), round(nodes[i][1], 2)])
         return index[i]
     roads, paths, buildings, parks, water, pitches, places = [], [], [], [], [], [], []
+    barriers, parking, playgrounds, bridges, road_at = [], [], [], [], {}
     for tags, ids in ways:
         pts = [nodes[i] for i in ids]
         if not near(pts):
             continue
         ring = [[round(x, 2), round(z, 2)] for x, z in (pts[:-1] if ids[0] == ids[-1] else pts)]
         hw = tags.get('highway')
+        if tags.get('tunnel') in ('yes', 'building_passage') and hw not in PATH_W:
+            if hw: continue          # yer alti yollari cizme
         if hw in ROAD_W and tags.get('area') != 'yes':
             roads.append({'n': [nid(i) for i in ids], 'w': ROAD_W[hw], 'k': hw, 'name': tags.get('name', '')})
+            for a_, b_ in zip(ids, ids[1:]):
+                d_ = (nodes[b_][0] - nodes[a_][0], nodes[b_][1] - nodes[a_][1])
+                road_at[a_] = road_at[b_] = (math.atan2(d_[1], d_[0]), ROAD_W[hw])
+            if tags.get('bridge') in ('yes', 'viaduct'):
+                bridges.append({'p': [[round(x, 2), round(z, 2)] for x, z in pts], 'w': ROAD_W[hw]})
         elif hw in PATH_W:
             paths.append({'n': [nid(i) for i in ids], 'w': PATH_W[hw]})
         elif 'building' in tags and len(ring) >= 3:
@@ -100,8 +113,14 @@ def build(path):
             elif kind == 'okul': levels = 3
             else: levels = rnd.choice([4, 4, 5, 5, 6])
             buildings.append({'p': ring, 'h': round(levels * 3.0 + 0.8, 1), 't': kind, 'name': tags.get('name', '')})
-        elif tags.get('natural') == 'water' and len(ring) >= 3:
+        elif (tags.get('natural') == 'water' or tags.get('leisure') == 'swimming_pool') and len(ring) >= 3:
             water.append({'p': ring})
+        elif tags.get('barrier') in ('wall', 'fence', 'retaining_wall', 'hedge'):
+            barriers.append({'p': [[round(x, 2), round(z, 2)] for x, z in pts], 'k': 'cit' if tags['barrier'] == 'fence' else 'duvar'})
+        elif tags.get('amenity') == 'parking' and len(ring) >= 3:
+            parking.append({'p': ring})
+        elif tags.get('leisure') == 'playground' and len(ring) >= 3:
+            playgrounds.append({'p': ring, 'pos': [round(v, 1) for v in centroid(ring)]})
         elif GREEN(tags) and len(ring) >= 3:
             (pitches if tags.get('leisure') == 'pitch' else parks).append({'p': ring, 'name': tags.get('name', '')})
         if tags.get('name') and len(ring) >= 3 and (tags.get('leisure') in ('park', 'pitch', 'stadium') or tags.get('amenity') in ('school', 'place_of_worship')):
@@ -109,6 +128,65 @@ def build(path):
             if abs(c[0]) < HALF[0] - 15 and abs(c[1]) < HALF[1] - 15:
                 kind = 'park' if tags.get('leisure') == 'park' else ('saha' if 'leisure' in tags else ('cami' if tags.get('amenity') == 'place_of_worship' else 'okul'))
                 places.append({'name': tags['name'], 'kind': kind, 'pos': [round(c[0], 1), round(c[1], 1)], 'r': round(max(10.0, min(60.0, math.sqrt(area(ring)) * 0.6)), 1)})
+    # Noktasal ayrintilar: dukkanlar, duraklar, trafik isiklari, yaya gecitleri...
+    KIND = [('highway', 'bus_stop', 'durak'), ('public_transport', 'station', 'metro'), ('railway', 'station', 'metro'),
+            ('amenity', 'pharmacy', 'eczane'), ('shop', 'supermarket', 'market'), ('shop', 'convenience', 'market'), ('shop', 'kiosk', 'market'),
+            ('shop', 'bakery', 'market'), ('shop', 'butcher', 'market'), ('amenity', 'restaurant', 'yemek'), ('amenity', 'cafe', 'yemek'),
+            ('amenity', 'fast_food', 'yemek'), ('amenity', 'bank', 'banka'), ('amenity', 'atm', 'banka'), ('amenity', 'fuel', 'akaryakit'),
+            ('amenity', 'taxi', 'taksi'), ('amenity', 'post_office', 'kargo'), ('amenity', 'police', 'polis'), ('tourism', 'museum', 'muze'),
+            ('amenity', 'kindergarten', 'okul'), ('amenity', 'college', 'okul'), ('amenity', 'university', 'okul'), ('shop', None, 'dukkan'),
+            ('office', None, 'ofis'), ('leisure', 'sports_centre', 'spor')]
+    inb = lambda p, m=6.0: abs(p[0]) < HALF[0] - m and abs(p[1]) < HALF[1] - m
+    pois, signals, crossings, props = [], [], [], []
+    for tags, i in tagged:
+        p = nodes[i]
+        if not inb(p):
+            continue
+        q = [round(p[0], 2), round(p[1], 2)]
+        if tags.get('highway') == 'traffic_signals':
+            signals.append(q); continue
+        if tags.get('highway') == 'crossing' and i in road_at:
+            crossings.append({'pos': q, 'rot': round(road_at[i][0], 3), 'w': road_at[i][1]}); continue
+        for key, val, kind in (('amenity', 'bench', 'bank'), ('natural', 'tree', 'agac'), ('amenity', 'fountain', 'cesme'),
+                               ('leisure', 'picnic_table', 'piknik'), ('tourism', 'artwork', 'heykel'), ('man_made', 'flagpole', 'bayrak')):
+            if tags.get(key) == val:
+                props.append({'k': kind, 'pos': q})
+        name = tags.get('name')
+        if not name:
+            continue
+        kind = next((k for key, val, k in KIND if key in tags and (val is None or tags[key] == val)), None)
+        if kind is None or any(o['name'] == name and math.dist(o['pos'], q) < 25 for o in pois):
+            continue
+        wall = False
+        for bl in buildings:
+            if _in(q, bl['p']):
+                # Bina icindeki nokta: en yakin cepheye tasi, tabela duvara asilsin
+                best = None
+                poly = bl['p']
+                for e in range(len(poly)):
+                    a_, b_ = poly[e], poly[(e + 1) % len(poly)]
+                    ab = (b_[0] - a_[0], b_[1] - a_[1]); L2 = ab[0] ** 2 + ab[1] ** 2 or 1e-9
+                    t = max(0.0, min(1.0, ((q[0] - a_[0]) * ab[0] + (q[1] - a_[1]) * ab[1]) / L2))
+                    c = (a_[0] + ab[0] * t, a_[1] + ab[1] * t); dd = math.dist(c, q)
+                    if best is None or dd < best[0]: best = (dd, c)
+                d_ = (best[1][0] - q[0], best[1][1] - q[1]); L = math.hypot(*d_) or 1.0
+                q = [round(best[1][0] + d_[0] / L * 0.5, 2), round(best[1][1] + d_[1] / L * 0.5, 2)]
+                wall = True
+                break
+        pois.append({'name': name, 'k': kind, 'pos': q, 'wall': wall})
+    # Sokak tabelalari: adli her yolun iki ucunda
+    signs = []
+    for r in roads:
+        if not r['name']:
+            continue
+        pts = [graph_nodes[i] for i in r['n']]
+        for a_, b_ in ((pts[0], pts[1]), (pts[-1], pts[-2])):
+            d_ = (b_[0] - a_[0], b_[1] - a_[1]); L = math.hypot(*d_) or 1.0
+            q = [round(a_[0] + d_[0] / L * 5.0 - d_[1] / L * (r['w'] / 2 + 1.3), 1), round(a_[1] + d_[1] / L * 5.0 + d_[0] / L * (r['w'] / 2 + 1.3), 1)]
+            if inb(q) and not any(math.dist(o['pos'], q) < 7 or (o['name'] == r['name'] and math.dist(o['pos'], q) < 60) for o in signs) \
+                    and not any(_in(q, bl['p']) for bl in buildings):
+                signs.append({'name': r['name'], 'pos': q})
+
     # Sokak adlari icin etiket noktalarini cikar (her ad icin en uzun parca)
     labels = {}
     for r in roads:
@@ -127,10 +205,14 @@ def build(path):
     streets = [{'name': k, 'pos': v[1], 'rot': v[2]} for k, v in labels.items()]
 
     data = {'center': CENTER, 'half': HALF, 'extent': EXTENT, 'nodes': graph_nodes, 'roads': roads, 'paths': paths,
-            'buildings': buildings, 'parks': parks, 'pitches': pitches, 'water': water, 'places': places, 'streets': streets, 'spots': SPOTS}
+            'buildings': buildings, 'parks': parks, 'pitches': pitches, 'water': water, 'places': places, 'streets': streets, 'spots': SPOTS,
+            'pois': pois, 'signs': signs, 'signals': signals, 'crossings': crossings, 'props': props, 'barriers': barriers,
+            'parking': parking, 'playgrounds': playgrounds, 'bridges': bridges}
     json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     print('yol %d, patika %d, bina %d, park %d, saha %d, su %d, yer %d, sokak adi %d, dugum %d' % (
         len(roads), len(paths), len(buildings), len(parks), len(pitches), len(water), len(places), len(streets), len(graph_nodes)))
+    print('isletme/durak %d, sokak tabelasi %d, trafik isigi %d, yaya gecidi %d, esya %d, duvar/cit %d, otopark %d, oyun parki %d, kopru %d' % (
+        len(pois), len(signs), len(signals), len(crossings), len(props), len(barriers), len(parking), len(playgrounds), len(bridges)))
     return data
 
 
@@ -152,6 +234,7 @@ def raster(data):
             d.polygon([P(p) for p in it['p']], fill=value)
     L = lambda: Image.new('L', (PX, PX), 0)
     asphalt, walk, foot, urban, wat = L(), L(), L(), Image.new('L', (PX, PX), 255), L()
+    polys(asphalt, data['parking'], 255)
     lines(asphalt, data['roads'], 0.0, 255)
     lines(walk, data['roads'], 4.4, 255)
     lines(foot, data['paths'], 0.0, 255)
@@ -160,7 +243,9 @@ def raster(data):
     polys(wat, data['water'], 255)
     soft = lambda im, r=0.8: im.filter(ImageFilter.GaussianBlur(r))
     shore = Image.eval(soft(wat, 4.0 * k), lambda v: 255 - v)       # 0.5 = kiyi, yaklasik +-4 m
-    Image.merge('RGB', (soft(foot), shore, L())).save('assets/splat_a.png')
+    sandbox = L()
+    polys(sandbox, data['playgrounds'], 255)
+    Image.merge('RGB', (soft(foot), shore, soft(sandbox))).save('assets/splat_a.png')
     Image.merge('RGB', (soft(asphalt), soft(walk), soft(urban, 1.5))).save('assets/splat_b.png')
 
     # Harita uygulamasi gorseli
@@ -168,6 +253,8 @@ def raster(data):
     d = ImageDraw.Draw(m)
     for it in data['parks']: d.polygon([P(p) for p in it['p']], fill=(200, 230, 178))
     for it in data['pitches']: d.polygon([P(p) for p in it['p']], fill=(168, 212, 150), outline=(140, 190, 128))
+    for it in data['parking']: d.polygon([P(p) for p in it['p']], fill=(226, 226, 230))
+    for it in data['playgrounds']: d.polygon([P(p) for p in it['p']], fill=(240, 226, 180))
     for it in data['water']: d.polygon([P(p) for p in it['p']], fill=(159, 208, 238), outline=(111, 179, 220))
     for w in data['paths']:
         d.line([P(nodes[i]) for i in w['n']], fill=(214, 198, 160), width=max(2, int(w['w'] * k)))
@@ -183,6 +270,44 @@ def raster(data):
         col = {'cami': (190, 214, 220), 'okul': (240, 214, 170)}.get(b['t'], (226, 212, 200))
         d.polygon([P(p) for p in b['p']], fill=col, outline=(196, 180, 166))
     m.filter(ImageFilter.GaussianBlur(0.5)).save('assets/park_map.png')
+
+
+def heightmap(data):
+    """Yukseklik karolarindan (data/dem, terrarium bicimi, z13) arazi yuksekligini uretir: assets/height.png."""
+    import numpy as np
+    Z, xs, ys = 13, (4843, 4844), (3101, 3102)
+    big = np.zeros((256 * len(ys), 256 * len(xs)))
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            a = np.asarray(Image.open('data/dem/%d_%d_%d.png' % (Z, x, y)).convert('RGB'), dtype=np.float64)
+            big[j * 256:(j + 1) * 256, i * 256:(i + 1) * 256] = a[:, :, 0] * 256 + a[:, :, 1] + a[:, :, 2] / 256 - 32768
+    N = 256
+    ext = EXTENT + 400.0
+    out = np.zeros((N, N))
+    n = 2 ** Z
+    for j in range(N):
+        lat = CENTER[0] - ((j + 0.5) / N - 0.5) * ext / M_LAT
+        fy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
+        py = (fy - ys[0]) * 256 - 0.5
+        for i in range(N):
+            lon = CENTER[1] + ((i + 0.5) / N - 0.5) * ext / M_LON
+            pxx = ((lon + 180) / 360 * n - xs[0]) * 256 - 0.5
+            x0, y0 = int(pxx), int(py); tx, ty = pxx - x0, py - y0
+            out[j, i] = (big[y0, x0] * (1 - tx) + big[y0, x0 + 1] * tx) * (1 - ty) + (big[y0 + 1, x0] * (1 - tx) + big[y0 + 1, x0 + 1] * tx) * ty
+    # Veri 30 m cozunurluklu ve gurultulu: yumusat
+    kx = np.exp(-0.5 * (np.arange(-9, 10) / 3.0) ** 2); kx /= kx.sum()
+    pad = np.pad(out, 9, mode='edge')
+    pad = np.apply_along_axis(lambda r: np.convolve(r, kx, mode='valid'), 1, pad)
+    out = np.apply_along_axis(lambda r: np.convolve(r, kx, mode='valid'), 0, pad)
+    lo, hi = float(out.min()), float(out.max())
+    v = np.clip((out - lo) / (hi - lo) * 65535, 0, 65535).astype(np.uint32)
+    rgb = np.zeros((N, N, 3), dtype=np.uint8)
+    rgb[:, :, 0] = v >> 8
+    rgb[:, :, 1] = v & 255
+    Image.fromarray(rgb, 'RGB').save('assets/height.png')
+    c = out[N // 2, N // 2]
+    data['height'] = {'min': round(lo - c, 2), 'range': round(hi - lo, 2), 'extent': ext, 'n': N}
+    print('yukseklik: en alcak %.0f m, en yuksek %.0f m (deniz seviyesinden), fark %.0f m' % (lo, hi, hi - lo))
 
 
 def preview(data, out):
@@ -211,6 +336,7 @@ def preview(data, out):
 
 if __name__ == '__main__':
     data = build(sys.argv[1])
+    heightmap(data)
     raster(data)
     # Oyun yerlerini istenen konuma en yakin bos park cimine yerlestir
     a = Image.open('assets/splat_a.png').load(); b = Image.open('assets/splat_b.png').load(); k = PX / EXTENT

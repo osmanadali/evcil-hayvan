@@ -1093,10 +1093,11 @@ func _debug_shot() -> void:
 			world.hide_clouds()
 			cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 			cam.size = float(_args.get("size", "900"))
-			cam.position = Vector3(float(_args.get("cx", "0")), 300, float(_args.get("cz", "0")))
+			cam.position = Vector3(float(_args.get("cx", "0")), 400, float(_args.get("cz", "0")))
 			cam.rotation = Vector3(-PI / 2, 0, 0)
 		elif view == "wide":
 			var wc := Vector3(float(_args.get("cx", "0")), 0, float(_args.get("cz", "0")))
+			wc.y = ParkMap.terrain_height(Vector2(wc.x, wc.z))
 			_mode = "debug"
 			cam.position = wc + Vector3(8, 30, 48) * float(_args.get("dist", "1"))
 			cam.look_at(wc)

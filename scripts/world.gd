@@ -51,7 +51,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "parks", "pond_life", "plants", "clouds"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "parks", "pond_life", "plants", "clouds"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -128,17 +128,25 @@ func resolve(np: Vector2, r: float, old: Vector2) -> Vector2:
 			var d := np.distance_to(q)
 			if d < r + 0.08 and d > 0.001:
 				np = q + (np - q) / d * (r + 0.08)
-	if ParkMap.water_blocked(np):
-		if not ParkMap.water_blocked(Vector2(np.x, old.y)):
+	if _wet(np):
+		if not _wet(Vector2(np.x, old.y)):
 			return Vector2(np.x, old.y)
-		if not ParkMap.water_blocked(Vector2(old.x, np.y)):
+		if not _wet(Vector2(old.x, np.y)):
 			return Vector2(old.x, np.y)
 		return old
 	return np
 
 
+## Suda mi? Yol ve patikalarin gectigi yerler (kopruler) sayilmaz.
+func _wet(p: Vector2) -> bool:
+	if not ParkMap.water_blocked(p):
+		return false
+	var m := _mask(p)
+	return m[0] < 0.4 and m[2] < 0.4
+
+
 func is_free(p: Vector2, r := 0.4) -> bool:
-	return ParkMap.inside_bounds(p, 3.0) and not ParkMap.water_blocked(p) and resolve(p, r, p).distance_to(p) < 0.05
+	return ParkMap.inside_bounds(p, 3.0) and not _wet(p) and resolve(p, r, p).distance_to(p) < 0.05
 
 
 ## Kamera ile oyuncu arasina giren bina ve agaclari deler.
@@ -223,8 +231,33 @@ func _block_model(holder: Node3D, p: Vector2, shrink := 0.82) -> void:
 # ---------------------------------------------------------------- zemin ve su
 
 func _build_ground() -> void:
-	var plane := PlaneMesh.new()
-	plane.size = Vector2.ONE * (ParkMap.SPLAT_EXTENT + 400.0)
+	# Egimli arazi: 8 m aralikli izgara
+	var half := ParkMap.height_extent * 0.5 - 4.0
+	var n := int(half * 2.0 / 8.0)
+	var verts := PackedVector3Array()
+	verts.resize((n + 1) * (n + 1))
+	for j in n + 1:
+		for i in n + 1:
+			var p := Vector2(-half + i * half * 2.0 / n, -half + j * half * 2.0 / n)
+			verts[j * (n + 1) + i] = Vector3(p.x, ParkMap.terrain_height(p), p.y)
+	var normals := PackedVector3Array()
+	normals.resize(verts.size())
+	var idx := PackedInt32Array()
+	for j in n + 1:
+		for i in n + 1:
+			var dx := verts[j * (n + 1) + mini(i + 1, n)] - verts[j * (n + 1) + maxi(i - 1, 0)]
+			var dz := verts[mini(j + 1, n) * (n + 1) + i] - verts[maxi(j - 1, 0) * (n + 1) + i]
+			normals[j * (n + 1) + i] = dz.cross(dx).normalized()
+			if i < n and j < n:
+				var a := j * (n + 1) + i
+				idx.append_array([a, a + 1, a + n + 2, a, a + n + 2, a + n + 1])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = normals
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	var m := ShaderMaterial.new()
 	m.shader = GROUND_SHADER
 	m.set_shader_parameter("splat_a", _splat_a)
@@ -234,22 +267,40 @@ func _build_ground() -> void:
 	m.set_shader_parameter("forest_floor", Color(0.52, 0.5, 0.44))   # binalar arasi zemin
 	m.set_shader_parameter("street_z", 1e6)
 	m.set_shader_parameter("avenue_x", 1e6)
-	Kit.add(self, plane, m)
+	Kit.add(self, mesh, m)
 
 
 func _build_water() -> void:
+	# Su yuzeyi araziye serilir (izgara); kiyinin disi ve kopruler shader'da atilir
 	var m := ShaderMaterial.new()
 	m.shader = WATER_SHADER
 	m.set_shader_parameter("splat", _splat_a)
+	m.set_shader_parameter("splat_b", _splat_b)
 	m.set_shader_parameter("splat_center", ParkMap.SPLAT_CENTER)
 	m.set_shader_parameter("splat_extent", ParkMap.SPLAT_EXTENT)
 	for b in ParkMap.water_boxes:
 		var r: Rect2 = b
-		var plane := PlaneMesh.new()
-		plane.size = r.size
-		var c := r.get_center()
-		var w := Kit.add(self, plane, m, Vector3(c.x, ParkMap.WATER_Y, c.y))
-		w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var nx := maxi(int(r.size.x / 6.0), 1)
+		var nz := maxi(int(r.size.y / 6.0), 1)
+		var verts := PackedVector3Array()
+		var normals := PackedVector3Array()
+		var idx := PackedInt32Array()
+		for j in nz + 1:
+			for i in nx + 1:
+				var p := r.position + Vector2(r.size.x * i / nx, r.size.y * j / nz)
+				verts.append(Vector3(p.x, ParkMap.terrain_height(p) + ParkMap.WATER_LIFT, p.y))
+				normals.append(Vector3.UP)
+				if i < nx and j < nz:
+					var a := j * (nx + 1) + i
+					idx.append_array([a, a + 1, a + nx + 2, a, a + nx + 2, a + nx + 1])
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_NORMAL] = normals
+		arr[Mesh.ARRAY_INDEX] = idx
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		Kit.add(self, mesh, m).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 # ---------------------------------------------------------------- binalar
@@ -275,11 +326,19 @@ func _build_buildings() -> void:
 			poly.reverse()
 		var h: float = b["h"]
 		var kind: String = b["t"]
+		# Egimde: taban en alcak koseye iner, cati en yuksek koseden olculur
+		var y_lo := 1e9
+		var y_hi := -1e9
+		for p in poly:
+			var gh := ParkMap.terrain_height(p)
+			y_lo = minf(y_lo, gh)
+			y_hi = maxf(y_hi, gh)
+		y_lo -= 0.6
 		var tint := Color(FACADES[_rng.randi() % FACADES.size()])
 		if kind == "cami":
 			tint = Color("ded8c9")
 			h = 9.0
-			_mosque(poly, c, sqrt(absf(area) * 0.5), h)
+			_mosque(poly, c, sqrt(absf(area) * 0.5), y_hi + h)
 		elif kind == "okul":
 			tint = Color("ead9b0")
 		var seed := _rng.randf()
@@ -304,8 +363,8 @@ func _build_buildings() -> void:
 				continue
 			var normal := Vector3(d.y, 0, -d.x).normalized()
 			var base := v.size()
-			v.append_array([Vector3(a.x, 0, a.y), Vector3(bb.x, 0, bb.y), Vector3(bb.x, h, bb.y), Vector3(a.x, h, a.y)])
-			uv.append_array([Vector2(run, 0), Vector2(run + length, 0), Vector2(run + length, h), Vector2(run, h)])
+			v.append_array([Vector3(a.x, y_lo, a.y), Vector3(bb.x, y_lo, bb.y), Vector3(bb.x, y_hi + h, bb.y), Vector3(a.x, y_hi + h, a.y)])
+			uv.append_array([Vector2(run, y_lo - y_hi), Vector2(run + length, y_lo - y_hi), Vector2(run + length, h), Vector2(run, h)])
 			for k in 4:
 				n.append(normal)
 				uv2.append(Vector2(h, seed))
@@ -317,7 +376,7 @@ func _build_buildings() -> void:
 		var tris := Geometry2D.triangulate_polygon(poly)
 		var base := v.size()
 		for p in poly:
-			v.append(Vector3(p.x, h, p.y))
+			v.append(Vector3(p.x, y_hi + h, p.y))
 			n.append(Vector3.UP)
 			uv.append(p)
 			uv2.append(Vector2(h, seed))
@@ -359,9 +418,10 @@ func _mosque(poly: PackedVector2Array, c: Vector2, size: float, h: float) -> voi
 			far = i
 	for i in [0, far]:
 		var p: Vector2 = poly[i].lerp(c, 0.12)
-		Kit.cyl(self, 0.75, 0.95, 24.0, Vector3(p.x, 12.0, p.y), stone, 10)
-		Kit.cyl(self, 1.25, 1.25, 0.5, Vector3(p.x, 17.0, p.y), stone, 10)
-		Kit.cyl(self, 0.02, 0.85, 5.0, Vector3(p.x, 26.5, p.y), lead, 10)
+		var g := h - 9.0
+		Kit.cyl(self, 0.75, 0.95, 24.0, Vector3(p.x, g + 12.0, p.y), stone, 10)
+		Kit.cyl(self, 1.25, 1.25, 0.5, Vector3(p.x, g + 17.0, p.y), stone, 10)
+		Kit.cyl(self, 0.02, 0.85, 5.0, Vector3(p.x, g + 26.5, p.y), lead, 10)
 
 
 # ---------------------------------------------------------------- parcalar
@@ -377,7 +437,7 @@ func _fence(a: Vector2, b: Vector2, hex: String, h := 0.9) -> void:
 		Kit.box(self, Vector3(0.14, h, 0.14), at(p, h * 0.5), m)
 		Kit.box(self, Vector3(0.2, 0.06, 0.2), at(p, h + 0.03), m)
 	var mid := (a + b) * 0.5
-	var rot := Vector3(0, atan2(-dir.y, dir.x), 0)
+	var rot := Vector3(0, atan2(-dir.y, dir.x), atan2(gy(b) - gy(a), length))
 	for k in [0.38, 0.78]:
 		Kit.box(self, Vector3(length, 0.09, 0.06), at(mid, h * k), m, rot)
 
@@ -633,6 +693,160 @@ func _build_streets() -> void:
 				else:
 					_tree_fixed.append([p, _rng.randf_range(4.5, 6.5), 0])
 			carry -= length
+
+
+# ---------------------------------------------------------------- tabelalar ve ayrintilar
+
+const SIGN_STYLE := {   # tur: [levha rengi, yazi rengi, harf]
+	"eczane": ["c8322b", "ffffff", "E"], "market": ["e07b1f", "ffffff", ""], "yemek": ["7a4a2b", "fff3d6", ""],
+	"banka": ["1f3f7a", "ffffff", ""], "akaryakit": ["1e6b45", "ffffff", ""], "taksi": ["f2c230", "2b2b2e", "T"],
+	"kargo": ["8a5a2b", "ffffff", ""], "polis": ["1f2f5a", "ffffff", ""], "muze": ["6b4a8a", "ffffff", ""],
+	"okul": ["c9962e", "2b2b2e", ""], "dukkan": ["3f6f78", "ffffff", ""], "ofis": ["5b5f66", "ffffff", ""],
+	"spor": ["3f7a4a", "ffffff", ""], "durak": ["1a4fa0", "ffffff", "D"], "metro": ["c8322b", "ffffff", "M"],
+}
+
+
+func _text(parent: Node3D, text: String, pos: Vector3, color: Color, size := 0.26) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 64
+	l.pixel_size = size / 64.0 * 1.35
+	l.modulate = color
+	l.outline_size = 0
+	l.shaded = false
+	l.double_sided = false
+	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	l.position = pos
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	l.visibility_range_end = 75.0
+	parent.add_child(l)
+	return l
+
+
+## Guneye (kameraya) bakan yazili levha. Direkli ya da duvara asili.
+func _sign(p: Vector2, text: String, plate: String, ink: String, height := 2.7, pole := true, size := 0.26, badge := "") -> Node3D:
+	var r := _root(p)
+	var w := maxf(text.length() * size * 0.62 + 0.3, 0.9)
+	var hgt := size * 1.75
+	if pole:
+		Kit.cyl(r, 0.045, 0.055, height + hgt * 0.5, Vector3(0, (height + hgt * 0.5) * 0.5, 0), Kit.mat("6f7378", 0.5), 6)
+		_add_circle(Vector3(p.x, p.y, 0.12))
+	Kit.box(r, Vector3(w, hgt, 0.06), Vector3(0, height, 0.05), Kit.mat(plate, 0.6))
+	Kit.box(r, Vector3(w + 0.08, hgt + 0.08, 0.03), Vector3(0, height, 0.03), Kit.mat("f2f2ee", 0.6))
+	_text(r, text, Vector3(0, height, 0.09), Color(ink), size)
+	if badge != "":
+		Kit.box(r, Vector3(0.62, 0.62, 0.07), Vector3(0, height + hgt * 0.5 + 0.42, 0.05), Kit.mat(plate, 0.6))
+		_text(r, badge, Vector3(0, height + hgt * 0.5 + 0.42, 0.1), Color(ink), 0.42)
+	return r
+
+
+func _build_details() -> void:
+	var d: Dictionary = ParkMap.data
+	# Sokak tabelalari (mavi)
+	for sg in d["signs"]:
+		var p := Vector2(sg["pos"][0], sg["pos"][1])
+		if is_free(p, 0.3):
+			_sign(p, sg["name"], "1a4fa0", "ffffff", 2.8, true, 0.2)
+	# Isletmeler, duraklar, metro
+	for po in d["pois"]:
+		var p := Vector2(po["pos"][0], po["pos"][1])
+		var st: Array = SIGN_STYLE.get(po["k"], SIGN_STYLE["dukkan"])
+		var wall: bool = po["wall"]
+		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
+		if po["k"] == "durak":
+			_bus_shelter(p + Vector2(2.6, 0.0))
+	# Adli binalar: catinin on kenarinda levha
+	for b in d["buildings"]:
+		var bname: String = b["name"]
+		if bname == "":
+			continue
+		var south := Vector2(0, -1e9)
+		for q in b["p"]:
+			if q[1] > south.y:
+				south = Vector2(q[0], q[1])
+		if ParkMap.inside_bounds(south, 4.0):
+			_sign(south + Vector2(0, 0.4), bname, "2f3a45", "ffffff", minf(float(b["h"]), 7.5), false, 0.42)
+	# Trafik isiklari
+	for sg in d["signals"]:
+		var p := Vector2(sg[0], sg[1]) + Vector2(4.5, 4.5)
+		var r := _root(p)
+		Kit.cyl(r, 0.06, 0.08, 3.4, Vector3(0, 1.7, 0), Kit.mat("3f4750", 0.5), 8)
+		Kit.box(r, Vector3(0.34, 0.95, 0.3), Vector3(0, 3.0, 0.1), Kit.mat("2b2b2e", 0.6))
+		for i in 3:
+			Kit.ball(r, 0.11, Vector3(0, 3.3 - i * 0.3, 0.26), Kit.glow(["e0352b", "f2c230", "3fbf5a"][i], 1.2), Vector3.ONE, 8)
+		_add_circle(Vector3(p.x, p.y, 0.15))
+	# Yaya gecitleri
+	var white := Kit.mat("eeeeea", 0.8)
+	for c in d["crossings"]:
+		var p := Vector2(c["pos"][0], c["pos"][1])
+		var rot: float = c["rot"]
+		var along := Vector2(cos(rot), sin(rot))
+		var across := Vector2(-along.y, along.x)
+		var n := int(float(c["w"]) / 1.0)
+		for i in n:
+			var q := p + across * ((i - (n - 1) * 0.5) * 1.0)
+			Kit.box(self, Vector3(3.2, 0.03, 0.5), at(q, 0.03), white, Vector3(0, -rot, 0))
+	# Duvarlar ve citler (yalnizca gorsel; gecisi engellemez)
+	for bar in d["barriers"]:
+		var pts: Array = bar["p"]
+		var wall: bool = bar["k"] == "duvar"
+		var m := Kit.mat("b3ada0" if wall else "7d8088")
+		for i in pts.size() - 1:
+			var a := Vector2(pts[i][0], pts[i][1])
+			var b2 := Vector2(pts[i + 1][0], pts[i + 1][1])
+			var dd := b2 - a
+			if dd.length() < 0.3 or not ParkMap.inside_bounds((a + b2) * 0.5):
+				continue
+			var mid := (a + b2) * 0.5
+			var slope := atan2(gy(b2) - gy(a), dd.length())
+			Kit.box(self, Vector3(dd.length() + 0.1, 1.3 if wall else 1.0, 0.25 if wall else 0.05), at(mid, 0.6), m, Vector3(0, atan2(-dd.y, dd.x), slope))
+	# Kopru korkuluklari
+	for br in d["bridges"]:
+		var pts: Array = br["p"]
+		var w: float = br["w"]
+		for i in pts.size() - 1:
+			var a := Vector2(pts[i][0], pts[i][1])
+			var b2 := Vector2(pts[i + 1][0], pts[i + 1][1])
+			var dd := b2 - a
+			if dd.length() < 0.5:
+				continue
+			var perp := Vector2(-dd.y, dd.x).normalized() * (w * 0.5 + 1.9)
+			for side in [-1.0, 1.0]:
+				var mid: Vector2 = (a + b2) * 0.5 + perp * side
+				if ParkMap.water_sd(mid) < 3.0:
+					Kit.box(self, Vector3(dd.length(), 0.12, 0.12), at(mid, 1.0), Kit.mat("d8d2c4"), Vector3(0, atan2(-dd.y, dd.x), 0))
+					Kit.box(self, Vector3(dd.length(), 0.7, 0.2), at(mid, 0.35), Kit.mat("b3ada0"), Vector3(0, atan2(-dd.y, dd.x), 0))
+	# Oyun parklari: salincak ve kaydirak
+	for pg in d["playgrounds"]:
+		var p := Vector2(pg["pos"][0], pg["pos"][1])
+		_keep_out.append([p, Vector2(6, 6)])
+		var r := _root(p)
+		var red := Kit.mat("c8452f", 0.5)
+		var blue := Kit.mat("3f6fa8", 0.5)
+		for sx in [-1.6, 1.6]:
+			Kit.box(r, Vector3(0.1, 2.4, 0.1), Vector3(sx, 1.2, 0), red)
+		Kit.box(r, Vector3(3.4, 0.1, 0.1), Vector3(0, 2.4, 0), red)
+		for sx in [-0.7, 0.7]:
+			Kit.box(r, Vector3(0.02, 1.7, 0.02), Vector3(sx - 0.2, 1.55, 0), Kit.mat("8d8f92"))
+			Kit.box(r, Vector3(0.02, 1.7, 0.02), Vector3(sx + 0.2, 1.55, 0), Kit.mat("8d8f92"))
+			Kit.box(r, Vector3(0.5, 0.05, 0.2), Vector3(sx, 0.7, 0), blue)
+		Kit.box(r, Vector3(0.9, 0.08, 2.8), Vector3(4.0, 0.9, 0.6), Kit.mat("e9b93a", 0.5), Vector3(0.55, 0, 0))
+		Kit.box(r, Vector3(1.0, 1.7, 1.0), Vector3(4.0, 0.85, -1.2), blue)
+		_add_circle(Vector3(p.x + 4.0, p.y - 1.2, 0.8))
+
+
+func _bus_shelter(p: Vector2) -> void:
+	var r := _root(p)
+	var frame := Kit.mat("4a5058", 0.5)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.7, 0.85, 0.92, 0.45)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for sx in [-1.5, 1.5]:
+		Kit.box(r, Vector3(0.08, 2.3, 0.08), Vector3(sx, 1.15, -0.5), frame)
+	Kit.box(r, Vector3(3.3, 0.08, 1.4), Vector3(0, 2.3, 0), frame)
+	Kit.box(r, Vector3(3.0, 1.5, 0.04), Vector3(0, 1.3, -0.5), glass)
+	Kit.box(r, Vector3(2.4, 0.08, 0.4), Vector3(0, 0.5, -0.25), Kit.mat("9a6b43"))
+	_add_segment(p + Vector2(-1.5, -0.5), p + Vector2(1.5, -0.5))
 
 
 # ---------------------------------------------------------------- bitkiler
@@ -955,9 +1169,9 @@ func _build_pond_life() -> void:
 			var p := Vector2(_rng.randf_range(box.position.x, box.end.x), _rng.randf_range(box.position.y, box.end.y))
 			if ParkMap.water_sd(p) > -1.6 or not ParkMap.inside_bounds(p):
 				continue
-			Kit.cyl(self, 0.38, 0.38, 0.02, Vector3(p.x, ParkMap.WATER_Y + 0.02, p.y), Kit.mat("4c8a3f"), 10)
+			Kit.cyl(self, 0.38, 0.38, 0.02, at(p, ParkMap.WATER_LIFT + 0.02), Kit.mat("4c8a3f"), 10)
 			if pads % 2 == 0:
-				Kit.ball(self, 0.12, Vector3(p.x + 0.1, ParkMap.WATER_Y + 0.1, p.y), Kit.mat("e88fb0"), Vector3(1, 0.7, 1), 8)
+				Kit.ball(self, 0.12, at(p + Vector2(0.1, 0), ParkMap.WATER_LIFT + 0.1), Kit.mat("e88fb0"), Vector3(1, 0.7, 1), 8)
 			pads += 1
 		# Ordekler: suyun icinde bir noktanin cevresinde yuzerler
 		var poly: PackedVector2Array = ParkMap.water[wi]
@@ -1015,7 +1229,8 @@ func _process(dt: float) -> void:
 		var node: Node3D = d[0]
 		var c: Vector2 = d[1]
 		var a: float = _t * 0.22 + d[3]
-		node.position = Vector3(c.x + cos(a) * d[2], ParkMap.WATER_Y + sin(_t * 2.0 + d[3]) * 0.015, c.y + sin(a) * d[2])
+		var dp: Vector2 = c + Vector2(cos(a), sin(a)) * float(d[2])
+		node.position = at(dp, ParkMap.WATER_LIFT + sin(_t * 2.0 + d[3]) * 0.015)
 		node.rotation.y = -a + PI
 	for c in _clouds:
 		c.position.x += dt * 0.8
