@@ -154,7 +154,11 @@ func _build_hud() -> void:
 	row.add_child(_clock_icon)
 	clock_label = K.label(row, "10:00", 23, Color.WHITE)
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
-	_glass(K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30))
+	var menu_btn := K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
+	_glass(menu_btn)
+	# Bilgisayarda menu Esc ile acilir, hareket klavyeyle: dugme ve cubuk gizli
+	var touch := DisplayServer.is_touchscreen_available()
+	menu_btn.visible = touch
 
 	_toast = K.box(hud, Color(0.25, 0.19, 0.14, 0.9), 26, 16)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -179,8 +183,14 @@ func _build_hud() -> void:
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(bottom)
 	_context = K.button(bottom, " ", "star", func(): command.emit(_context_cmd), K.ORANGE, Color.WHITE, Vector2(320, 70), 26, 35)
-	_context.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_context.visible = false
+	# Alt ortada (mini harita sagda oldugu icin)
+	_context.reparent(hud)
+	_context.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_context.offset_left = -170
+	_context.offset_right = 170
+	_context.offset_top = -110
+	_context.offset_bottom = -40
 	_actions = GridContainer.new()
 	_actions.columns = 4
 	_actions.add_theme_constant_override("h_separation", 14)
@@ -200,6 +210,7 @@ func _build_hud() -> void:
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_knob.size = Vector2(76, 76)
 	_stick_knob.position = Vector2(52, 52)
+	_stick_base.visible = DisplayServer.is_touchscreen_available()
 
 
 ## Hareket cubugu: dokunmayi (ya da fareyi) dogrudan izler, boylece ikinci parmak kamerayi cevirebilir.
@@ -274,32 +285,67 @@ func refresh() -> void:
 		for kind in pets:
 			_cards[kind] = _make_card(cards, kind)
 	_update_cards()
-	# Komut dugmeleri: uc ana komut hep gorunur, digerleri "..." ile acilir
+	# Komut dugmeleri: yalniz "Gel" (cagir); digerleri hayvana dokununca cevresinde acilir
 	for c in _actions.get_children():
 		c.queue_free()
-	var cat: bool = state.d["active"] == "kedi"
-	var extra := [["Gel", "come", "come"], ["Otur", "sit", "sit"], ["Yat", "minus", "lie"], ["Uyu", "moon", "sleep"]]
-	if pets.size() > 1:
-		extra.append(["Oynat", "play", "play"])
-	var list := [["Sev", "heart", "pet"], ["Mama", "bone", "food"],
-		["Yumak" if cat else "Top At", "yarn" if cat else "ball", "yarn" if cat else "throw"]]
-	if _more:
-		list = extra + list
-	list.append(["Kapat" if _more else "Komutlar", "close" if _more else "paw", "more"])
-	_actions.columns = 4 if not _more else int(ceil(list.size() / 2.0))
-	for a in list:
-		var cmd: String = a[2]
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 2)
-		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_actions.add_child(col)
-		var b := K.button(col, "", a[1], func(): _on_action(cmd), GLASS, Color.WHITE, Vector2(68, 68), 30, 32)
-		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		_glass(b)
-		var cap := K.label(col, a[0], 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-		cap.add_theme_constant_override("outline_size", 5)
-		cap.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
-		cap.custom_minimum_size = Vector2(84, 0)
+	_actions.columns = 1
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_actions.add_child(col)
+	var b := K.button(col, "", "come", func(): _on_action("come"), GLASS, Color.WHITE, Vector2(76, 76), 34, 38)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_glass(b)
+	var cap := K.label(col, "Çağır", 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	cap.add_theme_constant_override("outline_size", 5)
+	cap.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+
+
+## Hayvanin cevresinde halka menu: sev, mama, top/yumak, otur, yat, uyu, oynat.
+var _radial: Control
+
+
+func radial_open() -> bool:
+	return _radial != null and _radial.visible
+
+
+func close_radial() -> void:
+	if _radial:
+		_radial.queue_free()
+		_radial = null
+
+
+func open_radial(at: Vector2, cat: bool, two: bool) -> void:
+	close_radial()
+	_radial = Control.new()
+	_radial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_radial)
+	var items := [["Sev", "heart", "pet"], ["Mama", "bone", "food"], ["Yumak" if cat else "Top At", "yarn" if cat else "ball", "yarn" if cat else "throw"],
+		["Otur", "sit", "sit"], ["Yat", "minus", "lie"], ["Uyu", "moon", "sleep"]]
+	if two:
+		items.append(["Oynat", "play", "play"])
+	var vp := get_viewport().get_visible_rect().size
+	at = at.clamp(Vector2(130, 130), vp - Vector2(130, 130))
+	for i in items.size():
+		var a := -PI / 2.0 + i * TAU / items.size()
+		var cmd: String = items[i][2]
+		var holder := VBoxContainer.new()
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_theme_constant_override("separation", 0)
+		_radial.add_child(holder)
+		var btn := K.button(holder, "", items[i][1], func():
+			close_radial()
+			_on_action(cmd), GLASS, Color.WHITE, Vector2(62, 62), 28, 30)
+		btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		_glass(btn)
+		var l := K.label(holder, items[i][0], 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		l.add_theme_constant_override("outline_size", 5)
+		l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+		holder.position = at + Vector2.from_angle(a) * 105.0 - Vector2(40, 40)
+		holder.custom_minimum_size = Vector2(80, 80)
+	# Ortada kapat
+	var x := K.button(_radial, "", "close", close_radial, Color(0, 0, 0, 0.35), Color.WHITE, Vector2(44, 44), 22, 20)
+	x.position = at - Vector2(22, 22)
 
 
 ## Saydam koyu yuvarlak dugme gorunumu

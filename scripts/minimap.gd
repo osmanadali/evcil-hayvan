@@ -15,7 +15,9 @@ var route: Array = []         # [Vector2] navigasyon rotasi
 var dest_name := ""
 var needs := {}               # ihtiyac -> 0..100 (aktif hayvan)
 var coins := 0
-var markers: Array = []       # [konum, renk, tur: ev / arac / otobus]
+var markers: Array = []
+var speed_kmh := -1.0         # araçtayken hiz gostergesi
+var _speed_label: Label       # [konum, renk, tur: ev / arac / otobus]
 const NEED_ARCS := [        # [ihtiyac, renk, baslangic, bitis (derece; 0 = sag, saat yonu), simge]
 	["hunger", "f29f4b", 100.0, 172.0, "bone"], ["energy", "e9b93a", 188.0, 260.0, "bolt"],
 	["fun", "e0708f", 80.0, 8.0, "smile"], ["clean", "4f9fd9", -8.0, -80.0, "drop"]]
@@ -47,6 +49,12 @@ func _ready() -> void:
 	_dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dist_label.position = Vector2(0, SIZE + 4)
 	_dist_label.size = Vector2(SIZE, 24)
+	_speed_label = Label.new()
+	_speed_label.add_theme_font_size_override("font_size", 34)
+	_speed_label.add_theme_color_override("font_color", Color.WHITE)
+	_speed_label.add_theme_constant_override("outline_size", 8)
+	_speed_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_coin_label = Label.new()
 	_coin_label.add_theme_font_size_override("font_size", 22)
 	_coin_label.add_theme_color_override("font_color", Color("ffe08a"))
@@ -66,6 +74,7 @@ var _ring: Control
 func _attach_label() -> void:
 	get_parent().add_child(_ring)
 	get_parent().add_child(_coin_label)
+	get_parent().add_child(_speed_label)
 	get_parent().add_child(_dist_label)
 
 
@@ -86,6 +95,10 @@ func _process(_dt: float) -> void:
 	_coin_label.position = position + Vector2(-20, SIZE + 18)
 	_coin_label.size = Vector2(SIZE + 40, 28)
 	_coin_label.visible = visible
+	_speed_label.visible = visible and speed_kmh >= 0.0
+	_speed_label.position = position + Vector2(-20, -62)
+	_speed_label.size = Vector2(SIZE + 40, 44)
+	_speed_label.text = "%d km/s" % int(speed_kmh)
 	_coin_label.text = "₺ %d" % coins
 	_dist_label.position = position + Vector2(-20, SIZE + 46)
 	_dist_label.size = Vector2(SIZE + 40, 24)

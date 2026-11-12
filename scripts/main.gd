@@ -12,6 +12,7 @@ const UiKit = preload("res://scripts/ui_kit.gd")
 const Bus = preload("res://scripts/bus.gd")
 const Minimap = preload("res://scripts/minimap.gd")
 const Home = preload("res://scripts/home.gd")
+const MetroRide = preload("res://scripts/metro_ride.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -605,6 +606,8 @@ func _input(e: InputEvent) -> void:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
 					_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
+	if _mode == "metro" and _metro and (k.keycode == KEY_SPACE or k.keycode == KEY_ENTER):
+		_metro.fast = true
 	if k.keycode == KEY_ESCAPE:
 		if map_screen.visible:
 			map_screen.visible = false
@@ -669,11 +672,14 @@ func _pointer_up(pos: Vector2) -> void:
 		if hit != null:
 			_throw_to(hit)
 		return
+	if ui.radial_open():
+		ui.close_radial()
+		return
 	for k in agents:
 		var a: Node3D = agents[k]
 		if cam.unproject_position(a.position + Vector3(0, 0.35, 0)).distance_to(pos) < 64.0:
 			_select_pet(k)
-			_do_pet()
+			ui.open_radial(cam.unproject_position(a.position + Vector3(0, 0.4, 0)), state.d["active"] == "kedi", state.owned_pets().size() > 1)
 			return
 	if hit != null:
 		_queue.clear()
@@ -1521,11 +1527,12 @@ func _update_minimap(dt: float) -> void:
 	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null
 	# Sag altta, komut dugmelerinin ustunde
 	var vp := get_viewport().get_visible_rect().size
-	var bottom := 200.0 if ui._actions.visible else 60.0
+	var bottom := 130.0 if ui._actions.visible else 60.0
 	minimap.position = Vector2(vp.x - minimap.SIZE - 40.0, vp.y - minimap.SIZE - bottom - 50.0)
 	minimap.player = _owner_pos()
 	minimap.heading = _cam_yaw
 	minimap.coins = int(state.d["coins"])
+	minimap.speed_kmh = absf(_drive_speed) * 3.6 if _ride != null else (_taxi_speed * 3.6 if _taxi != null else -1.0)
 	var mk: Array = []
 	if ParkMap.zone == "":
 		mk.append([HOME_DOOR, Color("e0703a"), "ev"])
@@ -1640,8 +1647,8 @@ func _near_home_exit() -> bool:
 
 ## M4 hattinda oyunda olan istasyonlar: [istasyon, bolge, aciklama]
 const METRO_STOPS := [["Meteoroloji", "", "Subayevleri"], ["Gar", "gar", "Ankara Garı · Gazi Mühendislik"],
-	["Maltepe", "gar", "Maltepe · Gazi Üniversitesi"], ["Adliye", "gar", "Adliye · Maltepe Pazarı"],
-	["Anadolu/Anıtkabir", "gar", "Anadolu Meydanı"]]
+	["Adliye", "gar", "Adliye · Maltepe Pazarı"]]
+var _metro: Node3D
 static var travel_to := ""      # bolge degisince cikilacak istasyon
 static var _debug_traveled := false
 
@@ -1664,8 +1671,40 @@ func _open_metro() -> void:
 
 
 func _travel(station: String, zone: String) -> void:
+	var here := ""
+	for g in world.metro_gates:
+		if _owner_pos().distance_to(g["pos"]) < 6.0:
+			here = g["name"]
+	if here == "":
+		here = "Meteoroloji" if ParkMap.zone == "" else "Gar"
+	# Yer altina in: peron, tren, yolculuk
+	if _metro == null:
+		_metro = MetroRide.new()
+		add_child(_metro)
+		_metro.announce.connect(func(t: String): ui.toast(t))
+		_metro.finished.connect(func(st: String): _metro_arrived(st))
+	_metro.cam = cam
+	_metro.owner_node = owner_node
+	_metro.pets = []
+	for k in agents:
+		agents[k].set_process(false)
+		_metro.pets.append(agents[k])
+	_metro.visible = true
+	_metro.set_meta("zone", zone)
+	_mode = "metro"
+	ui._actions.visible = false
+	minimap.visible = false
+	_metro.begin(here, station)
+
+
+func _metro_arrived(station: String) -> void:
+	print("METRO VARIS ", station)
+	var zone: String = _metro.get_meta("zone")
+	for k in agents:
+		agents[k].set_process(true)
+	ui._actions.visible = true
+	_mode = "play"
 	if zone == ParkMap.zone:
-		# Ayni bolgede: istasyonun girisine yuru(n)
 		for g in world.metro_gates:
 			if g["name"] == station:
 				_spawn_at_gate(g)
@@ -1681,6 +1720,18 @@ func _travel(station: String, zone: String) -> void:
 
 func _spawn_at_gate(g: Dictionary) -> void:
 	var out: Vector2 = g["pos"] - g["toward"] * 4.8
+	# Bina ya da duvar icine dusmesin: cevrede bos bir kaldirim ara
+	if not world.is_free(out, 0.6):
+		var found := false
+		for r in range(2, 40, 2):
+			for k in 16:
+				var q: Vector2 = g["pos"] + Vector2.from_angle(k * TAU / 16.0) * float(r)
+				if world.is_free(q, 0.8) and not world._inside_building(q):
+					out = q
+					found = true
+					break
+			if found:
+				break
 	_place_owner(out)
 	owner_node.rotation.y = atan2(g["toward"].x, g["toward"].y)
 	var i := 0
@@ -1956,7 +2007,7 @@ func _process(dt: float) -> void:
 	if world:
 		_update_daylight(dt)
 	AudioServer.set_bus_mute(0, not state.d["sound"])
-	if not _ready_done:
+	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
 	_update_owner(dt)
@@ -2224,7 +2275,7 @@ func _update_camera_raw(dt: float) -> void:
 			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.25)
 			cam.position = pos
 			cam.look_at(_focus)
-		"debug":
+		"debug", "metro":
 			pass
 		"closet":
 			var a := _active()
@@ -2500,7 +2551,9 @@ func _debug_shot() -> void:
 		for st in METRO_STOPS:
 			if st[0] == _args["travel"]:
 				_travel(st[0], st[1])
-				return
+				if _metro and _args.has("fastride"):
+					_metro.fast = true
+				break
 	if _args.has("busride"):
 		# Bir otobus durakta beklerken yanina git ve bin
 		for i in 400:
