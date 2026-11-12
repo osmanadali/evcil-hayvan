@@ -197,11 +197,17 @@ func _process(dt: float) -> void:
 	position.y = -absf(sin(_phase)) * 0.03 * move * (1.0 + run)
 
 
+## Ayakta dururken kalca kemiginin yerden yuksekligi (sele hizalamak icin).
+func hips_height() -> float:
+	return _skel.get_bone_global_rest(_bones["Hips"]).origin.y
+
+
 ## Bisiklet / scooter uzerinde: oturur, eller gidonda; bisiklette pedal cevirir.
 func _ride_pose(dt: float) -> void:
 	var bike := riding == "bisiklet"
+	var moto := riding == "motosiklet"
 	_pedal += dt * ride_speed / 0.55 * (1.0 if bike else 0.0)
-	var lean := 0.32 if bike else 0.08
+	var lean := 0.32 if bike else (0.22 if moto else 0.08)
 	_turn("Hips", [[X, lean * 0.5]])
 	_turn("Spine", [[X, lean * 0.6]])
 	_turn("Spine1", [[X, lean * 0.3]])
@@ -211,10 +217,10 @@ func _ride_pose(dt: float) -> void:
 	for side in ["Left", "Right"]:
 		var sx := 1.0 if side == "Left" else -1.0
 		var ph := _pedal + (0.0 if side == "Left" else PI)
-		var thigh := (-1.05 + 0.32 * sin(ph)) if bike else -1.4
-		var knee := (1.15 + 0.45 * sin(ph + 1.2)) if bike else 1.5
+		var thigh := (-1.05 + 0.32 * sin(ph)) if bike else (-1.15 if moto else -1.4)
+		var knee := (1.15 + 0.45 * sin(ph + 1.2)) if bike else (1.6 if moto else 1.5)
 		var u: Quaternion = _fix[side + "UpLeg"]
-		_turn(side + "UpLeg", [[X, thigh], [Z, sx * 0.08], u])
+		_turn(side + "UpLeg", [[X, thigh], [Z, sx * (0.22 if moto else 0.08)], u])
 		_turn(side + "Leg", [[u.inverse() * X, knee], _fix[side + "Leg"]])
 		_turn(side + "Foot", [_fix[side + "Foot"], [X, -0.3]])
 		var d: Quaternion = _down[side]

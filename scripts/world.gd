@@ -960,6 +960,10 @@ func _build_details() -> void:
 		var p := Vector2(po["pos"][0], po["pos"][1])
 		var st: Array = SIGN_STYLE.get(po["k"], SIGN_STYLE["dukkan"])
 		var wall: bool = po["wall"]
+		if not wall and SHOP_MODEL.has(po["k"]):
+			var placed := _shop_model(p, SHOP_MODEL[po["k"]], po["name"], st)
+			if placed:
+				continue
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
 		if po["k"] == "durak" and not FileAccess.file_exists("res://assets/transit.json"):
 			_bus_shelter(p + Vector2(2.6, 0.0))
@@ -1048,6 +1052,7 @@ func _build_details() -> void:
 var transit := {}
 var stops: Array = []              # [{name, pos: Vector2, lines: Array}]
 var metro_gates: Array = []        # [{name, line, ref, pos: Vector2}]
+var shop_spots: Array = []         # [{name, pos}] dukkan kapilari
 
 
 func _build_transit() -> void:
@@ -1200,6 +1205,60 @@ func _metro_entrance(p: Vector2, toward: Vector2, station: String, line: String,
 	_add_segment(c.call(1.6, 2.55), c.call(1.6, -3.7))
 	_add_segment(c.call(-1.6, -3.7), c.call(1.6, -3.7))
 	_add_circle(Vector3(c.call(2.1, 2.2).x, c.call(2.1, 2.2).y, 0.15))
+
+
+const SHOP_MODEL := {"eczane": "eczane", "market": "market"}
+const SHOP_TURN := {"eczane": 0.0, "market": 0.0, "firin": 0.0}   # modelin vitrini +Z'ye bakacak ek donus
+
+
+## Gercek dukkan noktasi bos bir yerdeyse dukkan binasi koyar: vitrini en yakin yola bakar.
+func _shop_model(p: Vector2, model: String, title: String, st: Array) -> bool:
+	if not ResourceLoader.exists("res://assets/models/%s.glb" % model):
+		return false
+	# En yakin yol: vitrin ona baksin; bina yoldan geri cekilsin
+	var best := Vector2.ZERO
+	var best_d := 1e9
+	for r in ParkMap.data["roads"]:
+		var ids: Array = r["n"]
+		for i in ids.size() - 1:
+			var a := ParkMap.nodes[int(ids[i])]
+			var b := ParkMap.nodes[int(ids[i + 1])]
+			var q := Geometry2D.get_closest_point_to_segment(p, a, b)
+			if q.distance_to(p) < best_d:
+				best_d = q.distance_to(p)
+				best = q
+	var toward := (best - p).normalized() if best_d > 0.1 else Vector2(0, 1)
+	var at_p := p
+	for i in 12:
+		if is_free(at_p, 5.0):
+			break
+		at_p -= toward * 1.5
+	if not is_free(at_p, 4.5):
+		return false
+	var rot := atan2(toward.x, toward.y) + float(SHOP_TURN.get(model, 0.0))
+	var r := _root(at_p, rot)
+	var inst: Node3D = _scene(model).instantiate()
+	var box := _merged_aabb(inst, Transform3D())
+	var k := 9.0 / maxf(box.size.x, box.size.z)
+	inst.scale = Vector3.ONE * k
+	var c := box.get_center() * k
+	inst.position = Vector3(-c.x, -box.position.y * k, -c.z)
+	r.add_child(inst)
+	var hx := box.size.x * k * 0.5 * 0.9
+	var hz := box.size.z * k * 0.5 * 0.9
+	var bs := Basis(Vector3.UP, rot)
+	var corner := func(x: float, z: float) -> Vector2:
+		var v := bs * Vector3(x, 0, z)
+		return at_p + Vector2(v.x, v.z)
+	for e in [[-hx, -hz, hx, -hz], [hx, -hz, hx, hz], [hx, hz, -hx, hz], [-hx, hz, -hx, -hz]]:
+		_add_segment(corner.call(e[0], e[1]), corner.call(e[2], e[3]))
+	# Tabela: vitrinin ustunde, magaza adiyla
+	var top := box.size.y * k
+	var plate := _text(r, title, Vector3(0, top * 0.78, hz / 0.9 + 0.08), Color(st[1]), 0.34)
+	plate.rotation.y = 0.0
+	Kit.box(r, Vector3(minf(title.length() * 0.24 + 0.6, hx * 2.0), 0.55, 0.06), Vector3(0, top * 0.78, hz / 0.9 + 0.04), Kit.mat(st[0], 0.5))
+	shop_spots.append({"name": title, "pos": at_p + toward * (hz / 0.9 + 1.5)})
+	return true
 
 
 func _bus_shelter(p: Vector2) -> void:
@@ -1427,6 +1486,37 @@ func _build_cars() -> void:
 
 
 ## Hareketli araba icin govde uretir.
+## Tripo modelini arac olarak hazirlar: uzun ekseni -Z (on), yere oturur, gercek boya olceklenir.
+func vehicle(path: String, length: float, flip := false) -> Node3D:
+	if not ResourceLoader.exists(path):
+		return null
+	var holder := Node3D.new()
+	var inst: Node3D = load(path).instantiate()
+	var box := _merged_aabb(inst, Transform3D())
+	var pivot := Node3D.new()
+	holder.add_child(pivot)
+	pivot.add_child(inst)
+	var turn := (PI / 2.0 if box.size.x > box.size.z else 0.0) + (PI if flip else 0.0)
+	pivot.rotation.y = turn
+	var k := length / maxf(box.size.x, box.size.z)
+	pivot.scale = Vector3.ONE * k
+	var c := box.get_center()
+	pivot.position = Basis(Vector3.UP, turn) * Vector3(-c.x, 0, -c.z) * k
+	pivot.position.y = -box.position.y * k
+	return holder
+
+
+## Trafikteki arac: taksi, dolmus, hatchback ya da renkli araba.
+func traffic_car(i: int, paint: Color) -> Node3D:
+	var pick := [["taksi", 4.5, true], ["hatchback", 4.1, false], ["dolmus", 5.4, true]]
+	if i % 3 != 0:
+		var spec: Array = pick[(i / 3 + i) % pick.size()]
+		var v := vehicle("res://assets/models/%s.glb" % spec[0], spec[1], spec[2])
+		if v:
+			return v
+	return make_car(paint)
+
+
 func make_car(paint: Color) -> Node3D:
 	var holder := Node3D.new()
 	var mi := MeshInstance3D.new()

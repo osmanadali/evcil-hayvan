@@ -419,7 +419,7 @@ func _spawn_npcs() -> void:
 					car.node = k
 					break
 			car.owner_node = owner_node
-			car.add_child(world.make_car(Color(paints[i % paints.size()])))
+			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
 			add_child(car)
 			_cars.append(car)
 	# Parkta kendi basina gezen hayvanlar
@@ -743,7 +743,7 @@ func _do_feed(id: String) -> void:
 
 # ---------------------------------------------------------------- arac surme
 
-const VEHICLE_FLIP := {"bisiklet": true}      # modelin onu ters gelenler
+const VEHICLE_FLIP := {"bisiklet": true, "taksi": true, "dolmus": true}      # modelin onu ters gelenler
 var _rides: Array[Node3D] = []       # binilebilen araclar
 var _ride: Node3D                    # su an surulen arac
 var _drive_speed := 0.0
@@ -754,39 +754,14 @@ var _engine: AudioStreamPlayer
 ## binince karakter gizlenir mi, sele konumu (karakterin kayma payi), motor sesi.
 const RIDES := {
 	"araba": {"max": 14.0, "acc": 5.0, "base": 2.6, "r": 1.15, "hide": true, "seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
-	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, -0.2, 0.2), "engine": 1.6, "ad": "Scooter'a Bin"},
-	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, -0.04, 0.28), "engine": 0.0, "ad": "Bisiklete Bin"},
+	"scooter": {"max": 11.0, "acc": 4.0, "base": 1.3, "r": 0.5, "hide": false, "seat": Vector3(0, 0.8, 0.32), "engine": 1.6, "ad": "Scooter'a Bin"},
+	"motosiklet": {"max": 17.0, "acc": 5.5, "base": 1.4, "r": 0.55, "hide": false, "seat": Vector3(0, 0.8, 0.3), "engine": 1.35, "ad": "Motosiklete Bin"},
+	"bisiklet": {"max": 6.5, "acc": 2.6, "base": 1.1, "r": 0.45, "hide": false, "seat": Vector3(0, 0.97, 0.2), "engine": 0.0, "ad": "Bisiklete Bin"},
 }
 
 
-## Tripo modelini arac olarak hazirlar: uzun ekseni -Z (on), yere oturur, gercek boya olceklenir.
 func _vehicle(path: String, length: float, flip := false) -> Node3D:
-	var holder := Node3D.new()
-	if not ResourceLoader.exists(path):
-		return null
-	var inst: Node3D = load(path).instantiate()
-	var box := AABB()
-	var first := true
-	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
-		var xf := Transform3D()
-		var n: Node = mi
-		while n != inst:
-			xf = (n as Node3D).transform * xf
-			n = n.get_parent()
-		var a := xf * mi.mesh.get_aabb()
-		box = a if first else box.merge(a)
-		first = false
-	var pivot := Node3D.new()
-	holder.add_child(pivot)
-	pivot.add_child(inst)
-	var turn := (PI / 2.0 if box.size.x > box.size.z else 0.0) + (PI if flip else 0.0)
-	pivot.rotation.y = turn
-	var k := length / maxf(box.size.x, box.size.z)
-	pivot.scale = Vector3.ONE * k
-	var c := box.get_center()
-	pivot.position = Basis(Vector3.UP, turn) * Vector3(-c.x, 0, -c.z) * k
-	pivot.position.y = -box.position.y * k
-	return holder
+	return world.vehicle(path, length, flip)
 
 
 func _spawn_rides() -> void:
@@ -812,7 +787,8 @@ func _spawn_rides() -> void:
 		car.set_meta("kind", "araba")
 		_place_ride(car, p, atan2(-dir.x, -dir.y))
 	# Bahce kapisinin onunde bisiklet ve scooter
-	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.2)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(1.8, 3.4)]]:
+	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.6)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(2.2, 3.6)],
+			["motosiklet", "res://assets/models/motosiklet.glb", 2.05, Vector2(2.2, 6.4)]]:
 		var v := _vehicle(spec[1], spec[2], bool(VEHICLE_FLIP.get(spec[0], false)))
 		if v == null:
 			continue
@@ -855,7 +831,9 @@ func _enter_ride() -> void:
 			agents[k].set_process(false)
 	else:
 		owner_model.riding = _ride.get_meta("kind")
-		owner_model.position = cfg["seat"]
+		# seat: sele ust yuzeyinin yuksekligi ve arac merkezine gore konumu; kalca kemigi selenin 9 cm ustunde
+		var seat: Vector3 = cfg["seat"]
+		owner_model.position = Vector3(0, seat.y + 0.09 - owner_model.hips_height(), seat.z)
 	if _engine and cfg["engine"] > 0.0:
 		_engine.play()
 	ui._actions.visible = false
@@ -1648,6 +1626,20 @@ func _debug_shot() -> void:
 			var t := owner_node.position + Vector3(0, 0.8, 0)
 			cam.position = t + Vector3(sin(a) * dist, 0.9, cos(a) * dist)
 			cam.look_at(t)
+	if _args.has("lineup"):
+		# Modelleri yan yana diz (yon denetimi): on tarafinda kirmizi top
+		var names: PackedStringArray = _args["lineup"].split(",")
+		var o := _owner_pos()
+		for i in names.size():
+			var parts := names[i].split(":")
+			var v := _vehicle("res://assets/models/%s.glb" % parts[0], float(parts[1]) if parts.size() > 1 else 4.0, parts.size() > 2)
+			if v == null:
+				continue
+			var at := o + Vector2(-(names.size() - 1) * 3.5 + i * 7.0, -6.0)
+			v.position = Vector3(at.x, ParkMap.terrain_height(at), at.y)
+			v.rotation.y = PI / 2.0     # on (-Z) sola baksin
+			add_child(v)
+			Kit.ball(v, 0.25, Vector3(0, 2.0, -float(parts[1]) * 0.55 if parts.size() > 1 else -2.2), Kit.mat("ff0000", 0.5))
 	if _args.has("busride"):
 		# Bir otobus durakta beklerken yanina git ve bin
 		for i in 400:

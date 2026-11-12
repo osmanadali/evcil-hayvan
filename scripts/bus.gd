@@ -74,9 +74,8 @@ func _model_from_file() -> void:
 		var a := xf * mi.mesh.get_aabb()
 		box = a if first else box.merge(a)
 		first = false
-	var along_x := box.size.x > box.size.z
-	if along_x:
-		inst.rotation.y = PI / 2.0
+	# Bu modelin onu +X yonunde (oyunda on = -Z): PI/2 + PI cevrilir
+	inst.rotation.y = (PI / 2.0 if box.size.x > box.size.z else 0.0) + PI
 	var k := 12.0 / maxf(box.size.x, box.size.z)
 	inst.scale = Vector3.ONE * k
 	var c := box.get_center()
