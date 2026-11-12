@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://8wnlaxee61hv"
+path="res://.godot/imported/cam_lod_0.jpg-3b1a728bdc29a5bb17c55e47a0da08b1.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "b8671a8aeaddc1da5aa82bd5b49b2227"
+}
+
+[deps]
+
+source_file="res://assets/models/cam_lod_0.jpg"
+dest_files=["res://.godot/imported/cam_lod_0.jpg-3b1a728bdc29a5bb17c55e47a0da08b1.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

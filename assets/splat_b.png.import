@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dx07aut8vkidk"
-path="res://.godot/imported/park_splat.png-ec538b971489523b5902c53fbea77068.ctex"
+uid="uid://c5ia66nketbaq"
+path="res://.godot/imported/splat_b.png-1b13c3b0806880af4cd52afd5d5b6c6c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/park_splat.png"
-dest_files=["res://.godot/imported/park_splat.png-ec538b971489523b5902c53fbea77068.ctex"]
+source_file="res://assets/splat_b.png"
+dest_files=["res://.godot/imported/splat_b.png-1b13c3b0806880af4cd52afd5d5b6c6c.ctex"]
 
 [params]
 

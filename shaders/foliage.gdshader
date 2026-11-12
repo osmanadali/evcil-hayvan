@@ -13,8 +13,9 @@ void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	grad = clamp((VERTEX.y - y0) / (y1 - y0), 0.0, 1.0);
 	float k = max(VERTEX.y - y0 * 0.5, 0.0) * sway;
-	VERTEX.x += sin(TIME * 1.4 + w.x * 0.35 + w.z * 0.25) * k;
-	VERTEX.z += cos(TIME * 1.1 + w.x * 0.2 - w.z * 0.3) * k * 0.7;
+	float gust = 0.6 + 0.4 * sin(TIME * 0.35 + w.x * 0.03 + w.z * 0.05);
+	VERTEX.x += (sin(TIME * 1.4 + w.x * 0.35 + w.z * 0.25) + 0.3 * sin(TIME * 3.3 + w.x * 1.1)) * k * gust;
+	VERTEX.z += cos(TIME * 1.1 + w.x * 0.2 - w.z * 0.3) * k * 0.7 * gust;
 }
 
 void fragment() {

@@ -268,7 +268,7 @@ func _throw_ball() -> void:
 	for i in 12:
 		var a := randf_range(-2.4, -0.7)   # ekranda yukari dogru yay
 		var c := p + Vector2(cos(a), sin(a)) * randf_range(6.0, 9.5)
-		if c.length() < ParkMap.PLAY_RADIUS - 1.0 and ParkMap.water_sd(c) > 1.0 and world.resolve(c, 0.4, p).distance_to(c) < 0.05:
+		if ParkMap.water_sd(c) > 1.0 and world.is_free(c):
 			land = c
 			break
 	if land == p:
@@ -428,13 +428,14 @@ func _debug_shot() -> void:
 			world.hide_clouds()
 			cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 			cam.size = float(_args.get("size", "100"))
-			cam.position = Vector3(0, 150, 0)
+			cam.position = Vector3(float(_args.get("cx", "20")), 150, float(_args.get("cz", "-6")))
 			cam.rotation = Vector3(-PI / 2, 0, 0)
 		elif view == "wide":
 			set_process(false)
 			cam.fov = 50
-			cam.position = Vector3(10, 34, 62)
-			cam.look_at(Vector3(0, 0, -4))
+			var wc := Vector3(float(_args.get("cx", "0")), 0, float(_args.get("cz", "0")))
+			cam.position = wc + Vector3(8, 30, 48)
+			cam.look_at(wc)
 		elif view == "low":
 			set_process(false)
 			cam.fov = 45

@@ -1,9 +1,10 @@
 shader_type spatial;
 
 uniform sampler2D splat : filter_linear, repeat_disable;
-uniform float splat_extent = 128.0;
-uniform vec3 shallow : source_color = vec3(0.50, 0.86, 0.88);
-uniform vec3 deep : source_color = vec3(0.17, 0.55, 0.76);
+uniform vec2 splat_center = vec2(0.0);
+uniform float splat_extent = 236.0;
+uniform vec3 shallow : source_color = vec3(0.38, 0.70, 0.72);
+uniform vec3 deep : source_color = vec3(0.12, 0.40, 0.58);
 
 varying vec3 wpos;
 
@@ -21,7 +22,7 @@ void vertex() {
 }
 
 void fragment() {
-	float sd = (texture(splat, wpos.xz / splat_extent + 0.5).g - 0.5) * 8.0;
+	float sd = (texture(splat, (wpos.xz - splat_center) / splat_extent + 0.5).g - 0.5) * 8.0;
 	float depth = clamp(-sd / 3.5, 0.0, 1.0);
 	vec3 col = mix(shallow, deep, depth);
 
