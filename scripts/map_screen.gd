@@ -2,6 +2,7 @@ extends Control
 ## Telefon gorunumlu harita uygulamasi: kaydir, yakinlastir, bir yer sec, "Yuru" de.
 
 signal place_chosen(p: Vector2)
+signal nav_chosen(p: Vector2, name: String)    # yalnizca yol tarifi (yurumeden)
 
 const ParkMap = preload("res://scripts/park_map.gd")
 const K = preload("res://scripts/ui_kit.gd")
@@ -34,6 +35,11 @@ var _touches := {}
 var _moved := 0.0
 var _selected := -1
 var _me_world := Vector2.ZERO
+var _static_pins := 0           # PINS'in sabit kismi; sonrakiler her acilista yenilenir
+var _dyn_nodes: Array[Control] = []
+var _custom := Vector2.INF       # haritada bos bir yere dokunulunca isaretlenen yer
+var _custom_pin: Control
+var dynamic: Array = []          # main doldurur: [ad, konum, renk, simge]
 
 
 func _ready() -> void:
@@ -47,6 +53,15 @@ func _ready() -> void:
 		var c := Vector2(pl["pos"][0], pl["pos"][1])
 		var st: Array = KIND_STYLE.get(pl["kind"], ["8d8f92", "pin"])
 		PINS.append([pl["name"], c, ParkMap.nodes[ParkMap.nearest_node(c)], st[0], st[1]])
+	# Dukkanlar, eczaneler, kafeler, bankalar, benzinlikler (OpenStreetMap)
+	const POI_STYLE := {"market": ["e0743a", "cart"], "eczane": ["d9523f", "plus"], "yemek": ["b8743a", "star"],
+		"banka": ["4a6fa5", "coin"], "akaryakit": ["6b6f75", "drop"], "metro": ["c8322b", "pin"], "durak": ["1a4fa0", "pin"]}
+	for po in ParkMap.data["pois"]:
+		if POI_STYLE.has(po["k"]) and po["k"] != "durak":
+			var c := Vector2(po["pos"][0], po["pos"][1])
+			if ParkMap.inside_bounds(c, 2.0):
+				PINS.append([po["name"], c, c, POI_STYLE[po["k"]][0], POI_STYLE[po["k"]][1]])
+	_static_pins = PINS.size()
 	for sdata in ParkMap.data["streets"]:
 		STREETS.append([sdata["name"], Vector2(sdata["pos"][0], sdata["pos"][1]), float(sdata["rot"])])
 	visible = false
@@ -174,13 +189,33 @@ func _ready() -> void:
 	_sheet_info.size = Vector2(380, 70)
 	_sheet_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sheet_info.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	var go := K.button(_sheet, "Yürü", "walk", _go, K.GREEN, Color.WHITE, Vector2(170, 78), 26, 28)
+	var go := K.button(_sheet, "Yürü", "walk", _go, K.SOFT, K.BROWN, Vector2(150, 70), 24, 26)
 	go.set_anchors_and_offsets_preset(PRESET_CENTER_RIGHT)
-	go.offset_left = -196
+	go.offset_left = -176
 	go.offset_right = -26
-	go.offset_top = -39
-	go.offset_bottom = 39
+	go.offset_top = -35
+	go.offset_bottom = 35
 	go.name = "Go"
+	var nav := K.button(_sheet, "Yol Tarifi", "come", _nav, K.BLUE, Color.WHITE, Vector2(210, 70), 24, 26)
+	nav.set_anchors_and_offsets_preset(PRESET_CENTER_RIGHT)
+	nav.offset_left = -400
+	nav.offset_right = -190
+	nav.offset_top = -35
+	nav.offset_bottom = 35
+	nav.name = "Nav"
+	_custom_pin = Control.new()
+	_custom_pin.mouse_filter = MOUSE_FILTER_IGNORE
+	var cdot := K.panel(_custom_pin, K.RED, 16, 4, Color.WHITE, 5)
+	cdot.mouse_filter = MOUSE_FILTER_IGNORE
+	cdot.position = Vector2(-16, -40)
+	cdot.size = Vector2(32, 32)
+	var cstem := ColorRect.new()
+	cstem.color = K.RED
+	cstem.position = Vector2(-2, -10)
+	cstem.size = Vector2(4, 12)
+	_custom_pin.add_child(cstem)
+	_custom_pin.visible = false
+	_canvas.add_child(_custom_pin)
 	var credit := K.outline(K.label(_view, "© OpenStreetMap katkıcıları", 15, K.MUTED), 4)
 	credit.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
 	credit.offset_left = 26
@@ -194,6 +229,9 @@ func open(player_pos: Vector2) -> void:
 	visible = true
 	_me_world = player_pos
 	_me.position = _to_px(player_pos)
+	_rebuild_dynamic()
+	_custom = Vector2.INF
+	_custom_pin.visible = false
 	_select(-1)
 	await get_tree().process_frame
 	_zoom_min = maxf(_view.size.x, _view.size.y) / MAP_PX
@@ -281,19 +319,74 @@ func _tap(pos: Vector2) -> void:
 		if d < best_d:
 			best_d = d
 			best = i
+	if best < 0:
+		# Bos bir yere dokunuldu: orayi hedef olarak isaretle
+		var local := (pos - _canvas.position) / _zoom
+		_custom = (local / MAP_PX - Vector2(0.5, 0.5)) * ParkMap.SPLAT_EXTENT + ParkMap.SPLAT_CENTER
+		_custom_pin.position = local
+		_custom_pin.visible = true
+	else:
+		_custom_pin.visible = false
+		_custom = Vector2.INF
 	_select(best)
+
+
+## Harita her acildiginda: evim, araclarim, duraklar gibi degisen isaretler.
+func _rebuild_dynamic() -> void:
+	PINS.resize(_static_pins)
+	for n in _dyn_nodes:
+		n.queue_free()
+	_dyn_nodes.clear()
+	for p in dynamic:
+		PINS.append([p[0], p[1], p[1], p[2], p[3]])
+		var pin := Control.new()
+		pin.mouse_filter = MOUSE_FILTER_IGNORE
+		pin.position = _to_px(p[1])
+		var dot := K.panel(pin, Color(p[2]), 17, 3, Color.WHITE, 4)
+		dot.mouse_filter = MOUSE_FILTER_IGNORE
+		dot.position = Vector2(-17, -17)
+		dot.size = Vector2(34, 34)
+		var ic := Icon.new(p[3], Color.WHITE, 18)
+		ic.position = Vector2(-9, -9)
+		ic.size = Vector2(18, 18)
+		pin.add_child(ic)
+		var l := K.outline(K.label(pin, p[0], 17, K.BROWN, HORIZONTAL_ALIGNMENT_CENTER), 7)
+		l.position = Vector2(-150, 18)
+		l.size = Vector2(300, 24)
+		_canvas.add_child(pin)
+		_pins.append(pin)
+		_dyn_nodes.append(pin)
+
+
+func _nav() -> void:
+	var t := _target()
+	if t[0] != Vector2.INF:
+		visible = false
+		nav_chosen.emit(t[0], t[1])
+
+
+func _target() -> Array:
+	if _selected >= 0:
+		return [PINS[_selected][2], PINS[_selected][0]]
+	if _custom != Vector2.INF:
+		return [_custom, "İşaretli yer"]
+	return [Vector2.INF, ""]
 
 
 func _select(i: int) -> void:
 	_selected = i
 	var go: Button = _sheet.get_node("Go")
-	if i < 0:
+	var nav: Button = _sheet.get_node("Nav")
+	var t := _target()
+	if t[0] == Vector2.INF:
 		_sheet_title.text = "Nereye gidelim?"
-		_sheet_info.text = "Haritayı kaydır, yakınlaştır ve bir yere dokun."
+		_sheet_info.text = "Bir yere ya da işarete dokun, sonra Yol Tarifi."
 		go.visible = false
+		nav.visible = false
 	else:
-		_sheet_title.text = PINS[i][0]
-		var route := ParkMap.find_route(_me_world, PINS[i][2])
+		_sheet_title.text = t[1]
+		nav.visible = true
+		var route := ParkMap.find_route(_me_world, t[0])
 		var dist := 0.0
 		var prev := _me_world
 		for p in route:
@@ -314,6 +407,8 @@ func select_by_name(pin_name: String) -> void:
 
 
 func _go() -> void:
-	if _selected >= 0:
+	var t := _target()
+	if t[0] != Vector2.INF:
 		visible = false
-		place_chosen.emit(PINS[_selected][2])
+		nav_chosen.emit(t[0], t[1])
+		place_chosen.emit(t[0])

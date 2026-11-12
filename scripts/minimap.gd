@@ -15,6 +15,7 @@ var route: Array = []         # [Vector2] navigasyon rotasi
 var dest_name := ""
 var needs := {}               # ihtiyac -> 0..100 (aktif hayvan)
 var coins := 0
+var markers: Array = []       # [konum, renk, tur: ev / arac / otobus]
 const NEED_ARCS := [        # [ihtiyac, renk, baslangic, bitis (derece; 0 = sag, saat yonu), simge]
 	["hunger", "f29f4b", 100.0, 172.0, "bone"], ["energy", "e9b93a", 188.0, 260.0, "bolt"],
 	["fun", "e0708f", 80.0, 8.0, "smile"], ["clean", "4f9fd9", -8.0, -80.0, "drop"]]
@@ -141,9 +142,29 @@ func _draw_map() -> void:
 	# Kenar ve kuzey isareti
 	L.draw_arc(c, r - 2.0, 0.0, TAU, 64, Color(1, 1, 1, 0.85), 4.0, true)
 	L.draw_arc(c, r + 1.0, 0.0, TAU, 64, Color(0, 0, 0, 0.35), 2.0, true)
-	var north := c + Vector2(0, -1).rotated(heading) * (r - 14.0)
-	L.draw_circle(north, 10.0, Color(0.1, 0.1, 0.12, 0.85))
-	L.draw_string(ThemeDB.fallback_font, north + Vector2(-5, 6), "K", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
+	# Isaretler: evim (turuncu ev), araclarim (koyu), otobusler (mavi). Disaridakiler kenara yapisir.
+	for m in markers:
+		var mp := _to_mini(m[0])
+		var rel := mp - c
+		if rel.length() > r - 12.0:
+			mp = c + rel.normalized() * (r - 12.0)
+		var col: Color = m[1]
+		match m[2]:
+			"ev":
+				L.draw_colored_polygon(PackedVector2Array([mp + Vector2(0, -10), mp + Vector2(9, -2), mp + Vector2(7, 8), mp + Vector2(-7, 8), mp + Vector2(-9, -2)]), col)
+				L.draw_polyline(PackedVector2Array([mp + Vector2(0, -10), mp + Vector2(9, -2), mp + Vector2(7, 8), mp + Vector2(-7, 8), mp + Vector2(-9, -2), mp + Vector2(0, -10)]), Color.WHITE, 2.0, true)
+			"arac":
+				L.draw_rect(Rect2(mp - Vector2(6, 4), Vector2(12, 8)), col)
+				L.draw_rect(Rect2(mp - Vector2(6, 4), Vector2(12, 8)), Color.WHITE, false, 1.5)
+			_:
+				L.draw_circle(mp, 5.0, col)
+				L.draw_arc(mp, 5.0, 0.0, TAU, 12, Color.WHITE, 1.5, true)
+	# Pusula: kuzeyi gosteren kirmizi ibre (harita kamerayla doner)
+	var nd := Vector2(0, -1).rotated(heading)
+	var np := c + nd * (r - 14.0)
+	var side := Vector2(-nd.y, nd.x)
+	L.draw_colored_polygon(PackedVector2Array([np + nd * 9.0, np + side * 6.0 - nd * 5.0, np - side * 6.0 - nd * 5.0]), Color("e8453c"))
+	L.draw_polyline(PackedVector2Array([np + nd * 9.0, np + side * 6.0 - nd * 5.0, np - side * 6.0 - nd * 5.0, np + nd * 9.0]), Color.WHITE, 1.5, true)
 	# Oyuncu oku (hep yukari bakar: harita kamerayla doner)
 	L.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -12), c + Vector2(9, 10), c + Vector2(0, 5), c + Vector2(-9, 10)]), Color("ffffff"))
 	L.draw_polyline(PackedVector2Array([c + Vector2(0, -12), c + Vector2(9, 10), c + Vector2(0, 5), c + Vector2(-9, 10), c + Vector2(0, -12)]), Color("1d6ef5"), 2.5, true)

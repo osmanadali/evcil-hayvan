@@ -162,7 +162,7 @@ func _ready() -> void:
 	ui.select_pet.connect(_select_pet)
 	ui.start_game.connect(_start_game)
 	ui.continue_game.connect(_enter_play)
-	ui.open_map.connect(func(): map_screen.open(_owner_pos()))
+	ui.open_map.connect(_open_map)
 	ui.photo.connect(_on_photo)
 	ui.closet_toggled.connect(_on_closet)
 	ui.worn_changed.connect(func(): agents[state.d["active"]].refresh())
@@ -174,8 +174,8 @@ func _ready() -> void:
 	minimap = Minimap.new()
 	minimap.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ui.hud.add_child(minimap)
-	minimap.tapped.connect(func(): map_screen.open(_owner_pos()))
-	map_screen.place_chosen.connect(func(p: Vector2): _set_nav(p))
+	minimap.tapped.connect(_open_map)
+	map_screen.nav_chosen.connect(func(p: Vector2, n: String): _set_nav(p, n))
 	get_tree().set_auto_accept_quit(false)
 	loading.queue_free()
 	_ready_done = true
@@ -596,7 +596,7 @@ func _input(e: InputEvent) -> void:
 			KEY_Q:
 				ui._on_action("more")
 			KEY_M:
-				map_screen.open(_owner_pos())
+				_open_map()
 			KEY_C:
 				_on_photo("enter")
 			KEY_V:
@@ -1485,17 +1485,36 @@ func _leave_taxi(arrived: bool) -> void:
 
 # ---------------------------------------------------------------- navigasyon ve mini harita
 
-func _set_nav(p: Vector2) -> void:
+## Harita: evim, araclarim, otobus duraklari ve metro girisleri her acilista guncellenir.
+func _open_map() -> void:
+	var dyn: Array = []
+	if ParkMap.zone == "":
+		dyn.append(["Evim", HOME_DOOR + HOME_DOOR_OUT * 1.5, "e0703a", "home"])
+	for r in _rides:
+		var kind: String = r.get_meta("kind")
+		var label: String = {"araba": "Arabam", "scooter": "Scooter", "motosiklet": "Motosiklet", "bisiklet": "Bisiklet"}.get(kind, "Aracım")
+		dyn.append([label, Vector2(r.position.x, r.position.z), "333a44", "play"])
+	for st in world.stops:
+		dyn.append([st["name"] + ((" · " + " ".join(st["lines"])) if not st["lines"].is_empty() else ""), st["pos"], "1a4fa0", "pin"])
+	for g in world.metro_gates:
+		dyn.append(["M · " + str(g["name"]), g["pos"], "c8322b", "pin"])
+	map_screen.dynamic = dyn
+	map_screen.open(_owner_pos())
+
+
+func _set_nav(p: Vector2, label := "") -> void:
 	_nav = p
 	_nav_t = 0.0
-	var best := ""
-	var bd := 1e9
-	for pin in map_screen.PINS:
-		var d: float = (pin[2] as Vector2).distance_to(p)
-		if d < bd:
-			bd = d
-			best = pin[0]
+	var best := label
+	if best == "":
+		var bd := 1e9
+		for pin in map_screen.PINS:
+			var d: float = (pin[2] as Vector2).distance_to(p)
+			if d < bd:
+				bd = d
+				best = pin[0]
 	minimap.dest_name = best
+	minimap.route = []
 
 
 func _update_minimap(dt: float) -> void:
@@ -1507,6 +1526,16 @@ func _update_minimap(dt: float) -> void:
 	minimap.player = _owner_pos()
 	minimap.heading = _cam_yaw
 	minimap.coins = int(state.d["coins"])
+	var mk: Array = []
+	if ParkMap.zone == "":
+		mk.append([HOME_DOOR, Color("e0703a"), "ev"])
+	for r in _rides:
+		if r != _ride:
+			mk.append([Vector2(r.position.x, r.position.z), Color("2d3440"), "arac"])
+	for b in _buses:
+		if b.visible:
+			mk.append([Vector2(b.position.x, b.position.z), Color("1f6fd0"), "otobus"])
+	minimap.markers = mk
 	var pet: Dictionary = state.pet(state.d["active"])
 	for n in state.NEEDS:
 		minimap.needs[n] = float(pet[n])
@@ -1517,10 +1546,28 @@ func _update_minimap(dt: float) -> void:
 		minimap.route = []
 		return
 	_nav_t -= dt
-	if _nav_t <= 0.0:
-		_nav_t = 1.0
-		# Arabadayken sokaklardan, yuruyerek her yonden
-		minimap.route = ParkMap.find_route(_owner_pos(), _nav) if _ride != null and RIDES[_ride.get_meta("kind")]["hide"] else world.find_path(_owner_pos(), _nav)
+	# Rota yalnizca gerektiginde hesaplanir (cizgi titremesin): ilk kez, yoldan 12 m sapinca ya da arac degisince
+	var off_route := true
+	var o := _owner_pos()
+	if minimap.route.size() > 0:
+		var prev: Vector2 = minimap.route[0]
+		off_route = o.distance_to(prev) > 12.0
+		for q in minimap.route:
+			if Geometry2D.get_closest_point_to_segment(o, prev, q).distance_to(o) < 12.0:
+				off_route = false
+				break
+			prev = q
+	var driving: bool = (_ride != null and bool(RIDES[_ride.get_meta("kind")]["hide"])) or _taxi != null
+	if off_route or _nav_t <= -8.0 or driving != bool(minimap.get_meta("driving", false)):
+		_nav_t = 0.0
+		minimap.set_meta("driving", driving)
+		if driving:
+			minimap.route = Array(_road_route(o, _nav)) + [_nav]
+		else:
+			minimap.route = world.find_path(o, _nav)
+	# Gecilen noktalari at
+	while minimap.route.size() > 1 and o.distance_to(minimap.route[0]) < 6.0:
+		minimap.route.remove_at(0)
 	if _owner_pos().distance_to(_nav) < 6.0:
 		ui.toast("Vardın: %s" % minimap.dest_name)
 		_nav = Vector2.INF
