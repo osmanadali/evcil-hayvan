@@ -1192,6 +1192,9 @@ func _debug_shot() -> void:
 		ui._on_action("more")
 		await get_tree().process_frame
 		await get_tree().process_frame
+	if _args.has("panim"):
+		agents[state.d["active"]].model.force_speed = float(_args["panim"])
+		await get_tree().create_timer(float(_args.get("wait", "1.0"))).timeout
 	if _args.has("anim"):
 		owner_model.force_speed = float(_args["anim"])
 		await get_tree().create_timer(float(_args.get("wait", "1.0"))).timeout
@@ -1199,6 +1202,8 @@ func _debug_shot() -> void:
 		# Yuruyen karakteri yandan goster (animasyon denetimi)
 		_mode = "debug"
 		var ct := owner_node.position + Vector3(0, 0.85, 0)
+		if _args["chase"] == "pet":
+			ct = agents[state.d["active"]].model.global_position + Vector3(0, 0.3, 0)
 		var ca := float(_args.get("ang", "0.5"))
 		var cd := float(_args.get("dist", "4.5"))
 		cam.position = ct + Vector3(sin(ca) * cd, 0.5, cos(ca) * cd)

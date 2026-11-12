@@ -78,7 +78,7 @@ Zemin maskeleri mesafe alanı olarak saklanır; bu sayede yol ve kaldırım kena
 
 ## Modeller nasıl üretildi
 
-Köpek, kedi, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
+Köpek (sarı Labrador) ve kedi (turuncu tekir; ikisi de gerçekçi tarzda, `docs/tripo-yeni-hayvanlar.jpg`), araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
 (`docs/tripo-modeller.jpg`). Araçlar `tools/` klasöründe:
 
 | Araç | İş |
