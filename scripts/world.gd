@@ -1134,6 +1134,11 @@ func _build_details() -> void:
 			if placed:
 				continue
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
+		if SHOP_MODEL.has(po["k"]):
+			# Zemin kattaki dukkan: kapisi tabelanin altinda, kaldirim tarafinda
+			var tr := _road_point(p) - p
+			var door := p + (tr.normalized() * minf(1.6, tr.length() * 0.5) if tr.length() > 0.3 else Vector2.ZERO)
+			shop_spots.append({"name": po["name"], "kind": po["k"], "pos": door})
 		if po["k"] == "durak" and not FileAccess.file_exists(ParkMap.asset("transit.json")):
 			_bus_shelter(p + Vector2(2.6, 0.0))
 	# Adli binalar: catinin on kenarinda levha
@@ -1469,7 +1474,7 @@ func _shop_model(p: Vector2, model: String, title: String, st: Array) -> bool:
 	var plate := _text(r, title, Vector3(0, top * 0.78, hz / 0.9 + 0.08), Color(st[1]), 0.34)
 	plate.rotation.y = 0.0
 	Kit.box(r, Vector3(minf(title.length() * 0.24 + 0.6, hx * 2.0), 0.55, 0.06), Vector3(0, top * 0.78, hz / 0.9 + 0.04), Kit.mat(st[0], 0.5))
-	shop_spots.append({"name": title, "pos": at_p + toward * (hz / 0.9 + 1.5)})
+	shop_spots.append({"name": title, "kind": model, "pos": at_p + toward * (hz / 0.9 + 1.5)})
 	return true
 
 

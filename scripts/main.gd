@@ -14,6 +14,7 @@ const Minimap = preload("res://scripts/minimap.gd")
 const Home = preload("res://scripts/home.gd")
 const MetroRide = preload("res://scripts/metro_ride.gd")
 const CarPlay = preload("res://scripts/carplay.gd")
+const ShopInterior = preload("res://scripts/shop_interior.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -828,6 +829,71 @@ func _update_wet(dt: float) -> void:
 	_drips.emitting = _wet_t > 0.0 and not inside
 
 
+var _shop: Node3D
+var _shop_spot: Dictionary = {}
+
+
+## Market / eczane ici: ev gibi yurunebilen ic mekan (yer altinda kurulur).
+func _enter_shop(sp: Dictionary) -> void:
+	if _shop:
+		_shop.queue_free()
+	_shop = ShopInterior.new()
+	_shop.kind = sp["kind"]
+	_shop.title = sp["name"]
+	_shop.position = Vector3(0, 300, 0)      # gokyuzunde: kamera arazinin altina dusmesin
+	add_child(_shop)
+	_shop_spot = sp
+	ParkMap.home = _shop
+	_moving = false
+	_queue.clear()
+	var inside: Vector2 = _shop.w2(_shop.entrance_local)
+	_place_owner(inside)
+	owner_node.rotation.y = 0.0
+	var i := 0
+	for k in agents:
+		agents[k].place(inside + Vector2(0.7 - 0.6 * i, 0.3))
+		i += 1
+	_cam_pitch = 0.75
+	_cam_yaw = 0.0
+	ui.toast("%s · Hoş geldiniz!" % sp["name"])
+
+
+func _exit_shop() -> void:
+	ParkMap.home = null
+	if _shop:
+		_shop.queue_free()
+		_shop = null
+	var out: Vector2 = _shop_spot["pos"]
+	_place_owner(out)
+	var i := 0
+	for k in agents:
+		agents[k].place(out + Vector2(1.0 + 0.6 * i, 0.5).rotated(i * 2.0))
+		i += 1
+	_cam_pitch = 0.27
+
+
+func _shop_buy() -> void:
+	if _shop.kind == "market":
+		ui.open_shop("food")
+		return
+	var a := _active()
+	var body: VBoxContainer = ui._open_modal("Eczane · %s için" % state.pet(a.kind)["name"], 120, 120)
+	body.add_theme_constant_override("separation", 10)
+	var items := [["Vitamin macunu", 15, "energy", 35.0], ["Pire-kene damlası", 20, "clean", 45.0],
+		["Kulak temizleme solüsyonu", 10, "clean", 20.0], ["Sakinleştirici ödül", 12, "fun", 25.0]]
+	for it in items:
+		var item: Array = it
+		UiKit.button(body, "%s  —  %d ₺" % [item[0], item[1]], "plus", func():
+			if state.spend(int(item[1])):
+				for k in agents:
+					state.add_need(k, item[2], item[3])
+				_pet_voice(a.kind, true)
+				ui.close_modal()
+				ui.toast("%s aldın. %s çok memnun!" % [item[0], state.pet(a.kind)["name"]])
+			else:
+				ui.toast("Paran yetmiyor."), UiKit.SOFT, UiKit.BROWN, Vector2(0, 64), 22, 26)
+
+
 ## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
 	var body: VBoxContainer = ui._open_modal("Telefon", 120, 120)
@@ -1039,6 +1105,15 @@ func _on_command(cmd: String) -> void:
 			_end_play_ride()
 		"phone":
 			_open_phone()
+		"shop_in":
+			for sp in world.shop_spots:
+				if _owner_pos().distance_to(sp["pos"]) < 2.6 and sp.has("kind"):
+					_enter_shop(sp)
+					break
+		"shop_out":
+			_exit_shop()
+		"shop_buy":
+			_shop_buy()
 		"wardrobe":
 			_open_closet()
 		"taxi":
@@ -1992,7 +2067,7 @@ func _exit_home() -> void:
 
 
 func _near_home_exit() -> bool:
-	return ParkMap.home != null and _owner_pos().distance_to(_home.w2(_home.entrance_local)) < 1.0
+	return _home != null and ParkMap.home == _home and _owner_pos().distance_to(_home.w2(_home.entrance_local)) < 1.0
 
 
 # ---------------------------------------------------------------- metro (bolgeler arasi)
@@ -2654,7 +2729,20 @@ func _update_context() -> void:
 	if _near_home_exit():
 		ui.set_context("Dışarı Çık", "home_out", "come")
 		return
-	if ParkMap.home != null and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
+	if _shop != null and ParkMap.home == _shop:
+		if _shop.local2(o).distance_to(_shop.entrance_local) < 1.1:
+			ui.set_context("Dışarı Çık", "shop_out", "come")
+		elif _shop.local2(o).distance_to(_shop.counter_local) < 1.4:
+			ui.set_context("Kasa · Alışveriş", "shop_buy", "cart")
+		else:
+			ui.set_context("", "")
+		return
+	if ParkMap.home == null:
+		for sp in world.shop_spots:
+			if o.distance_to(sp["pos"]) < 2.6 and sp.has("kind"):
+				ui.set_context("%s Gir" % ("Eczaneye" if sp["kind"] == "eczane" else "Markete"), "shop_in", "cart")
+				return
+	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
 		return
 	if _near_home_door():
@@ -2902,6 +2990,11 @@ func _debug_shot() -> void:
 		for k in agents:
 			agents[k].place(_owner_pos() + agents[k].slot)
 		_focus = owner_node.position
+	if _args.has("shop"):
+		for sp in world.shop_spots:
+			if sp.get("kind", "") == _args["shop"]:
+				_enter_shop(sp)
+				break
 	if _args.has("summon"):
 		if _args["summon"] == "car":
 			_summon_my_car()
