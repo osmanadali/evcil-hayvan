@@ -24,7 +24,23 @@ const FOODS := {
 const QUESTS := [
 	["pet", "Hayvanını 5 kez sev", 5, 20], ["fetch", "3 kez oyun oyna", 3, 25], ["feed", "Hayvanını besle", 1, 15],
 	["walk", "500 metre yürü", 500, 25], ["coin", "10 altın topla", 10, 20], ["photo", "Bir fotoğraf çek", 1, 15],
+	["metro", "Metroyla bir yolculuk yap", 1, 40], ["drive", "Arabayla 1 km sür", 1000, 30],
+	["shop", "Market ya da eczaneden alışveriş yap", 1, 20], ["swim", "Göle gir, ıslan", 1, 10],
+	["seesaw", "Hayvanınla tahterevalliye bin", 1, 15], ["npcplay", "Başka bir hayvanla oynat", 1, 20],
+	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
 ]
+
+
+## Bugunun gorevleri: havuzdan gune gore 6 tanesi (her gun degisir).
+func daily_quests() -> Array:
+	_roll_day()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(d["day"])
+	var pool := QUESTS.duplicate()
+	var out: Array = [pool.pop_at(0)]          # "sev" her gun var
+	while out.size() < 6 and not pool.is_empty():
+		out.append(pool.pop_at(rng.randi() % pool.size()))
+	return out
 
 var d := {}
 var places: Array = []   # kesfedilecek yerler: [ad, merkez, yaricap]
@@ -140,7 +156,7 @@ func tick(dt: float) -> void:
 func count(key: String, amount := 1.0) -> void:
 	_roll_day()
 	d["quests"][key] = float(d["quests"].get(key, 0.0)) + amount
-	for q in QUESTS:
+	for q in daily_quests():
 		if q[0] == key and d["quests"][key] >= q[2] and not d["quest_done"].has(key):
 			d["quest_done"].append(key)
 			d["coins"] += q[3]

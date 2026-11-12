@@ -570,7 +570,7 @@ func _price_button(row: Node, price: int, cb: Callable) -> void:
 func open_quests() -> void:
 	var body := _open_modal("Görevler")
 	K.label(body, "Bugünün görevleri", 24, K.MUTED)
-	for q in state.QUESTS:
+	for q in state.daily_quests():
 		var done: bool = state.d["quest_done"].has(q[0])
 		var prog: float = minf(state.quest_progress(q[0]), q[2])
 		var row := _row(body, "check" if done else "star", K.GREEN if done else K.ORANGE, q[1], "%d / %d   ·   Ödül: %d altın" % [int(prog), q[2], q[3]])

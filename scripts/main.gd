@@ -644,6 +644,8 @@ func _input(e: InputEvent) -> void:
 				_toggle_fps()
 			KEY_P:
 				_open_phone()
+			KEY_G:
+				ui.open_quests()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -875,6 +877,7 @@ func _exit_shop() -> void:
 
 
 func _shop_buy() -> void:
+	state.count("shop")
 	_sfx("kasa", -8.0)
 	if _shop.kind == "market":
 		ui.open_shop("food")
@@ -995,6 +998,7 @@ func _wear_outfit(i: int) -> void:
 	owner_model.set_outfit(Color(of[1]), Color(of[2]), of[3], Color(of[4]) if of[4] != "" else Color(0, 0, 0, 0))
 	owner_model.act("wave", 0.8)
 	state.d["outfit"] = i
+	state.count("outfit")
 	state.save_game()
 	ui.toast("%s giydin. Yakıştı!" % of[0])
 
@@ -1010,6 +1014,7 @@ func _start_play_ride(pr: Dictionary) -> void:
 	owner_model.ride_lean = 0.05
 	ui._actions.visible = false
 	if pr["kind"] == "tahterevalli":
+		state.count("seesaw")
 		var a := _active()
 		a.set_process(false)
 		a.set_physics_process(false)
@@ -1166,6 +1171,7 @@ func _on_command(cmd: String) -> void:
 		"npcplay":
 			if _near_npc:
 				a.play_with(_near_npc)
+				state.count("npcplay")
 				_near_npc.play_mate = a
 				_near_npc.play_t = 11.0
 				if _near_npc.world == null:
@@ -1934,7 +1940,8 @@ func _update_taxi(dt: float) -> void:
 
 func _leave_taxi(arrived: bool) -> void:
 	var c := _taxi
-	print("TAKSIDEN INDI vardi=", arrived, " ", Vector2(c.position.x, c.position.z))
+	if arrived:
+		state.count("taxi")
 	_taxi = null
 	var p := Vector2(c.position.x, c.position.z)
 	var side := Vector2(cos(c.rotation.y), -sin(c.rotation.y))
@@ -2170,6 +2177,7 @@ func _travel(station: String, zone: String) -> void:
 
 
 func _metro_arrived(station: String) -> void:
+	state.count("metro")
 	print("METRO VARIS ", station)
 	var zone: String = _metro.get_meta("zone")
 	for k in agents:
