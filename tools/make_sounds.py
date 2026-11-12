@@ -1,7 +1,7 @@
 """Oyunun seslerini sentezler (kayit kullanilmaz, lisans sorunu yok).
 
 Kullanim: python3 tools/make_sounds.py assets/sfx
-Uretilenler: ortam.wav (ruzgar + kus + uzak sehir, dongu), adim1-4.wav, para.wav, firlat.wav, tik.wav, mutlu.wav
+Uretilenler: ortam.wav (ruzgar + kus + uzak sehir, dongu), adim1-4.wav, para.wav, firlat.wav, tik.wav, mutlu.wav, motor.wav (dongu)
 """
 import os
 import sys
@@ -112,6 +112,11 @@ def main():
     save('firlat', whoosh * np.sin(np.pi * t / t[-1]) ** 1.5, 0.6)
     t = np.arange(int(0.05 * SR)) / SR
     save('tik', np.sin(2 * np.pi * 880 * t) * np.exp(-t * 90), 0.35)
+    # Motor: 55 Hz temel ses ve ust tonlari, tam periyotlu (dikissiz dongu); oyunda hiza gore perdesi degisir
+    t = np.arange(SR) / SR
+    eng = sum(np.sin(2 * np.pi * 55 * k * t + k) / k ** 1.2 for k in range(1, 9))
+    eng = eng * (0.8 + 0.2 * np.sin(2 * np.pi * 11 * t)) + lowpass(rng.standard_normal(SR), 300) * 0.6
+    save('motor', eng, 0.5)
     t = np.arange(int(0.5 * SR)) / SR
     happy = sum(np.sin(2 * np.pi * f * np.maximum(t - d, 0)) * np.exp(-np.maximum(t - d, 0) * 10) * (t >= d)
                 for f, d in ((784, 0.0), (988, 0.09), (1175, 0.18)))

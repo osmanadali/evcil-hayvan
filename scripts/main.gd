@@ -291,6 +291,8 @@ func _spawn_cast() -> void:
 	owner_model = PersonModel.new()
 	owner_model.kind = state.d["owner"]
 	owner_model.tint = Color("3f8f8a") if state.d["owner"] == "kadin" else Color("34507a")
+	_ride = null
+	_spawn_rides()
 	owner_model.stepped.connect(func(): _sfx("adim%d" % (randi() % 4 + 1), -9.0, randf_range(0.9, 1.1)))
 	owner_node.add_child(owner_model)
 	_place_owner(ParkMap.spot("baslangic"))
@@ -633,6 +635,10 @@ func _on_command(cmd: String) -> void:
 		_do_feed(cmd.trim_prefix("feed:"))
 		return
 	match cmd:
+		"drive":
+			_enter_ride()
+		"exit":
+			_exit_ride()
 		"pet":
 			_do_pet()
 		"throw":
@@ -727,6 +733,121 @@ func _do_feed(id: String) -> void:
 	a.eat()
 
 
+# ---------------------------------------------------------------- arac surme
+
+const DRIVE_MAX := 14.0        # m/sn (yaklasik 50 km/s)
+var _rides: Array[Node3D] = []       # binilebilen araclar
+var _ride: Node3D                    # su an surulen arac
+var _drive_speed := 0.0
+var _engine: AudioStreamPlayer
+
+
+## Oyuncunun kendi arabasi: baslangic noktasina en yakin sokagin kenarinda durur.
+func _spawn_rides() -> void:
+	for r in _rides:
+		r.queue_free()
+	_rides.clear()
+	var start := ParkMap.spot("baslangic")
+	var best := -1
+	var best_d := 1e9
+	for i in ParkMap.nodes.size():
+		if ParkMap.road_next[i].size() > 0:
+			var d := ParkMap.nodes[i].distance_squared_to(start)
+			if d < best_d:
+				best_d = d
+				best = i
+	if best < 0:
+		return
+	var a := ParkMap.nodes[best]
+	var b: Vector2 = ParkMap.nodes[ParkMap.road_next[best][0]]
+	var dir := (b - a).normalized()
+	var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
+	var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
+	var car: Node3D = world.make_car(Color("c23b32"))
+	car.position = Vector3(p.x, ParkMap.terrain_height(p), p.y)
+	car.rotation.y = atan2(-dir.x, -dir.y)
+	add_child(car)
+	_rides.append(car)
+
+
+func _enter_ride() -> void:
+	var o := _owner_pos()
+	for r in _rides:
+		if o.distance_to(Vector2(r.position.x, r.position.z)) < 3.6:
+			_ride = r
+	if _ride == null:
+		return
+	_drive_speed = 0.0
+	_moving = false
+	_queue.clear()
+	_marker.visible = false
+	owner_model.visible = false
+	owner_model.speed = 0.0
+	for k in agents:
+		agents[k].visible = false
+		agents[k].set_process(false)
+	if _engine:
+		_engine.play()
+	ui._actions.visible = false
+	ui.toast("Sol çubuk: ileri-geri ve direksiyon")
+
+
+func _exit_ride() -> void:
+	if _ride == null:
+		return
+	var c := Vector2(_ride.position.x, _ride.position.z)
+	var side := Vector2(-cos(_ride.rotation.y), sin(_ride.rotation.y))     # aracin solu
+	var out := c + side * 1.9
+	for cand in [c + side * 1.9, c - side * 1.9, c + side * 2.6, c - side * 2.6]:
+		if world.is_free(cand, 0.4):
+			out = cand
+			break
+	ui._actions.visible = true
+	_ride = null
+	_drive_speed = 0.0
+	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
+	owner_model.visible = true
+	var i := 0
+	for k in agents:
+		agents[k].visible = true
+		agents[k].set_process(true)
+		agents[k].place(out + Vector2(0.9 + 0.6 * i, 0.6).rotated(i * 2.0))
+		i += 1
+	if _engine:
+		_engine.stop()
+
+
+func _update_drive(dt: float) -> void:
+	var gas: float = -ui.stick.y
+	var steer: float = ui.stick.x
+	if gas > 0.12:
+		_drive_speed = move_toward(_drive_speed, DRIVE_MAX * gas, 5.0 * dt)
+	elif gas < -0.12:
+		_drive_speed = move_toward(_drive_speed, -4.0 * -gas, (12.0 if _drive_speed > 0.3 else 3.5) * dt)
+	else:
+		_drive_speed = move_toward(_drive_speed, 0.0, 2.5 * dt)
+	var yaw := _ride.rotation.y - _drive_speed * tan(steer * 0.55) / 2.6 * dt
+	var p := Vector2(_ride.position.x, _ride.position.z)
+	var fwd := Vector2(-sin(yaw), -cos(yaw))
+	var want := p + fwd * _drive_speed * dt
+	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, 1.15, p))
+	if np.distance_to(want) > 0.02:
+		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # engele surtundu: yavasla
+	var h := ParkMap.terrain_height(np)
+	var h2 := ParkMap.terrain_height(np + fwd * 2.0)
+	_ride.position = Vector3(np.x, h, np.y)
+	_ride.rotation.y = yaw
+	_ride.rotation.x = lerpf(_ride.rotation.x, atan2(h2 - h, 2.0), minf(1.0, dt * 5.0))
+	owner_node.position = _ride.position
+	owner_node.rotation.y = yaw
+	if absf(_drive_speed) > 1.0 and not _dragging:
+		_cam_yaw = lerp_angle(_cam_yaw, yaw, minf(1.0, dt * 2.2))
+	state.count("drive", absf(_drive_speed) * dt)
+	if _engine:
+		_engine.pitch_scale = 0.75 + absf(_drive_speed) / DRIVE_MAX * 1.3
+		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
 # ---------------------------------------------------------------- ses
 
 var _sounds := {}
@@ -747,6 +868,13 @@ func _setup_audio() -> void:
 	ap.volume_db = -14.0
 	add_child(ap)
 	ap.play()
+	if ResourceLoader.exists("res://assets/sfx/motor.wav"):
+		var ms: AudioStreamWAV = load("res://assets/sfx/motor.wav")
+		ms.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		ms.loop_end = int(ms.get_length() * ms.mix_rate)
+		_engine = AudioStreamPlayer.new()
+		_engine.stream = ms
+		add_child(_engine)
 	for i in 6:
 		var v := AudioStreamPlayer.new()
 		add_child(v)
@@ -968,6 +1096,9 @@ func _update_owner(dt: float) -> void:
 	var to := _target - p
 	var d := to.length()
 	var limit := WALK_SPEED
+	if _ride != null and _mode == "play":
+		_update_drive(dt)
+		return
 	if _mode != "play":
 		_moving = false
 	elif ui.stick.length() > 0.15:
@@ -1073,6 +1204,16 @@ func _update_context() -> void:
 	for n in _npc_pets:
 		if Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
 			_near_npc = n
+	if _ride != null:
+		if absf(_drive_speed) < 1.0:
+			ui.set_context("Araçtan İn", "exit", "come")
+		else:
+			ui.set_context("", "")
+		return
+	for r in _rides:
+		if o.distance_to(Vector2(r.position.x, r.position.z)) < 3.6:
+			ui.set_context("Arabaya Bin", "drive", "play")
+			return
 	if o.distance_to(ParkMap.spot("petshop") + Vector2(0, 6.5)) < 4.5:
 		ui.set_context("Pet Shop'a Gir", "shop", "cart")
 	elif o.distance_to(ParkMap.spot("dondurmaci") + Vector2(0, 2.5)) < 3.6:
@@ -1328,6 +1469,9 @@ func _debug_shot() -> void:
 			var t := owner_node.position + Vector3(0, 0.8, 0)
 			cam.position = t + Vector3(sin(a) * dist, 0.9, cos(a) * dist)
 			cam.look_at(t)
+	if _args.has("drive") and not _rides.is_empty():
+		owner_node.position = _rides[0].position + Vector3(1.5, 0, 0)
+		_enter_ride()
 	if _args.has("trace"):
 		for i in int(_args["trace"]):
 			if _args.get("cmd", "") == "stick":
