@@ -13,6 +13,8 @@ var short_pause := false
 var graph_node := -1        # >= 0 ise sokak aginda rastgele yurur
 var world: Node3D          # verilirse gezinirken engelli noktalari secmez
 var _prev_node := -1
+var hold := 0.0              # > 0 iken durur ve hold_face noktasina doner (selamlasma)
+var hold_face := Vector2.ZERO
 
 var _target := Vector2.ZERO
 var _idx := 0
@@ -73,6 +75,13 @@ func _next() -> void:
 
 func _process(dt: float) -> void:
 	var p := Vector2(position.x, position.z)
+	if hold > 0.0:
+		hold -= dt
+		var f := hold_face - p
+		if f.length() > 0.1:
+			rotation.y = lerp_angle(rotation.y, atan2(-f.x, -f.y), minf(1.0, dt * 6.0))
+		visual.speed = 0.0
+		return
 	var sp := walk_speed
 	if follow:
 		var fp := Vector2(follow.position.x, follow.position.z)

@@ -83,6 +83,10 @@ var _food_pending := {}
 var _coins: Array[Node3D] = []
 var _fx: Array = []
 var _npc_pets: Array[Node3D] = []
+var _npc_people: Array[Node3D] = []
+var _bark_t := 4.0
+var _greet_cd := 0.0
+const GREETINGS := ["Merhaba!", "Günaydın!", "Ne tatlı şey!", "Kolay gelsin!", "Maşallah, çok güzelmiş!", "İyi gezmeler!", "Adı ne?"]
 var _cars: Array[Node3D] = []
 var _near_npc: Node3D
 var _pet_cd := 0.0
@@ -435,6 +439,7 @@ func _spawn_npcs() -> void:
 		n.walk_speed = rng.randf_range(1.2, 1.6)
 		n.add_child(v)
 		add_child(n)
+		_npc_people.append(n)
 		var pet_def: Array = pets[i % pets.size()]
 		if pet_def.size() > 0:
 			var np := _npc_pet(pet_def[0], Color(pet_def[1]), pet_def[2])
@@ -443,7 +448,7 @@ func _spawn_npcs() -> void:
 	# Sokaklarda dolasan arabalar
 	if world.car_mesh:
 		var paints := ["f2f2f2", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "f2c230"]
-		for i in (26 if ParkMap.zone == "" else 12):
+		for i in (14 if ParkMap.zone == "" else 8):
 			var car := Car.new()
 			for t in 40:
 				var k := rng.randi() % ParkMap.nodes.size()
@@ -454,6 +459,14 @@ func _spawn_npcs() -> void:
 			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
 			add_child(car)
 			_cars.append(car)
+	# Sokak kopekleri: kulaklari kupeli, sokak aginda kendi baslarina gezer
+	for i in 5:
+		var sd := _npc_pet("kopek", Color(["c9a070", "8a7a66", "e8dcc4", "6b5a48", "b89a74"][i]), rng.randf_range(1.0, 1.15))
+		var from := Vector2(rng.randf_range(ParkMap.BOUNDS_MIN.x, ParkMap.BOUNDS_MAX.x) * 0.8, rng.randf_range(ParkMap.BOUNDS_MIN.y, ParkMap.BOUNDS_MAX.y) * 0.8)
+		sd.graph_node = ParkMap.nearest_node(from)
+		sd.walk_speed = rng.randf_range(1.0, 1.5)
+		sd.place(ParkMap.nodes[sd.graph_node])
+		sd._target = ParkMap.nodes[sd.graph_node]
 	# Parkta kendi basina gezen hayvanlar (yalnizca oyun yerleri olan bolgede)
 	if not ParkMap.has_spot("cesme"):
 		return
@@ -1855,6 +1868,73 @@ func _setup_audio() -> void:
 	UiKit.on_click = func(): _sfx("tik", -12.0)
 
 
+## Sokak hayati: sokak kopekleri havlar, kediler miyavlar (sesi bulunduklari yerden gelir),
+## yanindan gecen insanlar durup selam verir.
+func _update_street_life(dt: float) -> void:
+	if _mode != "play" or ParkMap.home:
+		return
+	var me := _owner_pos()
+	_bark_t -= dt
+	if _bark_t <= 0.0:
+		_bark_t = randf_range(5.0, 12.0)
+		var near: Array = []
+		for n in _npc_pets:
+			if is_instance_valid(n) and Vector2(n.position.x, n.position.z).distance_to(me) < 35.0:
+				near.append(n)
+		if not near.is_empty():
+			var n: Node3D = near[randi() % near.size()]
+			var close := Vector2(n.position.x, n.position.z).distance_to(me) < 8.0
+			_voice_at(n, n.visual.kind, close)
+			if close:
+				_bark_t *= 0.5
+	_greet_cd -= dt
+	if _greet_cd > 0.0 or _ride:
+		return
+	for n in _npc_people:
+		var p := Vector2(n.position.x, n.position.z)
+		if p.distance_to(me) < 2.6 and n.hold <= 0.0 and not n.has_meta("greeted"):
+			n.set_meta("greeted", true)
+			n.hold = 2.8
+			n.hold_face = me
+			_say(n, GREETINGS[randi() % GREETINGS.size()])
+			_greet_cd = 6.0
+			get_tree().create_timer(60.0).timeout.connect(func(): if is_instance_valid(n): n.remove_meta("greeted"))
+			break
+
+
+func _say(n: Node3D, text: String) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 40
+	l.pixel_size = 0.006
+	l.outline_size = 10
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.position = Vector3(0, 2.15, 0)
+	n.add_child(l)
+	var tw := create_tween()
+	tw.tween_property(l, "position:y", 2.35, 2.6)
+	tw.tween_callback(l.queue_free)
+
+
+func _voice_at(n: Node3D, kind: String, loud: bool) -> void:
+	if not state.d["sound"]:
+		return
+	var a: AudioStreamPlayer3D = n.get_node_or_null("Ses")
+	if a == null:
+		a = AudioStreamPlayer3D.new()
+		a.name = "Ses"
+		a.unit_size = 6.0
+		a.max_distance = 45.0
+		a.position.y = 0.5
+		n.add_child(a)
+	var key := ("miyav%d" if kind == "kedi" else "havla%d") % (randi() % 3 + 1)
+	a.stream = _sounds[key]
+	a.volume_db = 0.0 if loud else -4.0
+	a.pitch_scale = randf_range(0.85, 1.15) * (1.1 if n.visual.size_mul < 0.85 else 1.0)
+	a.play()
+
+
 ## Hayvanin kendi sesi: kopek havlar, kedi miyavlar. soft = sevilirken (soluma / mirlama)
 func _pet_voice(kind: String, soft := false) -> void:
 	if kind == "kedi":
@@ -2011,6 +2091,7 @@ func _process(dt: float) -> void:
 		return
 	_pet_cd -= dt
 	_update_owner(dt)
+	_update_street_life(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
 	_update_thrown(dt)
@@ -2057,6 +2138,7 @@ func _process(dt: float) -> void:
 			state.visit(_owner_pos())
 			_update_context()
 			world.face_signs(cam.position)
+			world.update_lamp_lights(_owner_pos())
 
 		_save_t += dt
 		if _save_t > 20.0:

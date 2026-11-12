@@ -225,7 +225,44 @@ func hide_above(c: Vector2, axis: Vector2, half: Vector2, y: float) -> void:
 			m.set_shader_parameter("hide_y", y)
 
 
+var _lamp_lights: Array[OmniLight3D] = []
+var _lamp_night := 0.0
+
+## Geceleri oyuncuya en yakin lambalara gercek isik koyar (zemini aydinlatir).
+func update_lamp_lights(p: Vector2) -> void:
+	if _street_lamps.is_empty():
+		return
+	if _lamp_lights.is_empty():
+		for i in 8:
+			var o := OmniLight3D.new()
+			o.light_color = Color("ffc98a")
+			o.omni_range = 13.0
+			o.omni_attenuation = 1.3
+			o.shadow_enabled = false
+			o.visible = false
+			add_child(o)
+			_lamp_lights.append(o)
+	var on := _lamp_night > 0.3
+	if not on:
+		for o in _lamp_lights:
+			o.visible = false
+		return
+	var best: Array = []
+	for xf in _street_lamps:
+		var d := Vector2(xf.origin.x, xf.origin.z).distance_squared_to(p)
+		if d < 3600.0:
+			best.append([d, xf.origin])
+	best.sort_custom(func(a, b): return a[0] < b[0])
+	for i in _lamp_lights.size():
+		var o := _lamp_lights[i]
+		o.visible = i < best.size()
+		if o.visible:
+			o.position = best[i][1] + Vector3(0, 6.0, 0)
+			o.light_energy = clampf(_lamp_night * 1.5 - 0.3, 0.0, 1.0) * 2.2
+
+
 func set_night(v: float) -> void:
+	_lamp_night = v
 	for m in _see_through:
 		m.set_shader_parameter("night", v)
 	if _lamp_glow == null and not _street_lamps.is_empty():
@@ -644,8 +681,18 @@ func _slab(ch: Array, p0: Vector3, p1: Vector3, out: Vector3, depth: float, heig
 func _mosque(poly: PackedVector2Array, c: Vector2, size: float, h: float) -> void:
 	var lead := Kit.mat("8fa9b5", 0.5)
 	var stone := Kit.mat("e6e1d6")
-	Kit.ball(self, size * 0.75, Vector3(c.x, h - size * 0.1, c.y), lead, Vector3(1, 0.8, 1), 20)
-	Kit.cyl(self, 0.04, 0.2, 1.6, Vector3(c.x, h + size * 0.5 + 0.7, c.y), Kit.mat("d9b24a", 0.3), 6)
+	# Kubbe: binanin icine sigan, kasnak uzerine oturan yarim kure (disari tasmaz)
+	var inner := 1e9
+	for i in poly.size():
+		inner = minf(inner, ParkMap.seg_dist(c, poly[i], poly[(i + 1) % poly.size()]))
+	var r := clampf(minf(size * 0.4, inner * 0.8), 2.5, 11.0)
+	Kit.cyl(self, r * 1.02, r * 1.02, 1.4, Vector3(c.x, h + 0.7, c.y), stone, 24)
+	for k in 12:
+		var a := TAU * k / 12.0
+		Kit.box(self, Vector3(0.35, 0.7, 0.08), Vector3(c.x + cos(a) * r * 1.03, h + 0.75, c.y + sin(a) * r * 1.03),
+			Kit.mat("3b4a52", 0.3), Vector3(0, -a + PI / 2, 0))
+	Kit.ball(self, r, Vector3(c.x, h + 1.4, c.y), lead, Vector3(1, 0.82, 1), 24)
+	Kit.cyl(self, 0.04, 0.2, 1.6, Vector3(c.x, h + 1.4 + r * 0.82 + 0.7, c.y), Kit.mat("d9b24a", 0.3), 6)
 	# En uzak iki koseye minare
 	var far := 0
 	for i in poly.size():
@@ -980,7 +1027,7 @@ func _text(parent: Node3D, text: String, pos: Vector3, color: Color, size := 0.2
 	l.pixel_size = size / 64.0 * 1.35
 	l.modulate = color
 	l.outline_size = 0
-	l.shaded = false
+	l.shaded = true
 	l.double_sided = false
 	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
 	l.position = pos
@@ -1001,11 +1048,42 @@ func _sign(p: Vector2, text: String, plate: String, ink: String, height := 2.7, 
 	Kit.box(r, Vector3(w, hgt, 0.06), Vector3(0, height, 0.05), Kit.mat(plate, 0.6))
 	Kit.box(r, Vector3(w + 0.08, hgt + 0.08, 0.03), Vector3(0, height, 0.03), Kit.mat("f2f2ee", 0.6))
 	_text(r, text, Vector3(0, height, 0.09), Color(ink), size)
+	if pole:
+		# Arka yuz: iki taraftan da okunur
+		_text(r, text, Vector3(0, height, 0.005), Color(ink), size).rotation.y = PI
 	if badge != "":
 		Kit.box(r, Vector3(0.62, 0.62, 0.07), Vector3(0, height + hgt * 0.5 + 0.42, 0.05), Kit.mat(plate, 0.6))
 		_text(r, badge, Vector3(0, height + hgt * 0.5 + 0.42, 0.1), Color(ink), 0.42)
-	_signs.append(r)
+	# Sabit yon: levhanin yuzu en yakin yola bakar (kameraya gore donmez)
+	var to_road := _road_point(p) - p
+	if to_road.length() > 0.2:
+		r.rotation.y = atan2(to_road.x, to_road.y)
 	return r
+
+
+var _road_segs: Array = []
+
+## En yakin yol ekseni uzerindeki nokta.
+func _road_point(p: Vector2) -> Vector2:
+	if _road_segs.is_empty():
+		for w in ParkMap.data["roads"]:
+			var ids: Array = w["n"]
+			for i in ids.size() - 1:
+				_road_segs.append([ParkMap.nodes[int(ids[i])], ParkMap.nodes[int(ids[i + 1])]])
+	var best := p
+	var bd := 1e9
+	for sg in _road_segs:
+		var a: Vector2 = sg[0]
+		var b: Vector2 = sg[1]
+		if absf(a.x - p.x) > 80.0 and absf(b.x - p.x) > 80.0:
+			continue
+		var ab := b - a
+		var q := a + ab * clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+		var d := q.distance_squared_to(p)
+		if d < bd:
+			bd = d
+			best = q
+	return best
 
 
 ## Yakindaki tabelalari kameraya dondurur (kamera artik donebiliyor).
@@ -1410,7 +1488,7 @@ func _build_doors() -> void:
 			var w := label.length() * size * 0.6 + 0.24
 			Kit.box(r, Vector3(w, size * 1.7, 0.04), Vector3(0, 2.95, 0), Kit.mat("1a4fa0", 0.6))
 			_text(r, label, Vector3(0, 2.95, 0.03), Color.WHITE, size).visibility_range_end = 40.0
-			_signs.append(r)
+			r.rotation.y = atan2(out.x, out.y)
 	_multimesh(mesh, xf, _plain(xf), false, 64.0, 90.0)
 
 

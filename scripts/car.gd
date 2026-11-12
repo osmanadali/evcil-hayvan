@@ -14,6 +14,7 @@ var _to := Vector2.ZERO
 var _t := 0.0
 var _len := 1.0
 var _speed := 0.0
+var _pos := Vector2.INF       # gercek konum: serit noktasini yumusakca izler (koselerde ziplamaz)
 
 
 func _ready() -> void:
@@ -36,8 +37,12 @@ func _pick() -> void:
 	for nb in ParkMap.road_next[node]:
 		if nb != _prev and ParkMap.inside_bounds(ParkMap.nodes[nb], -40.0):
 			options.append(nb)
+	if options.is_empty() and _prev >= 0 and _prev < ParkMap.nodes.size():
+		# Cikmaz ya da harita kenari: geri don (isinlanmak yerine U donusu)
+		options = [_prev]
 	if options.is_empty():
-		# Cikmaz ya da harita kenari: baska bir yerden yeniden basla
+		# Hic yol yok: baska bir yerden yeniden basla
+		_pos = Vector2.INF
 		for i in 40:
 			var k := randi() % ParkMap.nodes.size()
 			if ParkMap.road_next[k].size() > 0 and ParkMap.inside_bounds(ParkMap.nodes[k], 30.0):
@@ -57,7 +62,7 @@ func _process(dt: float) -> void:
 	var dir := (_to - _from) / _len
 	var want := CRUISE
 	if owner_node:
-		var rel := Vector2(owner_node.position.x, owner_node.position.z) - p
+		var rel := Vector2(owner_node.position.x, owner_node.position.z) - (p if _pos == Vector2.INF else _pos)
 		var ahead := rel.dot(dir)
 		if ahead > -1.0 and ahead < 11.0 and absf(rel.dot(Vector2(-dir.y, dir.x))) < 3.2:
 			want = 0.0
@@ -70,8 +75,15 @@ func _process(dt: float) -> void:
 		node = _next
 		_pick()
 		return
-	var h := ParkMap.terrain_height(p)
-	var h2 := ParkMap.terrain_height(p + dir * 2.0)
-	position = Vector3(p.x, h, p.y)
-	rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.y), minf(1.0, dt * 6.0))
+	if _pos == Vector2.INF:
+		_pos = p
+	var prev_pos := _pos
+	# Serit noktasini ~1 sn gecikmeyle izle: koseler yay cizer, seritler arasi gecis kayar
+	_pos = _pos.lerp(p, minf(1.0, dt * 2.2))
+	var mv := _pos - prev_pos
+	var face := mv.normalized() if mv.length() > 0.002 else dir
+	var h := ParkMap.terrain_height(_pos)
+	var h2 := ParkMap.terrain_height(_pos + face * 2.0)
+	position = Vector3(_pos.x, h, _pos.y)
+	rotation.y = lerp_angle(rotation.y, atan2(-face.x, -face.y), minf(1.0, dt * 4.0))
 	rotation.x = lerpf(rotation.x, atan2(h2 - h, 2.0), minf(1.0, dt * 4.0))
