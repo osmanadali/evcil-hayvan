@@ -13,6 +13,8 @@ static var SPLAT_EXTENT := 1080.0
 static var data := {}
 static var nodes := PackedVector2Array()
 static var links: Array = []            # dugum -> komsu dugumler
+static var road_next: Array = []        # dugum -> aracla gidilebilen sonraki dugumler (tek yon dikkate alinir)
+static var link_w := {}                 # (a * 65536 + b) -> yol genisligi; yaya yollarinda yok
 static var water: Array = []            # PackedVector2Array listesi
 static var water_boxes: Array = []      # Rect2 (genisletilmis)
 static var spots := {}                  # ad -> Vector2
@@ -34,14 +36,22 @@ static func load_data() -> void:
 	for n in data["nodes"]:
 		nodes.append(Vector2(n[0], n[1]))
 		links.append([])
+		road_next.append([])
 	for group in [data["roads"], data["paths"]]:
 		for w in group:
 			var ids: Array = w["n"]
+			var is_road: bool = w.has("oneway")
 			for i in ids.size() - 1:
 				var a := int(ids[i])
 				var b := int(ids[i + 1])
 				links[a].append(b)
 				links[b].append(a)
+				if is_road:
+					link_w[a * 65536 + b] = float(w["w"])
+					link_w[b * 65536 + a] = float(w["w"])
+					road_next[a].append(b)
+					if not w["oneway"]:
+						road_next[b].append(a)
 	for w in data["water"]:
 		var poly := to_poly(w["p"])
 		water.append(poly)
@@ -70,6 +80,11 @@ static func to_poly(pts: Array) -> PackedVector2Array:
 	for p in pts:
 		out.append(Vector2(p[0], p[1]))
 	return out
+
+
+## Iki dugum arasindaki yolun genisligi (yaya yolu ise 0).
+static func road_width(a: int, b: int) -> float:
+	return link_w.get(a * 65536 + b, 0.0)
 
 
 static func spot(name: String) -> Vector2:

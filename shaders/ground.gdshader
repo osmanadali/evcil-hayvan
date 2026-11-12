@@ -72,6 +72,8 @@ void fragment() {
 		(1.0 - step(0.09, abs(wpos.x - avenue_x))) * step(0.5, fract(wpos.z * 0.2)));
 	road = mix(road, vec3(0.85, 0.83, 0.74), dash * step(0.9, b.r));
 	col = mix(col, road, smoothstep(0.4, 0.6, b.r));
+	// Bordur: asfalt ile kaldirim arasinda acik renkli ince serit
+	col = mix(col, vec3(0.62, 0.61, 0.58), (1.0 - smoothstep(0.0, 0.12, abs(b.r - 0.5))) * step(0.3, b.g) * 0.85);
 
 	// Kiyi kumu ve su alti
 	float sd = (a.g - 0.5) * 8.0;

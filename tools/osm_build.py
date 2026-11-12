@@ -93,14 +93,18 @@ def build(path):
         if tags.get('tunnel') in ('yes', 'building_passage') and hw not in PATH_W:
             if hw: continue          # yer alti yollari cizme
         if hw in ROAD_W and tags.get('area') != 'yes':
-            roads.append({'n': [nid(i) for i in ids], 'w': ROAD_W[hw], 'k': hw, 'name': tags.get('name', '')})
+            try: lanes = int(tags.get('lanes', '0'))
+            except ValueError: lanes = 0
+            if lanes == 0: lanes = 4 if ROAD_W[hw] >= 12 else (2 if ROAD_W[hw] >= 8 else 1)
+            roads.append({'n': [nid(i) for i in ids], 'w': ROAD_W[hw], 'k': hw, 'name': tags.get('name', ''),
+                          'oneway': tags.get('oneway') == 'yes', 'lanes': lanes})
             for a_, b_ in zip(ids, ids[1:]):
                 d_ = (nodes[b_][0] - nodes[a_][0], nodes[b_][1] - nodes[a_][1])
                 road_at[a_] = road_at[b_] = (math.atan2(d_[1], d_[0]), ROAD_W[hw])
             if tags.get('bridge') in ('yes', 'viaduct'):
                 bridges.append({'p': [[round(x, 2), round(z, 2)] for x, z in pts], 'w': ROAD_W[hw]})
         elif hw in PATH_W:
-            paths.append({'n': [nid(i) for i in ids], 'w': PATH_W[hw]})
+            paths.append({'n': [nid(i) for i in ids], 'w': PATH_W[hw], 'steps': hw == 'steps'})
         elif 'building' in tags and len(ring) >= 3:
             a = area(ring)
             kind = 'cami' if tags.get('amenity') == 'place_of_worship' or tags.get('building') == 'mosque' else \
@@ -112,7 +116,9 @@ def build(path):
             elif a < 110: levels = rnd.choice([2, 3])
             elif kind == 'okul': levels = 3
             else: levels = rnd.choice([4, 4, 5, 5, 6])
-            buildings.append({'p': ring, 'h': round(levels * 3.0 + 0.8, 1), 't': kind, 'name': tags.get('name', '')})
+            hip = kind == 'apartman' and 70 < a < 700 and len(ring) <= 8 and tags.get('roof:shape', 'hipped') != 'flat'
+            buildings.append({'p': ring, 'h': round(levels * 3.0 + 0.8, 1), 't': kind, 'name': tags.get('name', ''),
+                              'no': tags.get('addr:housenumber', ''), 'roof': 'kirma' if hip else 'duz'})
         elif (tags.get('natural') == 'water' or tags.get('leisure') == 'swimming_pool') and len(ring) >= 3:
             water.append({'p': ring})
         elif tags.get('barrier') in ('wall', 'fence', 'retaining_wall', 'hedge'):
@@ -186,6 +192,41 @@ def build(path):
             if inb(q) and not any(math.dist(o['pos'], q) < 7 or (o['name'] == r['name'] and math.dist(o['pos'], q) < 60) for o in signs) \
                     and not any(_in(q, bl['p']) for bl in buildings):
                 signs.append({'name': r['name'], 'pos': q})
+
+    # Bina kapilari: yola en yakin cephe kenarinin ortasi
+    segs = []
+    for r in roads:
+        pts = [graph_nodes[i] for i in r['n']]
+        segs += [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+    def seg_d(q, a_, b_):
+        ab = (b_[0] - a_[0], b_[1] - a_[1]); L2 = ab[0] ** 2 + ab[1] ** 2 or 1e-9
+        t = max(0.0, min(1.0, ((q[0] - a_[0]) * ab[0] + (q[1] - a_[1]) * ab[1]) / L2))
+        return math.hypot(q[0] - a_[0] - ab[0] * t, q[1] - a_[1] - ab[1] * t)
+    doors = 0
+    for bl in buildings:
+        c = centroid(bl['p'])
+        if not inb(c, -10) or bl['t'] == 'cami':
+            continue
+        near_segs = [sg for sg in segs if abs((sg[0][0] + sg[1][0]) / 2 - c[0]) < 90 and abs((sg[0][1] + sg[1][1]) / 2 - c[1]) < 90]
+        if not near_segs:
+            continue
+        best = None
+        poly = bl['p']
+        for e in range(len(poly)):
+            a_, b_ = poly[e], poly[(e + 1) % len(poly)]
+            if math.dist(a_, b_) < 2.5:
+                continue
+            m = ((a_[0] + b_[0]) / 2, (a_[1] + b_[1]) / 2)
+            dd = min(seg_d(m, s0, s1) for s0, s1 in near_segs)
+            if best is None or dd < best[0]:
+                out = (m[0] - c[0], m[1] - c[1]); L = math.hypot(*out) or 1.0
+                best = (dd, m, (out[0] / L, out[1] / L))
+        if best and best[0] < 45:
+            bl['door'] = [round(best[1][0], 2), round(best[1][1], 2), round(best[2][0], 3), round(best[2][1], 3)]
+            doors += 1
+    print('kapi %d, kapi numarali bina %d, kirma catili %d, tek yon %d, merdiven %d' % (
+        doors, sum(1 for b_ in buildings if b_['no']), sum(1 for b_ in buildings if b_['roof'] == 'kirma'),
+        sum(1 for r in roads if r['oneway']), sum(1 for p_ in paths if p_['steps'])))
 
     # Sokak adlari icin etiket noktalarini cikar (her ad icin en uzun parca)
     labels = {}

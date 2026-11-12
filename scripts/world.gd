@@ -37,6 +37,9 @@ var _bush_xf: Array[Transform3D] = []
 var _bush_col: Array[Color] = []
 var _tree_fixed: Array = []
 var _keep_out: Array = []          # [merkez, yari boyut] agac dikilmeyen dikdortgenler
+var _street_lamps: Array[Transform3D] = []
+var car_mesh: Mesh
+var car_base := Transform3D()
 var _ducks: Array = []
 var _clouds: Array[Node3D] = []
 var _t := 0.0
@@ -51,7 +54,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "parks", "pond_life", "plants", "clouds"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "streets", "details", "doors", "road_marks", "cars", "parks", "pond_life", "plants", "clouds"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -373,18 +376,44 @@ func _build_buildings() -> void:
 			run += length
 			if solid:
 				_add_segment(a, bb)
-		var tris := Geometry2D.triangulate_polygon(poly)
+		var top := y_hi + h
+		var cap := poly
+		if b.get("roof", "duz") == "kirma":
+			# Kirma cati: sacaktan iceri dogru yukselen egimli yuzler
+			var rise := clampf(sqrt(absf(area) * 0.5) * 0.16, 1.4, 2.6)
+			cap = PackedVector2Array()
+			for p in poly:
+				cap.append(c + (p - c) * 0.32)
+			for i in poly.size():
+				var j := (i + 1) % poly.size()
+				var e0 := Vector3(poly[i].x, top, poly[i].y)
+				var e1 := Vector3(poly[j].x, top, poly[j].y)
+				var r1 := Vector3(cap[j].x, top + rise, cap[j].y)
+				var r0 := Vector3(cap[i].x, top + rise, cap[i].y)
+				var fn := (r0 - e0).cross(e1 - e0).normalized()
+				if fn.y < 0.0:
+					fn = -fn
+				var rb := v.size()
+				v.append_array([e0, e1, r1, r0])
+				uv.append_array([Vector2(e0.x, e0.z), Vector2(e1.x, e1.z), Vector2(r1.x, r1.z), Vector2(r0.x, r0.z)])
+				for k in 4:
+					n.append(fn)
+					uv2.append(Vector2(h, seed * 0.5))
+					col.append(tint)
+				idx.append_array([rb, rb + 1, rb + 2, rb, rb + 2, rb + 3])
+			top += rise
+		var tris := Geometry2D.triangulate_polygon(cap)
 		var base := v.size()
-		for p in poly:
-			v.append(Vector3(p.x, y_hi + h, p.y))
+		for p in cap:
+			v.append(Vector3(p.x, top, p.y))
 			n.append(Vector3.UP)
 			uv.append(p)
-			uv2.append(Vector2(h, seed))
+			uv2.append(Vector2(h, seed * (0.5 if cap != poly else 1.0)))
 			col.append(tint)
 		for t in range(0, tris.size(), 3):
-			var p0 := poly[tris[t]]
-			var p1 := poly[tris[t + 1]]
-			var p2 := poly[tris[t + 2]]
+			var p0 := cap[tris[t]]
+			var p1 := cap[tris[t + 1]]
+			var p2 := cap[tris[t + 2]]
 			if (p1 - p0).cross(p2 - p0) > 0.0:
 				idx.append_array([base + tris[t], base + tris[t + 1], base + tris[t + 2]])
 			else:
@@ -688,8 +717,9 @@ func _build_streets() -> void:
 				carry += gap
 				if not ParkMap.inside_bounds(p, 4.0) or _mask(p)[2] > 0.3 or not is_free(p, 0.5):
 					continue
-				if big:
-					_lamp(p)
+				if big or side > 0.0:
+					_street_lamps.append(Transform3D(Basis(Vector3.UP, atan2(-dir.x, -dir.y) + (PI / 2 if side > 0.0 else -PI / 2)), at(p)))
+					_add_circle(Vector3(p.x, p.y, 0.15))
 				else:
 					_tree_fixed.append([p, _rng.randf_range(4.5, 6.5), 0])
 			carry -= length
@@ -847,6 +877,229 @@ func _bus_shelter(p: Vector2) -> void:
 	Kit.box(r, Vector3(3.0, 1.5, 0.04), Vector3(0, 1.3, -0.5), glass)
 	Kit.box(r, Vector3(2.4, 0.08, 0.4), Vector3(0, 0.5, -0.25), Kit.mat("9a6b43"))
 	_add_segment(p + Vector2(-1.5, -0.5), p + Vector2(1.5, -0.5))
+
+
+func _merge(parts: Array) -> ArrayMesh:
+	# parts: [mesh, transform, malzeme] -> malzemeye gore yuzeyleri birlesmis tek mesh
+	var mesh := ArrayMesh.new()
+	var by_mat := {}
+	for part in parts:
+		if not by_mat.has(part[2]):
+			by_mat[part[2]] = SurfaceTool.new()
+		(by_mat[part[2]] as SurfaceTool).append_from(part[0], 0, part[1])
+	for m in by_mat:
+		(by_mat[m] as SurfaceTool).commit(mesh)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, m)
+	return mesh
+
+
+func _plain(xf: Array[Transform3D]) -> Array[Color]:
+	var out: Array[Color] = []
+	out.resize(xf.size())
+	out.fill(Color.WHITE)
+	return out
+
+
+## Kapilar, kapi numaralari ve apartman adlari.
+func _build_doors() -> void:
+	var door := BoxMesh.new()
+	door.size = Vector3(1.3, 2.2, 0.12)
+	var canopy := BoxMesh.new()
+	canopy.size = Vector3(2.0, 0.12, 0.9)
+	var step := BoxMesh.new()
+	step.size = Vector3(1.8, 0.16, 0.7)
+	var mesh := _merge([[door, Transform3D(Basis(), Vector3(0, 1.1, 0.02)), Kit.mat("4a3426", 0.6)],
+		[canopy, Transform3D(Basis(), Vector3(0, 2.5, 0.42)), Kit.mat("8d8f92", 0.7)],
+		[step, Transform3D(Basis(), Vector3(0, 0.08, 0.38)), Kit.mat("a9a59c")]])
+	var xf: Array[Transform3D] = []
+	for b in ParkMap.data["buildings"]:
+		if not b.has("door"):
+			continue
+		var dd: Array = b["door"]
+		var p := Vector2(dd[0], dd[1])
+		if not ParkMap.inside_bounds(p, 2.0):
+			continue
+		var out := Vector2(dd[2], dd[3])
+		xf.append(Transform3D(Basis(Vector3.UP, atan2(out.x, out.y)), at(p)))
+		var label := ""
+		if b["name"] != "" and b["t"] == "apartman":
+			label = b["name"]
+		if b["no"] != "":
+			label = ("No: " + str(b["no"])) if label == "" else label + "  No: " + str(b["no"])
+		if label != "":
+			var q := p + out * 0.45
+			var r := _root(q)
+			var size := 0.17
+			var w := label.length() * size * 0.6 + 0.24
+			Kit.box(r, Vector3(w, size * 1.7, 0.04), Vector3(0, 2.95, 0), Kit.mat("1a4fa0", 0.6))
+			_text(r, label, Vector3(0, 2.95, 0.03), Color.WHITE, size).visibility_range_end = 40.0
+	_multimesh(mesh, xf, _plain(xf), false, 64.0, 90.0)
+
+
+## Serit cizgileri, tek yon oklari, merdivenler ve sokak lambalari.
+func _build_road_marks() -> void:
+	var nodes := ParkMap.nodes
+	var white := Kit.mat("e8e8e2", 0.8)
+	var dash := BoxMesh.new()
+	dash.size = Vector3(0.16, 0.02, 2.4)
+	dash.material = white
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for tri in [[Vector3(-0.12, 0, 1.2), Vector3(0.12, 0, 1.2), Vector3(0.12, 0, -0.3)], [Vector3(-0.12, 0, 1.2), Vector3(0.12, 0, -0.3), Vector3(-0.12, 0, -0.3)],
+			[Vector3(-0.42, 0, -0.3), Vector3(0.42, 0, -0.3), Vector3(0, 0, -1.2)]]:
+		for vv in [tri[0], tri[2], tri[1], tri[0], tri[1], tri[2]]:
+			st.add_vertex(vv)
+	var arrow := st.commit()
+	arrow.surface_set_material(0, white)
+	var dxf: Array[Transform3D] = []
+	var axf: Array[Transform3D] = []
+	for r in ParkMap.data["roads"]:
+		var ids: Array = r["n"]
+		var lanes := int(r["lanes"])
+		var w: float = r["w"]
+		var oneway: bool = r["oneway"]
+		var carry := 4.0
+		var acarry := 14.0
+		for i in ids.size() - 1:
+			var a := nodes[int(ids[i])]
+			var b := nodes[int(ids[i + 1])]
+			var length := a.distance_to(b)
+			if length < 0.5:
+				continue
+			var dir := (b - a) / length
+			var perp := Vector2(-dir.y, dir.x)
+			var basis := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+			if lanes >= 2:
+				while carry < length:
+					var c := a + dir * carry
+					if ParkMap.inside_bounds(c):
+						for k in range(1, lanes):
+							var q := c + perp * ((k - lanes * 0.5) * w * 0.8 / lanes)
+							dxf.append(Transform3D(basis, at(q, 0.03)))
+					carry += 6.5
+				carry -= length
+			if oneway:
+				while acarry < length:
+					var c := a + dir * acarry
+					if ParkMap.inside_bounds(c):
+						axf.append(Transform3D(basis.scaled(Vector3(1.5, 1, 1.5)), at(c, 0.035)))
+					acarry += 42.0
+				acarry -= length
+	_multimesh(dash, dxf, _plain(dxf), false, 96.0, 120.0)
+	_multimesh(arrow, axf, _plain(axf), false, 96.0, 120.0)
+
+	# Merdivenli gecitler: basamaklar
+	var tread := BoxMesh.new()
+	tread.size = Vector3(2.3, 0.14, 0.34)
+	tread.material = Kit.mat("b3ada0")
+	var sxf: Array[Transform3D] = []
+	for path in ParkMap.data["paths"]:
+		if not path.get("steps", false):
+			continue
+		var ids: Array = path["n"]
+		for i in ids.size() - 1:
+			var a := nodes[int(ids[i])]
+			var b := nodes[int(ids[i + 1])]
+			var length := a.distance_to(b)
+			if length < 0.3 or not ParkMap.inside_bounds((a + b) * 0.5):
+				continue
+			var dir := (b - a) / length
+			var basis := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+			var k := 0.2
+			while k < length:
+				sxf.append(Transform3D(basis, at(a + dir * k, 0.05)))
+				k += 0.4
+	_multimesh(tread, sxf, _plain(sxf), false, 64.0, 90.0)
+
+	# Sokak lambasi: direk, kol ve armatur
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.06
+	pole.bottom_radius = 0.1
+	pole.height = 7.0
+	pole.radial_segments = 6
+	var arm := BoxMesh.new()
+	arm.size = Vector3(0.08, 0.08, 1.6)
+	var head := BoxMesh.new()
+	head.size = Vector3(0.3, 0.1, 0.6)
+	var grey := Kit.mat("7d8088", 0.5)
+	var lamp := _merge([[pole, Transform3D(Basis(), Vector3(0, 3.5, 0)), grey], [arm, Transform3D(Basis(), Vector3(0, 6.95, -0.75)), grey],
+		[head, Transform3D(Basis(), Vector3(0, 6.9, -1.6)), Kit.glow("fff3d0", 0.6)]])
+	_multimesh(lamp, _street_lamps, _plain(_street_lamps), false, 96.0, 140.0)
+
+
+## Park halindeki arabalar (dar sokaklarda yol kenarinda).
+func _build_cars() -> void:
+	if not ResourceLoader.exists("res://assets/models/araba_lod.glb"):
+		return
+	var inst: Node3D = _scene("araba_lod").instantiate()
+	var mi: MeshInstance3D = inst.find_children("*", "MeshInstance3D", true, false)[0]
+	var local := Transform3D()
+	var nd: Node = mi
+	while nd != inst:
+		local = (nd as Node3D).transform * local
+		nd = nd.get_parent()
+	var box := local * mi.mesh.get_aabb()
+	var k := 4.1 / maxf(box.size.x, box.size.z)
+	var c := box.get_center()
+	# Bu modelin onu +Z'ye bakar; oyunda on = -Z
+	car_base = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * k), Vector3.ZERO) * Transform3D(Basis(), Vector3(-c.x, -box.position.y, -c.z)) * local
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = (mi.get_active_material(0) as BaseMaterial3D).albedo_texture
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.roughness = 0.45
+	m.metallic = 0.1
+	car_mesh = mi.mesh.duplicate()
+	car_mesh.surface_set_material(0, m)
+	inst.free()
+	var paints := ["f2f2f2", "d9d9d9", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "6b7a5a", "1f2a44"]
+	var xf: Array[Transform3D] = []
+	var col: Array[Color] = []
+	var nodes := ParkMap.nodes
+	for r in ParkMap.data["roads"]:
+		var w: float = r["w"]
+		if w > 9.0 or w < 5.0:
+			continue
+		var ids: Array = r["n"]
+		for i in ids.size() - 1:
+			var a := nodes[int(ids[i])]
+			var b := nodes[int(ids[i + 1])]
+			var length := a.distance_to(b)
+			if length < 16.0:
+				continue
+			var dir := (b - a) / length
+			var perp := Vector2(-dir.y, dir.x)
+			var s := 8.0
+			while s < length - 8.0:
+				for side in [-1.0, 1.0]:
+					if _rng.randf() < 0.3:
+						var p: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6)) + perp * side * (w * 0.5 - 0.2)
+						if not ParkMap.inside_bounds(p, 4.0) or ParkMap.water_sd(p) < 3.0:
+							continue
+						var slope := atan2(gy(p + dir * 2.0) - gy(p - dir * 2.0), 4.0)
+						var facing := dir if side > 0.0 else -dir
+						var basis := Basis(Vector3.UP, atan2(-facing.x, -facing.y)) * Basis(Vector3.RIGHT, slope * (1.0 if side > 0.0 else -1.0))
+						xf.append(Transform3D(basis, at(p)) * car_base)
+						col.append(Color(paints[_rng.randi() % paints.size()]))
+						_add_circle(Vector3(p.x + dir.x * 1.0, p.y + dir.y * 1.0, 0.95))
+						_add_circle(Vector3(p.x - dir.x * 1.0, p.y - dir.y * 1.0, 0.95))
+				s += 5.6
+	_multimesh(car_mesh, xf, col, true, 64.0, 110.0)
+
+
+## Hareketli araba icin govde uretir.
+func make_car(paint: Color) -> Node3D:
+	var holder := Node3D.new()
+	var mi := MeshInstance3D.new()
+	mi.mesh = car_mesh
+	mi.transform = car_base
+	var m: StandardMaterial3D = car_mesh.surface_get_material(0).duplicate()
+	m.vertex_color_use_as_albedo = false
+	m.albedo_color = paint
+	mi.material_override = m
+	holder.add_child(mi)
+	return holder
 
 
 # ---------------------------------------------------------------- bitkiler

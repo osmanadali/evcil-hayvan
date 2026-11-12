@@ -27,6 +27,10 @@ Android için: Godot'da *Editor → Manage Export Templates* ile şablonları in
 - **Tabelalar ve sokak ayrıntıları veriden:** 98 mavi sokak tabelası, 54 işletme/durak tabelası (eczaneler, marketler, lokantalar, banka,
   akaryakıt, taksi durakları, otobüs durakları ve bekleme yerleri, metro), adı olan binaların levhaları, trafik ışıkları, yaya geçitleri,
   otoparklar, duvar ve çitler, köprü korkulukları, oyun parkları.
+- **Binalar ve yollar veriden:** 786 binada yola bakan kapı; verideki 267 kapı numarası ve apartman adları kapı levhasında. Tek yönlü
+  sokaklarda yön okları, şeritli caddelerde şerit çizgileri, merdivenli geçitlerde basamaklar, bordürler.
+- **Tahmine dayalı (veride yok, mahalleye uygun seçildi):** kiremitli kırma çatılar, sokak lambaları, yol kenarına park etmiş arabalar,
+  sokaklarda dolaşan 26 araba (tek yönlere uyar, oyuncuya yol verir).
 - **Oyun için eklenen yerler** (gerçekte yok, Altınpark'taki boş çimlere yerleştirildi): hayvan bahçesi (kulübe, havuz, oyuncaklar),
   Pet Shop, kafe, dondurmacı, çardak, çeşme, köpek oyun alanı, piknik alanı.
 - **Komutlar:** Sev, Mama, Top At (köpek koşar, havada yakalayabilir), Yumak (kedi), Gel, Otur, Yat, Uyu, Oynat (iki hayvan kovalamaca oynar).
@@ -56,11 +60,15 @@ Yükseklik: `data/dem/` içindeki açık yükseklik karoları (Mapzen/AWS Terrai
 
 Sınırlar: bina yükseklikleri veride yok, kat sayısı taban alanına göre tahmin ediliyor; cepheler gerçek binalara benzemez, hepsi aynı
 apartman stilinde çizilir. Tabelalar düz yazılı levhalardır (logo yok) ve hepsi güneye, kameraya bakar. Yalnızca OpenStreetMap'e
-işlenmiş işletmeler görünür. Araç trafiği yok.
+işlenmiş işletmeler görünür.
+
+**Gerçeğe ne kadar yakın?** Sokak ağı, bina tabanları, parklar, su, eğim, sokak adları, işletme adları ve kapı numaraları gerçek.
+Binaların görünüşü (cephe, renk, kat sayısı, çatı), park etmiş araçlar ve lambaların yeri gerçek değil; açık veride bunlar yok.
+Birebir cephe için sokak fotoğraflarından ya da lisanslı 3D şehir verisinden üretim gerekir.
 
 ## Modeller nasıl üretildi
 
-Köpek, kedi, iki insan, ev, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
+Köpek, kedi, iki insan, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
 (`docs/tripo-modeller.jpg`). Araçlar `tools/` klasöründe:
 
 | Araç | İş |
@@ -94,7 +102,7 @@ Yeni bir hayvan türü eklemek için: Tripo'da düz duran, bacakları ayrık bir
 - **Telefonda denenmedi.** Buradaki ekran görüntüleri yazılımsal çizimle alındı; telefonda renkler ve hız farklı olabilir.
 - **Ses yok.** Müzik ve efekt eklenmedi.
 - **Yol bulma basit.** Dokunarak yürürken karakter düz gider, engele takılabilir; haritadan "Yürü" ise yolları izler.
-- **Araç yok.** Sokaklarda tabela, durak ve trafik ışığı var; araç ve dükkân vitrini yok.
+- **Araçlar basit.** Tek model, farklı renkler; trafik ışığına uymazlar, yalnızca oyuncuya yol verirler.
 - **Hareketler kodla üretildiği için** hazır animasyonlar kadar akıcı değil; özellikle insan yürüyüşü geliştirilebilir.
 - **Ev yok.** Hayvanların bahçesi parkın içinde; oyuncunun evi tanımlı değil.
 - Fotoğraflar telefonda galeriye düşmeyebilir (depolama izni gerekir).

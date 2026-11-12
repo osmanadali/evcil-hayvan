@@ -9,6 +9,7 @@ const PetModel = preload("res://scripts/pet_model.gd")
 const PetAgent = preload("res://scripts/pet_agent.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
 const Npc = preload("res://scripts/npc.gd")
+const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
@@ -53,6 +54,7 @@ var _food_pending := {}
 var _coins: Array[Node3D] = []
 var _fx: Array = []
 var _npc_pets: Array[Node3D] = []
+var _cars: Array[Node3D] = []
 var _near_npc: Node3D
 var _pet_cd := 0.0
 var _slow_t := 0.0
@@ -227,6 +229,8 @@ func _spawn_cast() -> void:
 	for kind in pets:
 		_add_agent(kind)
 	_link_buddies()
+	for car in _cars:
+		car.owner_node = owner_node
 	_focus = owner_node.position
 
 
@@ -328,6 +332,20 @@ func _spawn_npcs() -> void:
 			var np := _npc_pet(pet_def[0], Color(pet_def[1]), pet_def[2])
 			np.follow = n
 			np.place(ParkMap.nodes[n.graph_node] + Vector2(0.8, 0.5))
+	# Sokaklarda dolasan arabalar
+	if world.car_mesh:
+		var paints := ["f2f2f2", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "f2c230"]
+		for i in 26:
+			var car := Car.new()
+			for t in 40:
+				var k := rng.randi() % ParkMap.nodes.size()
+				if ParkMap.road_next[k].size() > 0 and ParkMap.inside_bounds(ParkMap.nodes[k], 20.0):
+					car.node = k
+					break
+			car.owner_node = owner_node
+			car.add_child(world.make_car(Color(paints[i % paints.size()])))
+			add_child(car)
+			_cars.append(car)
 	# Parkta kendi basina gezen hayvanlar
 	var free := [
 		["kopek", "4a4038", 1.0, ParkMap.spot("oyun_alani"), 4.0, 2.2], ["kopek", "ffe0b0", 0.75, ParkMap.spot("oyun_alani") + Vector2(2, 1), 4.0, 2.6],

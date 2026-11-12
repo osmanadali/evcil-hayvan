@@ -46,9 +46,14 @@ func _next() -> void:
 		var next: int = options[randi() % options.size()] if options.size() > 0 else _prev_node
 		if next < 0:
 			next = graph_node
+		# Sokaklarda yolun sag kenarindan (kaldirimdan) yuru
+		var from: Vector2 = ParkMap.nodes[graph_node]
+		var to: Vector2 = ParkMap.nodes[next]
+		var w := ParkMap.road_width(graph_node, next)
+		var dir := (to - from).normalized()
 		_prev_node = graph_node
 		graph_node = next
-		_target = ParkMap.nodes[graph_node]
+		_target = to + Vector2(-dir.y, dir.x) * ((w * 0.5 + 1.2) if w > 0.0 else 0.0)
 		if randf() < 0.08:
 			_pause = randf_range(2.0, 6.0)
 	elif route.size() > 1:
