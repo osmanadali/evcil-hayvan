@@ -117,7 +117,8 @@ Yeni bir hayvan türü eklemek için: Tripo'da düz duran, bacakları ayrık bir
 - **Ev yok.** Hayvanların bahçesi parkın içinde; oyuncunun evi tanımlı değil.
 - Fotoğraflar telefonda galeriye düşmeyebilir (depolama izni gerekir).
 
-## Hazır APK
+## APK
 
-`apk/patili-gezinti.apk` (Android, arm64, hata ayıklama imzalı). Telefona indirip kurmak için "bilinmeyen kaynaklardan yükleme"ye
-izin vermek gerekir. Mağazaya yüklemek için ayrıca yayın imzasıyla dışa aktarmak gerekir.
+APK repoda tutulmuyor (`.gitignore` `*.apk` dosyalarını dışlıyor; ayrıca 168 MB ile GitHub'ın 100 MB dosya sınırını aşıyor).
+Üretmek için: `godot --headless --path . --export-debug "Android" build/patili-gezinti.apk` (dışa aktarma şablonları, Android SDK
+araçları ve bir imza anahtarı kurulu olmalı). Çıkan APK arm64, hata ayıklama imzalı ve yatay ekrana kilitli.
