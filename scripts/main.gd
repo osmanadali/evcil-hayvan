@@ -340,6 +340,13 @@ func _spawn_cast() -> void:
 	owner_model = PersonModel.new()
 	owner_model.kind = state.d["owner"]
 	owner_model.tint = Color("3f8f8a") if state.d["owner"] == "kadin" else Color("34507a")
+	var oi := int(state.d.get("outfit", -1))
+	if oi >= 0 and oi < OUTFITS.size():
+		var of: Array = OUTFITS[oi]
+		owner_model.tint = Color(of[1])
+		owner_model.tint2 = Color(of[2])
+		owner_model.pattern = of[3]
+		owner_model.pants = Color(of[4]) if of[4] != "" else Color(0, 0, 0, 0)
 	_ride = null
 	_spawn_rides()
 	_spawn_buses()
@@ -444,6 +451,12 @@ func _spawn_npcs() -> void:
 		var v := PersonModel.new()
 		v.kind = "kadin" if i % 2 == 0 else "erkek"
 		v.tint = Color(tints[i % tints.size()])
+		var of: Array = OUTFITS[rng.randi() % OUTFITS.size()]
+		if rng.randf() < 0.6:
+			v.tint = Color(of[1]).lerp(Color(tints[i % tints.size()]), rng.randf() * 0.5)
+			v.tint2 = Color(of[2])
+			v.pattern = of[3]
+			v.pants = Color(of[4]) if of[4] != "" else Color(0, 0, 0, 0)
 		n.visual = v
 		# Yarisi parkin cevresinden, yarisi haritanin rastgele bir yerinden baslar
 		var from := park + Vector2(rng.randf_range(-120, 120), rng.randf_range(-120, 120)) if i < 12 else \
@@ -628,6 +641,8 @@ func _input(e: InputEvent) -> void:
 				_on_photo("enter")
 			KEY_V:
 				_toggle_fps()
+			KEY_P:
+				_open_phone()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -813,6 +828,108 @@ func _update_wet(dt: float) -> void:
 	_drips.emitting = _wet_t > 0.0 and not inside
 
 
+## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
+func _open_phone() -> void:
+	var body: VBoxContainer = ui._open_modal("Telefon", 120, 120)
+	body.add_theme_constant_override("separation", 10)
+	UiKit.button(body, "Arabamı yanıma getir", "play", func():
+		ui.close_modal()
+		_summon_my_car(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+	UiKit.button(body, "Taksi çağır", "star", func():
+		ui.close_modal()
+		_call_taxi("taksi"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+	UiKit.button(body, "Dolmuş çağır", "star", func():
+		ui.close_modal()
+		_call_taxi("dolmus"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+	if ParkMap.zone == "":
+		UiKit.button(body, "Eve yol tarifi", "home", func():
+			ui.close_modal()
+			_set_nav(HOME_DOOR, "Evim"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+
+
+## Oyuncuya en yakin yol kenari: [konum, yon acisi, dugum]
+func _curb_near(p: Vector2) -> Array:
+	var best := -1
+	var bd := 1e18
+	for i in ParkMap.nodes.size():
+		if ParkMap.road_next[i].size() > 0:
+			var d := ParkMap.nodes[i].distance_squared_to(p)
+			if d < bd:
+				bd = d
+				best = i
+	if best < 0:
+		return []
+	var a := ParkMap.nodes[best]
+	var nb: int = ParkMap.road_next[best][0]
+	var b := ParkMap.nodes[nb]
+	var dir := (b - a).normalized()
+	var w := ParkMap.road_width(best, nb)
+	var q := a + dir * minf(5.0, a.distance_to(b) * 0.4) + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
+	return [q, atan2(-dir.x, -dir.y), best]
+
+
+func _summon_my_car() -> void:
+	if _ride != null:
+		ui.toast("Zaten araçtasın.")
+		return
+	var car: Node3D = null
+	for r in _rides:
+		if r.get_meta("kind") == "araba":
+			car = r
+	var c := _curb_near(_owner_pos())
+	if car == null or c.is_empty():
+		ui.toast("Araban bulunamadı.")
+		return
+	car.position = Vector3(c[0].x, ParkMap.walk_height(c[0]), c[0].y)
+	car.rotation = Vector3(0, c[1], 0)
+	_set_nav(c[0], "Arabam")
+	ui.toast("Araban %d m ötede, yol kenarında seni bekliyor." % int(_owner_pos().distance_to(c[0])))
+
+
+func _call_taxi(model: String) -> void:
+	var c := _curb_near(_owner_pos())
+	if c.is_empty():
+		return
+	var best: Node3D = null
+	for car in _cars:
+		if _car_model(car) == model and car.is_processing():
+			best = car
+			break
+	if best == null:
+		ui.toast("Şu an boşta %s yok." % ("dolmuş" if model == "dolmus" else "taksi"))
+		return
+	best.summon(c[2], 90.0)
+	_set_nav(ParkMap.nodes[c[2]], "Taksi" if model == "taksi" else "Dolmuş")
+	ui.toast("%s geldi! Yanına git ve bin (önce haritadan hedef seç)." % ("Taksi" if model == "taksi" else "Dolmuş"))
+
+
+## Evdeki gomme dolap: kiyafet sec, aninda giy.
+func _open_closet() -> void:
+	var body: VBoxContainer = ui._open_modal("Dolap · Ne giysem?", 90, 90)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	for i in OUTFITS.size():
+		var of: Array = OUTFITS[i]
+		var idx := i
+		var b := UiKit.button(grid, of[0], "", func():
+			_wear_outfit(idx)
+			ui.close_modal(), Color(of[1]).lerp(Color.WHITE, 0.15), Color.BLACK if Color(of[1]).get_luminance() > 0.5 else Color.WHITE,
+			Vector2(300, 64), 20, 20)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+
+func _wear_outfit(i: int) -> void:
+	var of: Array = OUTFITS[i]
+	owner_model.set_outfit(Color(of[1]), Color(of[2]), of[3], Color(of[4]) if of[4] != "" else Color(0, 0, 0, 0))
+	owner_model.act("wave", 0.8)
+	state.d["outfit"] = i
+	state.save_game()
+	ui.toast("%s giydin. Yakıştı!" % of[0])
+
+
 ## Tahterevalli (bir ucta sen, obur ucta hayvanin) ve salincak.
 func _start_play_ride(pr: Dictionary) -> void:
 	_play_ride = pr
@@ -920,6 +1037,10 @@ func _on_command(cmd: String) -> void:
 					break
 		"playexit":
 			_end_play_ride()
+		"phone":
+			_open_phone()
+		"wardrobe":
+			_open_closet()
 		"taxi":
 			var tx := _nearest_taxi()
 			if tx:
@@ -1033,6 +1154,14 @@ var _fps_pitch := 0.0
 var _jump_h := 0.0
 var _in_water := false
 var _play_ride: Dictionary = {}
+## Dolaptaki kiyafetler: [ad, tisort, desen rengi, desen (0 duz, 1 cizgili, 2 kareli), pantolon ("" = kot)]
+const OUTFITS := [
+	["Günlük (yeşil)", "3f8f8a", "ffffff", 0, ""], ["Lacivert tişört", "34507a", "ffffff", 0, ""],
+	["Denizci çizgili", "f2f2f2", "1f3a6b", 1, "e8e2d4"], ["Kırmızı kareli gömlek", "b8322b", "2a2a2a", 2, "3a3d42"],
+	["Spor (gri eşofman)", "8a8f96", "ffffff", 0, "4a4d52"], ["Sarı yazlık", "f2c230", "ffffff", 0, "e8e2d4"],
+	["Siyah şık", "1d1e21", "ffffff", 0, "1d1e21"], ["Pembe çizgili", "f2a2b8", "ffffff", 1, ""],
+	["Haki kareli", "6b7a4a", "c9b98a", 2, "7a6a4a"], ["Beyaz klasik", "f4f4f0", "ffffff", 0, "2f3a4a"],
+]
 var _play_t := 0.0
 var _wet_t := 0.0
 var _drips: CPUParticles3D
@@ -1628,7 +1757,10 @@ func _nearest_taxi() -> Node3D:
 
 
 func _board_taxi(c: Node3D) -> void:
-	if _nav == Vector2.INF:
+	if _nav == Vector2.INF or _nav.distance_to(Vector2(c.position.x, c.position.z)) < 25.0:
+		_nav = Vector2.INF
+		minimap.route = []
+		_open_map()
 		ui.toast("Önce haritadan (M) nereye gideceğini seç, sonra bin.")
 		return
 	_taxi = c
@@ -1684,6 +1816,7 @@ func _update_taxi(dt: float) -> void:
 
 func _leave_taxi(arrived: bool) -> void:
 	var c := _taxi
+	print("TAKSIDEN INDI vardi=", arrived, " ", Vector2(c.position.x, c.position.z))
 	_taxi = null
 	var p := Vector2(c.position.x, c.position.z)
 	var side := Vector2(cos(c.rotation.y), -sin(c.rotation.y))
@@ -2521,6 +2654,9 @@ func _update_context() -> void:
 	if _near_home_exit():
 		ui.set_context("Dışarı Çık", "home_out", "come")
 		return
+	if ParkMap.home != null and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
+		ui.set_context("Dolabı Aç", "wardrobe", "star")
+		return
 	if _near_home_door():
 		ui.set_context("Eve Gir", "home_in", "home")
 		return
@@ -2766,6 +2902,13 @@ func _debug_shot() -> void:
 		for k in agents:
 			agents[k].place(_owner_pos() + agents[k].slot)
 		_focus = owner_node.position
+	if _args.has("summon"):
+		if _args["summon"] == "car":
+			_summon_my_car()
+		else:
+			_call_taxi(_args["summon"])
+	if _args.has("outfit"):
+		_wear_outfit(int(_args["outfit"]))
 	if _args.has("playride") and not world.play_rides.is_empty():
 		var pr: Dictionary = world.play_rides[int(_args["playride"]) % world.play_rides.size()]
 		_place_owner(pr["pos"])
@@ -2888,6 +3031,17 @@ func _debug_shot() -> void:
 	if _args.has("nav"):
 		var pin_i := int(_args["nav"])
 		_set_nav(map_screen.PINS[pin_i][2])
+	if _args.has("taxiride"):
+		await get_tree().create_timer(1.0).timeout
+		var tx: Node3D = null
+		for c in _cars:
+			if _car_model(c) == "taksi" and c.hold > 0.0:
+				tx = c
+		if tx:
+			_set_nav(map_screen.PINS[int(_args["taxiride"])][2])
+			owner_node.position = tx.position + Vector3(1.5, 0, 0)
+			_board_taxi(tx)
+			print("TAKSIYE BINDI ", _taxi != null, " yol=", _taxi_path.size())
 	if _args.has("drive") and not _rides.is_empty():
 		for r in _rides:
 			if r.get_meta("kind") == (_args["drive"] if _args["drive"] != "1" else "araba"):

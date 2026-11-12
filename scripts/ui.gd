@@ -154,6 +154,8 @@ func _build_hud() -> void:
 	row.add_child(_clock_icon)
 	clock_label = K.label(row, "10:00", 23, Color.WHITE)
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
+	var phone_btn := K.button(right, "", "phone", func(): command.emit("phone"), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
+	_glass(phone_btn)
 	var menu_btn := K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
 	_glass(menu_btn)
 	# Bilgisayarda menu Esc ile acilir, hareket klavyeyle: dugme ve cubuk gizli

@@ -14,6 +14,7 @@ var _to := Vector2.ZERO
 var _t := 0.0
 var _len := 1.0
 var _speed := 0.0
+var hold := 0.0               # > 0 iken bekler (cagrilan taksi)
 var _pos := Vector2.INF       # gercek konum: serit noktasini yumusakca izler (koselerde ziplamaz)
 
 
@@ -30,6 +31,17 @@ func _lane(a: int, b: int, at_b: bool) -> Vector2:
 	# Park edilen sokaklarda (5-9 m) kenarlar dolu: ortaya yakin git
 	var off := clampf(w * 0.5 - 3.0, 0.0, 2.2) if w >= 5.0 and w <= 9.0 else minf(w * 0.22, 2.2)
 	return (pb if at_b else pa) + Vector2(-dir.y, dir.x) * off
+
+
+## Telefonla cagrildi: verilen yol dugumunden baslayip bekle.
+func summon(k: int, wait: float) -> void:
+	node = k
+	_prev = -1
+	_pos = Vector2.INF
+	_pick()
+	_t = 0.0
+	_speed = 0.0
+	hold = wait
 
 
 func _pick() -> void:
@@ -61,6 +73,9 @@ func _process(dt: float) -> void:
 	var p := _from.lerp(_to, _t)
 	var dir := (_to - _from) / _len
 	var want := CRUISE
+	if hold > 0.0:
+		hold -= dt
+		want = 0.0
 	if owner_node:
 		var rel := Vector2(owner_node.position.x, owner_node.position.z) - (p if _pos == Vector2.INF else _pos)
 		var ahead := rel.dot(dir)

@@ -22,6 +22,9 @@ var grips: Array = []     # [sol, sag] gidon tutaclarinin dunya konumu (surerken
 var hand_twist := 1.2     # avucu asagi cevirmek icin on kol donusu
 var _pedal := 0.0
 var tint := Color.WHITE   # tisort rengi
+var tint2 := Color.WHITE  # desen ikinci rengi
+var pattern := 0          # 0 duz, 1 cizgili, 2 kareli
+var pants := Color(0, 0, 0, 0)   # a = 0: kot pantolon oldugu gibi
 var hand: Node3D          # elde tasinan esya icin
 
 var _skel: Skeleton3D
@@ -76,6 +79,9 @@ func _dress(mi: MeshInstance3D) -> void:
 		sm.set_shader_parameter("albedo_tex", src.albedo_texture)
 		sm.set_shader_parameter("normal_tex", src.normal_texture)
 		sm.set_shader_parameter("shirt", tint)
+		sm.set_shader_parameter("shirt2", tint2)
+		sm.set_shader_parameter("pattern", pattern)
+		sm.set_shader_parameter("pants", pants)
 		m = sm
 	else:
 		var bm: BaseMaterial3D = src.duplicate()
@@ -117,6 +123,20 @@ func _turn(bone: String, turns: Array) -> void:
 
 
 ## Tek seferlik hareket: "throw" (firlat), "pet" (egilip sev), "wave" (el salla), "feed" (mama koy)
+## Kiyafeti degistir (dolaptan): tisort, desen ve pantolon.
+func set_outfit(shirt: Color, shirt2: Color, pat: int, pant: Color) -> void:
+	tint = shirt
+	tint2 = shirt2
+	pattern = pat
+	pants = pant
+	for m in _keep:
+		if m is ShaderMaterial:
+			m.set_shader_parameter("shirt", tint)
+			m.set_shader_parameter("shirt2", tint2)
+			m.set_shader_parameter("pattern", pattern)
+			m.set_shader_parameter("pants", pants)
+
+
 func act(what: String, duration := 0.9) -> void:
 	_act = what
 	_act_t = 0.0

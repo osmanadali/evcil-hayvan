@@ -1761,6 +1761,7 @@ func traffic_car(i: int, paint: Color) -> Node3D:
 		var spec: Array = pick[(i / 3 + i) % pick.size()]
 		var v := vehicle("res://assets/models/%s.glb" % spec[0], spec[1], spec[2])
 		if v:
+			v.set_meta("model", spec[0])
 			return v
 	return make_car(paint)
 
