@@ -45,6 +45,7 @@ var _cam_pitch := 0.27
 var _press_pos := Vector2.ZERO
 var _press_moved := 0.0
 var _press_time := 0.0
+var _direct := false       # son hedefe duz cizgiyle mi gidiliyor
 var _menu_angle := 0.6
 var _photo := {"yaw": 0.5, "pitch": 0.22, "dist": 4.2}
 var _marker: MeshInstance3D
@@ -522,7 +523,11 @@ func _pointer_up(pos: Vector2) -> void:
 			return
 	if hit != null:
 		_queue.clear()
-		_go(hit)
+		if (hit as Vector2).distance_to(_owner_pos()) > 35.0:
+			walk_to(hit)      # uzak hedef: sokaklari izle
+		else:
+			_go(hit)
+			_direct = true
 
 
 ## Ekrandaki noktanin araziyle kesisimi (Vector2) ya da null.
@@ -552,6 +557,7 @@ func _ground_hit(screen: Vector2):
 
 ## Haritadan secilen yere yollari izleyerek yuru.
 func walk_to(p: Vector2) -> void:
+	_direct = false
 	_queue = ParkMap.find_route(_owner_pos(), p)
 	_go(_queue.pop_front())
 
@@ -877,8 +883,13 @@ func _update_owner(dt: float) -> void:
 		owner_model.speed = moved
 		state.count("walk", np.distance_to(p))
 		_stuck = _stuck + dt if moved < sp * 0.25 else 0.0
-		if _stuck > 0.6 and not _dragging:
-			_moving = false
+		if _stuck > 0.6 and not _dragging and ui.stick.length() < 0.15:
+			if _direct and _queue.is_empty():
+				# Duz giderken engele takildi: bir kez sokak agindan rota dene
+				_direct = false
+				walk_to(_target)
+			else:
+				_moving = false
 	else:
 		_moving = false
 		owner_model.speed = 0.0
@@ -1138,6 +1149,8 @@ func _debug_shot() -> void:
 					_go(_owner_pos() + Vector2(float(_args.get("dx", "0")), float(_args.get("dz", "-30"))))
 				elif c == "flow":
 					await _debug_flow()
+				elif c == "route":
+					walk_to(Vector2(float(_args.get("tx", "0")), float(_args.get("tz", "0"))))
 				elif c == "pin":
 					map_screen.select_by_name(_args.get("pin", "Pet Shop"))
 				else:
@@ -1163,6 +1176,12 @@ func _debug_shot() -> void:
 			var t := owner_node.position + Vector3(0, 0.8, 0)
 			cam.position = t + Vector3(sin(a) * dist, 0.9, cos(a) * dist)
 			cam.look_at(t)
+	if _args.has("trace"):
+		for i in int(_args["trace"]):
+			if _args.get("cmd", "") == "stick":
+				ui.stick = Vector2(float(_args.get("sx", "-1")), float(_args.get("sy", "0")))
+			await get_tree().create_timer(2.0).timeout
+			print("IZ %d %s moving=%s queue=%d" % [i * 2, _owner_pos(), _moving, _queue.size()])
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	var report := {"coins": state.d["coins"], "foods": state.d["foods"], "quests": state.d["quests"], "places": state.d["places"],

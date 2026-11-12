@@ -610,7 +610,8 @@ func _build_garden() -> void:
 	var mx := b + h
 	var hex := "ece6d8"
 	_fence(mn, Vector2(mx.x, mn.y), hex)
-	_fence(mn, Vector2(mn.x, mx.y), hex)
+	_fence(mn, Vector2(mn.x, b.y - 1.5), hex)      # bati kenarinda da kapi
+	_fence(Vector2(mn.x, b.y + 1.5), Vector2(mn.x, mx.y), hex)
 	_fence(Vector2(mn.x, mx.y), mx, hex)
 	_fence(Vector2(mx.x, mn.y), Vector2(mx.x, b.y - 1.5), hex)
 	_fence(Vector2(mx.x, b.y + 1.5), mx, hex)

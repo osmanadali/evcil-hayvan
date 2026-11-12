@@ -392,6 +392,7 @@ if __name__ == '__main__':
     raster(data)
     # Oyun yerlerini istenen konuma en yakin bos park cimine yerlestir
     a = Image.open('assets/splat_a.png').load(); b = Image.open('assets/splat_b.png').load(); k = PX / EXTENT
+    cimg = Image.open('assets/splat_c.png'); cpx = cimg.load(); kc = cimg.size[0] / EXTENT
     def clean(c, h, placed):
         if abs(c[0]) + h[0] > HALF[0] - 10 or abs(c[1]) + h[1] > HALF[1] - 10:
             return False
@@ -405,7 +406,10 @@ if __name__ == '__main__':
                 ra, ga, _ = a[px]; rb, gb, bb = b[px]
                 if ra > 100 or ga < 175 or rb > 100 or gb > 100 or bb > 110:
                     return False
-        return not any(_in(c, bl['p']) for bl in data['buildings'])
+                # Binalardan en az 5 m uzakta olmali (bina mesafe alani: 127 = duvar, 6 m = 64 birim)
+                if cpx[int((q[0] + EXTENT / 2) * kc), int((q[1] + EXTENT / 2) * kc)][0] > 74:
+                    return False
+        return True
     placed = []
     for name, (want, h) in WANTED.items():
         best = None
@@ -413,7 +417,7 @@ if __name__ == '__main__':
             steps = max(1, int(2 * math.pi * r / 4))
             for t in range(steps):
                 c = (want[0] + r * math.cos(t * 2 * math.pi / steps), want[1] + r * math.sin(t * 2 * math.pi / steps))
-                if clean(c, [h[0] + 2, h[1] + 2], placed):
+                if clean(c, [h[0] + 2, h[1] + 2], placed) and (name != 'bahce' or clean((c[0] + h[0] + 3.0, c[1]), [2.0, 2.0], [])):
                     best = c; break
             if best: break
         if not best:
@@ -421,8 +425,18 @@ if __name__ == '__main__':
         placed.append((best, h))
         data['spots'][name] = {'pos': [round(best[0], 1), round(best[1], 1)], 'half': h}
         print('  yer %-11s istenen %s -> %s' % (name, want, data['spots'][name]['pos']))
+    # Baslangic: bahce kapisinin (dogu kenari) hemen onu; orasi da bos olmali
     g = data['spots']['bahce']
-    data['spots']['baslangic'] = {'pos': [g['pos'][0] + g['half'][0] + 3.0, g['pos'][1]], 'half': [1.0, 1.0]}
+    start = [g['pos'][0] + g['half'][0] + 3.0, g['pos'][1]]
+    if not clean(start, [2.0, 2.0], []):
+        raise SystemExit('baslangic noktasi bos degil: bahcenin yerini degistir')
+    data['spots']['baslangic'] = {'pos': start, 'half': [1.0, 1.0]}
+    for name, sp in data['spots'].items():
+        hh = sp['half']
+        for dx in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                q = (sp['pos'][0] + dx * hh[0], sp['pos'][1] + dz * hh[1])
+                assert not any(_in(q, bl['p']) for bl in data['buildings']), 'bina icinde: ' + name
     json.dump(data, open('assets/city.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     if len(sys.argv) > 2:
         preview(data, sys.argv[2])
