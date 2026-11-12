@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b4db4bcvh80n3"
-path="res://.godot/imported/erkek_0.jpg-367f1fd56d1e43c3502c28a9b025db9f.ctex"
+uid="uid://8hbrux5x4y2p"
+path="res://.godot/imported/erkek_brown_eye.png-c2d7a94a58e665fb17343e4a7a899dc9.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "35251461f889be17a701d0842401f2f2"
+"md5": "1b93ce1fc9dfa16177a6d61005cdb4fd"
 }
 
 [deps]
 
-source_file="res://assets/models/erkek_0.jpg"
-dest_files=["res://.godot/imported/erkek_0.jpg-367f1fd56d1e43c3502c28a9b025db9f.ctex"]
+source_file="res://assets/models/erkek_brown_eye.png"
+dest_files=["res://.godot/imported/erkek_brown_eye.png-c2d7a94a58e665fb17343e4a7a899dc9.ctex"]
 
 [params]
 

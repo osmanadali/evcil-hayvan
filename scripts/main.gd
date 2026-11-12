@@ -240,6 +240,7 @@ func _spawn_cast() -> void:
 	add_child(owner_node)
 	owner_model = PersonModel.new()
 	owner_model.kind = state.d["owner"]
+	owner_model.tint = Color("3f8f8a") if state.d["owner"] == "kadin" else Color("34507a")
 	owner_node.add_child(owner_model)
 	_place_owner(ParkMap.spot("baslangic"))
 	owner_node.rotation.y = PI
@@ -331,7 +332,7 @@ func _spawn_npcs() -> void:
 	# Sokaklarda ve parkta yuruyen insanlar (bazilarinin yaninda hayvani var)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var tints := ["ffe6e0", "e6f0ff", "e8ffe6", "fff0d6", "f0e6ff", "ffffff", "ffe9c9", "dff3ff"]
+	var tints := ["c94f4f", "3f6fb5", "4f8f5a", "e0b84a", "7a5ea8", "f2f2f2", "2f3a4a", "d98a4f", "6fb1c9", "9a9a9a"]
 	var pets := [["kopek", "f4f4f4", 0.8], [], ["kedi", "c9c9c9", 0.9], ["kopek", "b08a66", 1.1], [], ["kopek", "5a5a5a", 0.9], [], []]
 	var park := ParkMap.spot("cesme")
 	for i in 30:
@@ -856,9 +857,12 @@ func _update_owner(dt: float) -> void:
 	var p := _owner_pos()
 	var to := _target - p
 	var d := to.length()
+	var limit := WALK_SPEED
 	if _mode != "play":
 		_moving = false
 	elif ui.stick.length() > 0.15:
+		# Cubuk az itilince yurur, sonuna kadar itilince kosar
+		limit = lerpf(1.5, WALK_SPEED, clampf((ui.stick.length() - 0.35) / 0.55, 0.0, 1.0))
 		# Hareket cubugu: kameraya gore yon
 		var fwd := Vector2(-sin(_cam_yaw), -cos(_cam_yaw))
 		var right := Vector2(cos(_cam_yaw), -sin(_cam_yaw))
@@ -873,7 +877,7 @@ func _update_owner(dt: float) -> void:
 	if _moving and d < 1.0 and not _queue.is_empty():
 		_go(_queue.pop_front())
 	elif _moving and d > 0.15:
-		var sp := minf(WALK_SPEED, 1.0 + d * 2.5)
+		var sp := minf(limit, 1.0 + d * 2.5)
 		var np: Vector2 = world.resolve(p + to / d * minf(sp * dt, d), 0.35, p)
 		var moved := np.distance_to(p) / maxf(dt, 0.0001)
 		owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
@@ -1184,6 +1188,23 @@ func _debug_shot() -> void:
 			print("IZ %d %s moving=%s queue=%d" % [i * 2, _owner_pos(), _moving, _queue.size()])
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
+	if _args.has("more"):
+		ui._on_action("more")
+		await get_tree().process_frame
+		await get_tree().process_frame
+	if _args.has("anim"):
+		owner_model.force_speed = float(_args["anim"])
+		await get_tree().create_timer(float(_args.get("wait", "1.0"))).timeout
+	if _args.has("chase"):
+		# Yuruyen karakteri yandan goster (animasyon denetimi)
+		_mode = "debug"
+		var ct := owner_node.position + Vector3(0, 0.85, 0)
+		var ca := float(_args.get("ang", "0.5"))
+		var cd := float(_args.get("dist", "4.5"))
+		cam.position = ct + Vector3(sin(ca) * cd, 0.5, cos(ca) * cd)
+		cam.look_at(ct)
+		await get_tree().process_frame
+		await get_tree().process_frame
 	var report := {"coins": state.d["coins"], "foods": state.d["foods"], "quests": state.d["quests"], "places": state.d["places"],
 		"owner": _owner_pos()}
 	for k in agents:

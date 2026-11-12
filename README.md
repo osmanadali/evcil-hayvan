@@ -78,7 +78,7 @@ Zemin maskeleri mesafe alanı olarak saklanır; bu sayede yol ve kaldırım kena
 
 ## Modeller nasıl üretildi
 
-Köpek, kedi, iki insan, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
+Köpek, kedi, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi
 (`docs/tripo-modeller.jpg`). Araçlar `tools/` klasöründe:
 
 | Araç | İş |
@@ -87,6 +87,11 @@ Köpek, kedi, iki insan, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondur
 | `decimate_glb.py` | Üçgen sayısını düşürür (çok kullanılan ağaç, ev, lamba, bank için) |
 | `rig_pet.py` + `rig_pets.json` | Modele iskelet takar: kemikler elle yerleştirilir, ağırlıklar mesafeye göre hesaplanır |
 | `osm_build.py` | OpenStreetMap verisini oyun haritasına çevirir |
+
+**İnsan karakterleri** Tripo'dan değil, MakeHuman'in CC0 lisanslı verisinden (temel gövde, ten, giysi, saç) üretilir:
+`python3 tools/make_human.py <mh_klasörü> kadin assets/models/kadin.glb`. Araç yalnızca veri dosyalarını okur; gövdeyi
+biçimlendirir, giysileri gövdeye oturtur, Mixamo adlı iskeleti ve ağırlıkları ekler, tişörtteki logoyu siler. Gereken veri:
+`github.com/makehumancommunity/mpfb2` deposu ve `makehuman_system_assets_cc0.zip` paketi.
 
 Tripo'nun otomatik iskeleti dört ayaklı modelde bozuk çıktığı için kullanılmadı. Hayvan ve insan hareketlerinin tamamı kodla
 üretiliyor (`scripts/pet_model.gd`, `scripts/person_model.gd`); hazır animasyon dosyası yok. Yeni bir hareket eklemek kod yazmak demek.

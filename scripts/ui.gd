@@ -44,6 +44,8 @@ var _setup_pet := "kopek"
 var _name_edit: LineEdit
 var _refresh_t := 0.0
 var _flash: ColorRect
+const GLASS := Color(0.06, 0.07, 0.08, 0.5)
+var _more := false          # tum komutlar acik mi
 var stick := Vector2.ZERO       # hareket cubugu (-1..1)
 var _stick_base: Panel
 var _stick_knob: Panel
@@ -126,7 +128,7 @@ func _build_hud() -> void:
 	if win.y > 0 and safe.position.y > 0:
 		top += safe.position.y * get_viewport().get_visible_rect().size.y / float(win.y)
 	cards.position = Vector2(16, top)
-	cards.add_theme_constant_override("separation", 10)
+	cards.add_theme_constant_override("separation", 6)
 	hud.add_child(cards)
 
 	var right := HBoxContainer.new()
@@ -134,24 +136,21 @@ func _build_hud() -> void:
 	right.offset_left = -640
 	right.offset_right = -16
 	right.offset_top = top
-	right.offset_bottom = top + 76
+	right.offset_bottom = top + 60
 	right.alignment = BoxContainer.ALIGNMENT_END
 	right.add_theme_constant_override("separation", 12)
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(right)
-	var pill := K.box(right, K.CREAM, 28, 10, 6)
+	var pill := K.box(right, GLASS, 26, 8)
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 8)
 	pill.add_child(row)
-	row.add_child(Icon.new("coin", Color.WHITE, 34))
-	_coins = K.label(row, "0", 28, K.BROWN)
-	K.button(right, "", "map", func(): open_map.emit(), K.CREAM, K.BLUE, Vector2(76, 76), 30, 38)
-	K.button(right, "", "list", func(): open_quests(), K.CREAM, K.GREEN, Vector2(76, 76), 30, 38)
-	K.button(right, "", "shirt", func(): open_closet(), K.CREAM, K.ORANGE, Vector2(76, 76), 30, 38)
-	K.button(right, "", "camera", func(): photo.emit("enter"), K.CREAM, K.BROWN, Vector2(76, 76), 30, 38)
-	K.button(right, "", "pause", func(): open_pause(), K.CREAM, K.MUTED, Vector2(76, 76), 30, 38)
+	row.add_child(Icon.new("coin", Color.WHITE, 26))
+	_coins = K.label(row, "0", 23, Color.WHITE)
+	_glass(K.button(right, "", "map", func(): open_map.emit(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30))
+	_glass(K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30))
 
 	_toast = K.box(hud, Color(0.25, 0.19, 0.14, 0.9), 26, 16)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -180,20 +179,20 @@ func _build_hud() -> void:
 	_context.visible = false
 	_actions = GridContainer.new()
 	_actions.columns = 4
-	_actions.add_theme_constant_override("h_separation", 10)
+	_actions.add_theme_constant_override("h_separation", 14)
 	_actions.add_theme_constant_override("v_separation", 10)
 	_actions.size_flags_horizontal = Control.SIZE_SHRINK_END
 	bottom.add_child(_actions)
 
 	# Hareket cubugu (sol alt)
-	_stick_base = K.panel(hud, Color(1, 0.97, 0.92, 0.38), 90, 3, Color(1, 1, 1, 0.6))
+	_stick_base = K.panel(hud, Color(0.05, 0.06, 0.07, 0.22), 89, 2, Color(1, 1, 1, 0.35))
 	_stick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_base.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_stick_base.offset_left = 50
 	_stick_base.offset_right = 230
 	_stick_base.offset_top = -230
 	_stick_base.offset_bottom = -50
-	_stick_knob = K.panel(_stick_base, Color(1, 0.97, 0.92, 0.9), 38, 0, Color.WHITE, 6)
+	_stick_knob = K.panel(_stick_base, Color(1, 1, 1, 0.55), 37, 0, Color.WHITE)
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_knob.size = Vector2(76, 76)
 	_stick_knob.position = Vector2(52, 52)
@@ -271,23 +270,47 @@ func refresh() -> void:
 		for kind in pets:
 			_cards[kind] = _make_card(cards, kind)
 	_update_cards()
-	# Komut dugmeleri
+	# Komut dugmeleri: uc ana komut hep gorunur, digerleri "..." ile acilir
 	for c in _actions.get_children():
 		c.queue_free()
 	var cat: bool = state.d["active"] == "kedi"
-	var list := [["Sev", "heart", "pet", K.RED], ["Mama", "bone", "food", K.ORANGE],
-		["Yumak" if cat else "Top At", "yarn" if cat else "ball", "yarn" if cat else "throw", K.BLUE],
-		["Gel", "come", "come", K.GREEN], ["Otur", "sit", "sit", K.BROWN], ["Yat", "minus", "lie", K.BROWN],
-		["Uyu", "moon", "sleep", K.MUTED]]
+	var extra := [["Gel", "come", "come"], ["Otur", "sit", "sit"], ["Yat", "minus", "lie"], ["Uyu", "moon", "sleep"]]
 	if pets.size() > 1:
-		list.append(["Oynat", "play", "play", K.GREEN])
+		extra.append(["Oynat", "play", "play"])
+	var list := [["Sev", "heart", "pet"], ["Mama", "bone", "food"],
+		["Yumak" if cat else "Top At", "yarn" if cat else "ball", "yarn" if cat else "throw"]]
+	if _more:
+		list = extra + list
+	list.append(["Kapat" if _more else "Komutlar", "close" if _more else "paw", "more"])
+	_actions.columns = 4 if not _more else int(ceil(list.size() / 2.0))
 	for a in list:
 		var cmd: String = a[2]
-		K.button(_actions, a[0], a[1], func(): _on_action(cmd), K.CREAM, a[3], Vector2(150, 68), 22, 26)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 2)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_actions.add_child(col)
+		var b := K.button(col, "", a[1], func(): _on_action(cmd), GLASS, Color.WHITE, Vector2(68, 68), 30, 32)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		_glass(b)
+		var cap := K.label(col, a[0], 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		cap.add_theme_constant_override("outline_size", 5)
+		cap.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+		cap.custom_minimum_size = Vector2(84, 0)
+
+
+## Saydam koyu yuvarlak dugme gorunumu
+func _glass(b: Button) -> void:
+	var r := int(b.custom_minimum_size.y / 2.0) - 1
+	b.add_theme_stylebox_override("normal", K.style(GLASS, r, 2, Color(1, 1, 1, 0.28)))
+	b.add_theme_stylebox_override("hover", K.style(GLASS, r, 2, Color(1, 1, 1, 0.28)))
+	b.add_theme_stylebox_override("pressed", K.style(Color(1, 1, 1, 0.35), r, 2, Color.WHITE))
 
 
 func _on_action(cmd: String) -> void:
-	if cmd == "food":
+	if cmd == "more":
+		_more = not _more
+		refresh()
+	elif cmd == "food":
 		_open_food()
 	else:
 		command.emit(cmd)
@@ -296,21 +319,21 @@ func _on_action(cmd: String) -> void:
 func _make_card(parent: Node, kind: String) -> Dictionary:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(372, 108)
+	b.custom_minimum_size = Vector2(270, 66)
 	b.pressed.connect(func(): select_pet.emit(kind))
 	parent.add_child(b)
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 12)
-	K.full(row, 12, 10, 22, 10)
+	K.full(row, 8, 7, 16, 7)
 	b.add_child(row)
-	var face := K.panel(row, Color(PET_COLORS[kind]), 40, 4, Color.WHITE)
-	face.custom_minimum_size = Vector2(80, 80)
+	var face := K.panel(row, Color(PET_COLORS[kind]), 25, 2, Color.WHITE)
+	face.custom_minimum_size = Vector2(52, 52)
 	face.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var paw := Icon.new("paw", Color.WHITE, 46)
-	paw.position = Vector2(17, 17)
-	paw.size = Vector2(46, 46)
+	var paw := Icon.new("paw", Color.WHITE, 30)
+	paw.position = Vector2(11, 11)
+	paw.size = Vector2(30, 30)
 	face.add_child(paw)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -320,19 +343,19 @@ func _make_card(parent: Node, kind: String) -> Dictionary:
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(top)
-	var name_l := K.label(top, "", 25, K.BROWN)
+	var name_l := K.label(top, "", 19, Color.WHITE)
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_l.clip_text = true
-	var lvl := K.label(top, "", 20, K.ORANGE)
-	var xp := K.bar(col, K.ORANGE, Vector2(100, 7))
+	var lvl := K.label(top, "", 16, Color("ffd9a0"))
+	var xp := K.bar(col, K.ORANGE, Vector2(100, 4))
 	var needs := HBoxContainer.new()
 	needs.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	needs.add_theme_constant_override("separation", 5)
 	col.add_child(needs)
 	var bars := {}
 	for n in state.NEEDS:
-		needs.add_child(Icon.new(NEED_ICONS[n], Color(NEED_COLORS[n]), 20))
-		var pb := K.bar(needs, Color(NEED_COLORS[n]), Vector2(32, 11))
+		needs.add_child(Icon.new(NEED_ICONS[n], Color(NEED_COLORS[n]), 15))
+		var pb := K.bar(needs, Color(NEED_COLORS[n]), Vector2(22, 7))
 		pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bars[n] = pb
@@ -344,7 +367,7 @@ func _update_cards() -> void:
 		var c: Dictionary = _cards[kind]
 		var p: Dictionary = state.pet(kind)
 		var active: bool = state.d["active"] == kind
-		var sb := K.style(K.CREAM if active else Color(1, 0.97, 0.92, 0.82), 30, 4 if active else 0, K.ORANGE, 6)
+		var sb := K.style(GLASS if active else Color(0.06, 0.07, 0.08, 0.28), 32, 2 if active else 0, Color(1, 1, 1, 0.45))
 		for s in ["normal", "hover", "pressed"]:
 			c["button"].add_theme_stylebox_override(s, sb)
 		c["name"].text = p["name"]
@@ -513,13 +536,18 @@ func open_quests() -> void:
 
 
 func open_pause() -> void:
-	var body := _open_modal("Mola", 330, 330)
-	body.add_theme_constant_override("separation", 16)
-	K.button(body, "Devam Et", "play", close_modal, K.GREEN, Color.WHITE, Vector2(0, 84), 28, 30)
+	var body := _open_modal("Menü", 90, 90)
+	body.add_theme_constant_override("separation", 12)
+	K.button(body, "Devam Et", "play", close_modal, K.GREEN, Color.WHITE, Vector2(0, 72), 26, 28)
+	K.button(body, "Görevler", "list", func(): open_quests(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
+	K.button(body, "Dolap", "shirt", func(): open_closet(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
+	K.button(body, "Fotoğraf Çek", "camera", func():
+		close_modal()
+		photo.emit("enter"), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
 	K.button(body, "Ses: Açık" if state.d["sound"] else "Ses: Kapalı", "sound", func():
 		state.d["sound"] = not state.d["sound"]
-		open_pause(), K.SOFT, K.BROWN, Vector2(0, 84), 28, 30)
-	K.button(body, "Ana Menü", "home", func(): back_to_menu.emit(), K.SOFT, K.BROWN, Vector2(0, 84), 28, 30)
+		open_pause(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
+	K.button(body, "Ana Menü", "home", func(): back_to_menu.emit(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
 
 
 func _open_food() -> void:

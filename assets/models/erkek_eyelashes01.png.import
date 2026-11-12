@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dbwkj6yrevqaw"
-path="res://.godot/imported/kadin_0.jpg-2e05f11d46db83dc0c1914ef0454fbfd.ctex"
+uid="uid://mm3xyfl7dcfd"
+path="res://.godot/imported/erkek_eyelashes01.png-d7a2e9ec3d0fd77f076042d2da10da66.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "3200e266a48df61a807c113898abf352"
+"md5": "050add4f6a49b84709d4e478963163c9"
 }
 
 [deps]
 
-source_file="res://assets/models/kadin_0.jpg"
-dest_files=["res://.godot/imported/kadin_0.jpg-2e05f11d46db83dc0c1914ef0454fbfd.ctex"]
+source_file="res://assets/models/erkek_eyelashes01.png"
+dest_files=["res://.godot/imported/erkek_eyelashes01.png-d7a2e9ec3d0fd77f076042d2da10da66.ctex"]
 
 [params]
 
