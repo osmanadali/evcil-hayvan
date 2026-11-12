@@ -39,6 +39,11 @@ var _tunnel_lights: Array[Node3D] = []
 var _inside: Node3D
 var _sign_labels: Array[Label3D] = []
 var _chime: AudioStreamPlayer
+var _voice: AudioStreamPlayer      # anonslar (ElevenLabs)
+var _fx: AudioStreamPlayer         # tren / kapi sesleri
+var _hum: AudioStreamPlayer        # vagon ici ugultu (dongu)
+const VOICE := {"Dışkapı": "diskapi", "ASKİ": "aski", "Atatürk Kültür Merkezi": "akm", "Gar": "gar",
+	"Adliye": "adliye", "Meteoroloji": "meteoroloji"}
 var _speed := 0.0
 var fast := false
 
@@ -53,6 +58,41 @@ func _ready() -> void:
 	_chime.stream = _make_chime()
 	_chime.volume_db = -8.0
 	add_child(_chime)
+	_voice = AudioStreamPlayer.new()
+	_voice.volume_db = -2.0
+	add_child(_voice)
+	_fx = AudioStreamPlayer.new()
+	_fx.volume_db = -4.0
+	add_child(_fx)
+	_hum = AudioStreamPlayer.new()
+	_hum.volume_db = -10.0
+	var hs := _load("vagon_ici")
+	if hs:
+		hs.loop = true
+		_hum.stream = hs
+	add_child(_hum)
+
+
+func _load(name: String) -> AudioStreamMP3:
+	var path := "res://assets/sfx/metro/%s.mp3" % name
+	return load(path) if ResourceLoader.exists(path) else null
+
+
+func _say(name: String, delay := 0.0) -> void:
+	var st := _load(name)
+	if st == null:
+		return
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+	_voice.stream = st
+	_voice.play()
+
+
+func _play_fx(name: String) -> void:
+	var st := _load(name)
+	if st:
+		_fx.stream = st
+		_fx.play()
 
 
 func begin(from: String, to: String) -> void:
@@ -405,6 +445,8 @@ func _process(dt: float) -> void:
 				_phase = "geliyor"
 				_t = 0.0
 				announce.emit("Tren yaklaşıyor · Lütfen sarı çizginin gerisinde bekleyin")
+				_say("yaklasiyor")
+				_play_fx("tren_geliyor")
 		"geliyor":
 			_walk(dt)
 			_follow_cam(dt)
@@ -413,7 +455,7 @@ func _process(dt: float) -> void:
 			if k >= 1.0:
 				_phase = "kapilar"
 				_t = 0.0
-				_chime.play()
+				_play_fx("kapi_acilis")
 				announce.emit("Kapılar açılıyor · Açık kapıya yürü ve bin")
 		"kapilar":
 			_open_doors(clampf(_t / 1.2, 0.0, 1.0))
@@ -427,6 +469,7 @@ func _process(dt: float) -> void:
 					p.visible = false
 				_phase = "kapaniyor"
 				_t = 0.0
+				_say("kapilar_kapaniyor")
 		"kapaniyor":
 			_open_doors(clampf(1.0 - _t / 1.0, 0.0, 1.0))
 			if _t > 1.3:
@@ -437,6 +480,7 @@ func _process(dt: float) -> void:
 				_train.visible = false
 				_tunnel.visible = false
 				_inside.visible = true
+				_hum.play()
 				announce.emit("Kapılar kapanıyor · Doors closing")
 				_announce_next()
 		"yolculuk":
@@ -476,6 +520,9 @@ func _process(dt: float) -> void:
 
 
 func _arrive(station: String) -> void:
+	_hum.stop()
+	_say("vardik")
+	_play_fx("kapi_acilis")
 	_phase = "cikis"
 	_t = 0.0
 	_set_station_name(station)
@@ -500,6 +547,8 @@ func _announce_next() -> void:
 	var nxt: String = _stops[_leg]
 	(_inside.get_node("Bilgi") as Label3D).text = "Sıradaki: %s" % nxt
 	announce.emit("Sıradaki istasyon: %s · Next station: %s" % [nxt, nxt])
+	if VOICE.has(nxt):
+		_say("siradaki_" + VOICE[nxt], 4.5 if _leg == 0 else 1.2)
 
 
 func _open_doors(k: float) -> void:

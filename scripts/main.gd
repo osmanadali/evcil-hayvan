@@ -792,7 +792,7 @@ func _update_wet(dt: float) -> void:
 	var p := _owner_pos()
 	var inside := _ride == null and ParkMap.home == null and ParkMap.water_sd(p) < -0.2
 	if inside and not _in_water:
-		_sfx("firlat", -6.0, 0.6)
+		_sfx("su_sicrama" if _sounds.has("su_sicrama") else "firlat", -3.0)
 		ui.toast("Suya girdin! Sırılsıklam oldun!")
 		state.count("swim", 1.0)
 	_in_water = inside
@@ -856,6 +856,8 @@ func _enter_shop(sp: Dictionary) -> void:
 	_cam_pitch = 0.75
 	_cam_yaw = 0.0
 	ui.toast("%s · Hoş geldiniz!" % sp["name"])
+	_sfx("dukkan_zil", -6.0)
+	get_tree().create_timer(0.9).timeout.connect(func(): _sfx("hosgeldiniz", -2.0))
 
 
 func _exit_shop() -> void:
@@ -873,6 +875,7 @@ func _exit_shop() -> void:
 
 
 func _shop_buy() -> void:
+	_sfx("kasa", -8.0)
 	if _shop.kind == "market":
 		ui.open_shop("food")
 		return
@@ -1402,6 +1405,8 @@ func _enter_ride() -> void:
 	owner_model.speed = 0.0
 	_board_pets(not cfg["hide"], cfg.get("pet", Vector3.ZERO))
 	if cfg["hide"]:
+		_sfx("araba_kapi", -6.0)
+	if cfg["hide"]:
 		owner_model.visible = false
 	else:
 		owner_model.riding = _ride.get_meta("kind")
@@ -1489,6 +1494,8 @@ func _exit_ride() -> void:
 		_cockpit.queue_free()
 		_cockpit = null
 	_set_body_visible(_ride, true)
+	if RIDES[_ride.get_meta("kind")]["hide"]:
+		_sfx("araba_kapi", -6.0, 1.05)
 	_ride.rotation.z = 0.0
 	_ride.rotation.x = 0.0
 	_ride = null
@@ -2295,6 +2302,9 @@ var _voice_i := 0
 func _setup_audio() -> void:
 	for n in ["ortam", "adim1", "adim2", "adim3", "adim4", "para", "firlat", "tik", "mutlu"]:
 		_sounds[n] = load("res://assets/sfx/%s.wav" % n)
+	for n in ["hosgeldiniz", "dukkan_zil", "kasa", "su_sicrama", "araba_kapi"]:
+		if ResourceLoader.exists("res://assets/sfx/%s.mp3" % n):
+			_sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	for n in ["havla1", "havla2", "havla3", "miyav1", "miyav2", "miyav3", "mirla1", "solu1"]:
 		_sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	var amb: AudioStreamWAV = _sounds["ortam"]
@@ -2401,6 +2411,8 @@ func _sfx(sound: String, db := -6.0, pitch := 1.0) -> void:
 		return
 	var v := _voices[_voice_i]
 	_voice_i = (_voice_i + 1) % _voices.size()
+	if not _sounds.has(sound):
+		return
 	v.stream = _sounds[sound]
 	v.volume_db = db
 	v.pitch_scale = pitch
