@@ -4,103 +4,107 @@ Bu dosyadaki promptları olduğu gibi kopyalayıp yapıştırabilirsin. İngiliz
 
 ## A. Tripo ile 3B modeller
 
-**Her model için aynı ayarlar**
+### Her model için aynı ayarlar (Tripo ekranında)
 
-- Model: en yeni sürüm (v3.0), Text to 3D
-- Texture: açık, kalite **Detailed / HD**, PBR açık
-- Face limit: araçlar için 60.000, bina ve durak için 60.000
-- Rig / Animate: **kapalı** (hareketi oyunda ben veriyorum)
-- Çıktı: **GLB** olarak indir ve bu sohbete yükle. Dosya adını aşağıdaki gibi verirsen karışmaz.
+1. Soldaki menüden **Model**'e tıkla.
+2. Üstte **HD Model** seçili olsun (Akıllı Ağ değil).
+3. Yazı kutusunun üstündeki dört simgeden en sağdaki **kalem** simgesini seç (yazıdan model).
+4. Yazı kutusuna aşağıdaki promptlardan birini yapıştır.
+5. Yazı kutusunun altındaki **T-Pozu** kapalı kalsın (o yalnızca insan karakterler için).
+6. **Genel ayarlar → Geometri ve doku**'yu aç:
+   - Ultra Ağ (Mesh) Kalitesi: **kapalı**
+   - Doku: **açık**
+   - Doku kalitesi: **4K**
+   - Aydınlatmayı kaldır: **açık**
+   - PBR: **açık**
+   - Topoloji: **Üçgen**
+   - Poligon Sayısı: kutuya yaz → otobüs, metro, araba, dolmuş, binalar **50000**; motosiklet, scooter, bisiklet, metro girişi **30000**; otobüs durağı **20000**
+7. **Yalnızca aboneler** bölümünde Parçalar Halinde Üret ve 8K Doku **kapalı** kalsın.
+8. **AI Model**: **H3.1 – En İyi Kalite**.
+9. **Oluştur**'a bas (model başına 40 kredi).
+10. Model çıkınca **Rig** ve **Doku** menülerine dokunma. Modeli **GLB** olarak indir ve bu sohbete yükle; dosya adını aşağıdaki gibi verirsen karışmaz.
 
-**Negative prompt (hepsinde aynı):**
-
-```
-cartoon, stylized, toy, low poly, text, letters, logo, brand name, license plate numbers, people, driver, passengers, ground plane, base, pedestal, open doors, damaged, rusty
-```
-
-Bir model beklediğin gibi çıkmazsa aynı promptla bir kez daha dene; ikinci deneme çoğu zaman farklı ve daha iyi oluyor. Çıkan modelin ekran görüntüsünü atarsan hangisini kullanacağımıza birlikte karar veririz.
+Tripo'da ayrı bir "negatif prompt" kutusu olmadığı için istemediğimiz şeyler her promptun sonunda yazıyor. 13 modelin tamamı 520 kredi tutar. Önce 1, 9, 10, 6 ve 8'i üret.
 
 ### 1. Belediye otobüsü — `otobus.glb`
 
 ```
-Photorealistic modern 12 metre city transit bus, realistic proportions, white body with a wide blue stripe along the sides, large tinted passenger windows, two double passenger doors on the right side closed, flat front with large windscreen and a blank black destination display above it, side mirrors, black rubber tyres with grey wheel hubs, wheels straight, clean factory condition, complete vehicle seen from all sides, game-ready vehicle asset
+Photorealistic modern 12 metre city transit bus, realistic proportions, white body with a wide blue stripe along the sides, large tinted passenger windows, two double passenger doors on the right side closed, flat front with large windscreen and a blank black destination display above it, side mirrors, black rubber tyres with grey wheel hubs, wheels straight, clean factory condition, complete vehicle seen from all sides, game-ready vehicle asset. No text, no letters, no logos, no license plate numbers, no people, no driver, no ground, no base.
 ```
 
 ### 2. Metro treni vagonu — `metro.glb`
 
 ```
-Photorealistic modern subway metro train car, single carriage, realistic proportions, brushed silver stainless steel body with a red stripe below the windows, three sliding double doors per side closed, large side windows, flat driver cab front with windscreen and headlights, grey roof with air conditioning units, steel wheel bogies underneath, complete train car seen from all sides, game-ready vehicle asset
+Photorealistic modern subway metro train car, single carriage, realistic proportions, brushed silver stainless steel body with a red stripe below the windows, three sliding double doors per side closed, large side windows, flat driver cab front with windscreen and headlights, grey roof with air conditioning units, steel wheel bogies underneath, complete train car seen from all sides, game-ready vehicle asset. No text, no letters, no logos, no people, no rails, no ground, no base.
 ```
 
 ### 3. Sarı taksi — `taksi.glb`
 
 ```
-Photorealistic compact four door sedan taxi, realistic proportions, glossy yellow paint, small blank yellow roof light box, black tyres with silver alloy wheels, wheels straight, all doors and windows closed, dark tinted glass, clean condition, complete car seen from all sides, game-ready vehicle asset
+Photorealistic compact four door sedan taxi, realistic proportions, glossy yellow paint, small blank yellow roof light box, black tyres with silver alloy wheels, wheels straight, all doors and windows closed, dark tinted glass, clean condition, complete car seen from all sides, game-ready vehicle asset. No text, no letters, no logos, no license plate numbers, no people, no driver, no ground, no base.
 ```
 
 ### 4. Hatchback araba — `hatchback.glb`
 
 ```
-Photorealistic small five door hatchback city car, realistic proportions, plain light grey paint, black tyres with silver wheels, wheels straight, all doors and windows closed, dark tinted glass, clean condition, complete car seen from all sides, game-ready vehicle asset
+Photorealistic small five door hatchback city car, realistic proportions, plain light grey paint, black tyres with silver wheels, wheels straight, all doors and windows closed, dark tinted glass, clean condition, complete car seen from all sides, game-ready vehicle asset. No text, no letters, no logos, no license plate numbers, no people, no driver, no ground, no base.
 ```
 
 ### 5. Dolmuş (minibüs) — `dolmus.glb`
 
 ```
-Photorealistic passenger minibus van, realistic proportions, medium blue body with white roof, sliding side door closed, rows of side windows, black tyres with steel wheels, wheels straight, clean condition, complete vehicle seen from all sides, game-ready vehicle asset
+Photorealistic passenger minibus van, realistic proportions, medium blue body with white roof, sliding side door closed, rows of side windows, black tyres with steel wheels, wheels straight, clean condition, complete vehicle seen from all sides, game-ready vehicle asset. No text, no letters, no logos, no license plate numbers, no people, no driver, no ground, no base.
 ```
 
 ### 6. Motosiklet — `motosiklet.glb`
 
 ```
-Photorealistic 125cc commuter motorcycle standing perfectly upright with no rider and no kickstand, realistic proportions, red fuel tank, black seat, chrome exhaust, black engine, spoked wheels with black tyres, front wheel pointing straight ahead, handlebars straight, side mirrors, clean condition, complete motorcycle seen from all sides, game-ready vehicle asset
+Photorealistic 125cc commuter motorcycle standing perfectly upright with no kickstand, realistic proportions, red fuel tank, black seat, chrome exhaust, black engine, spoked wheels with black tyres, front wheel pointing straight ahead, handlebars straight, side mirrors, clean condition, complete motorcycle seen from all sides, game-ready vehicle asset. No rider, no people, no text, no logos, no license plate, no ground, no base.
 ```
 
 ### 7. Scooter — `scooter.glb`
 
 ```
-Photorealistic small city scooter moped standing perfectly upright with no rider and no kickstand, realistic proportions, white body panels, black seat, small black wheels, front wheel pointing straight ahead, handlebars straight, side mirrors, clean condition, complete scooter seen from all sides, game-ready vehicle asset
+Photorealistic small city scooter moped standing perfectly upright with no kickstand, realistic proportions, white body panels, black seat, small black wheels, front wheel pointing straight ahead, handlebars straight, side mirrors, clean condition, complete scooter seen from all sides, game-ready vehicle asset. No rider, no people, no text, no logos, no license plate, no ground, no base.
 ```
 
 ### 8. Bisiklet — `bisiklet.glb`
 
 ```
-Photorealistic city bicycle standing perfectly upright with no rider and no kickstand, realistic proportions, dark green steel frame, black saddle, straight handlebars with black grips, thin spoked wheels with black tyres, front wheel pointing straight ahead, chain and pedals, rear rack, clean condition, complete bicycle seen from all sides, game-ready asset
+Photorealistic city bicycle standing perfectly upright with no kickstand, realistic proportions, dark green steel frame, black saddle, straight handlebars with black grips, thin spoked wheels with black tyres, front wheel pointing straight ahead, chain and pedals, rear rack, clean condition, complete bicycle seen from all sides, game-ready asset. No rider, no people, no text, no logos, no ground, no base.
 ```
-
-Bisiklet ve motosiklette tekerlek telleri bazen dolu disk gibi çıkar; öyle olursa söyle, tekerleği oyunda ayrı yaparım.
 
 ### 9. Otobüs durağı — `durak.glb`
 
 ```
-Photorealistic modern city bus stop shelter, realistic proportions, slim dark grey steel frame, clear glass back wall and one glass side wall, flat tinted glass roof, wooden slat bench inside, blank rectangular advertising panel on one side, small blank route sign on a pole, complete freestanding shelter seen from all sides, game-ready asset
+Photorealistic modern city bus stop shelter, realistic proportions, slim dark grey steel frame, clear glass back wall and one glass side wall, flat tinted glass roof, wooden slat bench inside, blank rectangular advertising panel on one side, small blank route sign on a pole, complete freestanding shelter seen from all sides, game-ready asset. No text, no letters, no logos, no people, no ground, no base.
 ```
 
 ### 10. Metro girişi — `metro_girisi.glb`
 
 ```
-Photorealistic subway station street entrance, realistic proportions, concrete stairway descending below ground with stainless steel handrails, low grey granite walls around three sides of the stair opening, modern steel and glass canopy roof over the stairs, tall slim sign pole beside it with a blank red square sign, complete freestanding entrance seen from all sides, game-ready asset
+Photorealistic subway station street entrance, realistic proportions, concrete stairway descending below ground with stainless steel handrails, low grey granite walls around three sides of the stair opening, modern steel and glass canopy roof over the stairs, tall slim sign pole beside it with a blank red square sign, complete freestanding entrance seen from all sides, game-ready asset. No text, no letters, no logos, no people, no large ground slab, no base.
 ```
 
-### 11. Market binası — `market.glb`
+### 11. Market — `market.glb`
 
 ```
-Photorealistic small neighbourhood supermarket building, single storey, realistic modern Turkish street architecture, straight walls and right angles, light grey facade, wide glass shopfront with automatic sliding glass doors in the middle, shelves with groceries visible through the glass, long blank red signboard above the entrance, shopping trolleys lined up beside the door, flat roof, realistic materials, complete freestanding building seen from all sides
+Photorealistic small neighbourhood supermarket building, single storey, realistic modern Turkish street architecture, straight walls and right angles, light grey facade, wide glass shopfront with automatic sliding glass doors in the middle, shelves with groceries visible through the glass, long blank red signboard above the entrance, shopping trolleys lined up beside the door, flat roof, realistic materials, complete freestanding building seen from all sides. No text, no letters, no logos, no people, no cars, no trees, no large ground slab.
 ```
 
 ### 12. Fırın — `firin.glb`
 
 ```
-Photorealistic small neighbourhood bakery shop building, single storey, realistic modern Turkish street architecture, straight walls and right angles, warm cream facade, glass shopfront with loaves of bread and pastries on display shelves, glass entrance door, plain brown fabric awning, blank wooden signboard with a simple wheat symbol, flat roof, realistic materials, complete freestanding building seen from all sides
+Photorealistic small neighbourhood bakery shop building, single storey, realistic modern Turkish street architecture, straight walls and right angles, warm cream facade, glass shopfront with loaves of bread and pastries on display shelves, glass entrance door, plain brown fabric awning, blank wooden signboard with a simple wheat symbol, flat roof, realistic materials, complete freestanding building seen from all sides. No text, no letters, no logos, no people, no cars, no trees, no large ground slab.
 ```
 
 ### 13. Eczane — `eczane.glb`
 
 ```
-Photorealistic small neighbourhood pharmacy shop building, single storey, realistic modern Turkish street architecture, straight walls and right angles, white facade, glass shopfront with shelves of medicine boxes visible, glass entrance door, blank white signboard above the door, small red letter-free cross style sign hanging on the corner, flat roof, realistic materials, complete freestanding building seen from all sides
+Photorealistic small neighbourhood pharmacy shop building, single storey, realistic modern Turkish street architecture, straight walls and right angles, white facade, glass shopfront with shelves of medicine boxes visible, glass entrance door, blank white signboard above the door, small plain red cross sign hanging on the corner, flat roof, realistic materials, complete freestanding building seen from all sides. No text, no letters, no logos, no people, no cars, no trees, no large ground slab.
 ```
 
-**Öncelik sırası:** 1 (otobüs), 9 (durak), 10 (metro girişi), 6 (motosiklet), 8 (bisiklet). Diğerleri bunlardan sonra gelebilir. 13 modelin tamamı yaklaşık 390 Tripo kredisi tutar (model başına 30).
+Bir model beklediğin gibi çıkmazsa aynı promptla bir kez daha dene. Bisiklet ve motosiklette tekerlek telleri dolu disk gibi çıkarsa söyle, tekerleği oyunda ayrı yaparım.
 
 ## B. GPT Image ile görseller
 
