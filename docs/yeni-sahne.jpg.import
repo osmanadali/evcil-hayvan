@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bngm4nxwc5e42"
-path="res://.godot/imported/cam_0.jpg-bbc2ed41e64147b49d6346b1e31ac347.ctex"
+uid="uid://b2ghbx5j55036"
+path="res://.godot/imported/yeni-sahne.jpg-81e40dda674e4cc71d770fe602be56d2.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "c18ba99be435c70798b9dddbb42b5a6a"
 }
 
 [deps]
 
-source_file="res://assets/models/cam_0.jpg"
-dest_files=["res://.godot/imported/cam_0.jpg-bbc2ed41e64147b49d6346b1e31ac347.ctex"]
+source_file="res://docs/yeni-sahne.jpg"
+dest_files=["res://.godot/imported/yeni-sahne.jpg-81e40dda674e4cc71d770fe602be56d2.ctex"]
 
 [params]
 
@@ -24,7 +21,7 @@ compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

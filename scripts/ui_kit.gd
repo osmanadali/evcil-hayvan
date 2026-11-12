@@ -3,6 +3,8 @@ extends RefCounted
 
 const Icon = preload("res://scripts/icon.gd")
 
+static var on_click := Callable()   # her dugme basisinda cagrilir (ses icin)
+
 const CREAM := Color("fff8ec")
 const SOFT := Color("efe4cf")
 const BROWN := Color("5a4636")
@@ -73,6 +75,9 @@ static func button(parent: Node, text: String, icon: String, cb: Callable, bg :=
 	b.add_theme_stylebox_override("pressed", style(bg.darkened(0.12), radius, 0, Color.WHITE, 2))
 	b.add_theme_stylebox_override("disabled", style(bg.lerp(Color("bdb5a8"), 0.7), radius))
 	b.pressed.connect(cb)
+	b.pressed.connect(func():
+		if on_click.is_valid():
+			on_click.call())
 	var row: BoxContainer = VBoxContainer.new() if vertical else HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 4 if vertical else 10)

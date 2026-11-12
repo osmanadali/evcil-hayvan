@@ -88,6 +88,12 @@ Köpek (sarı Labrador) ve kedi (turuncu tekir; ikisi de gerçekçi tarzda, `doc
 | `rig_pet.py` + `rig_pets.json` | Modele iskelet takar: kemikler elle yerleştirilir, ağırlıklar mesafeye göre hesaplanır |
 | `osm_build.py` | OpenStreetMap verisini oyun haritasına çevirir |
 
+**Ağaçlar** `tools/make_tree.py` ile üretilir: Poly Haven'ın CC0 yaprak ve kabuk taramalarından dal kümesi dokusu
+oluşturur, gövde ve dalların üstüne yüzlerce yaprak kartı dizer (`agac_lod.glb`, `cam_lod.glb`).
+
+**Sesler** `tools/make_sounds.py` ile sentezlenir (kayıt kullanılmaz): ortam (rüzgâr, kuş, uzak şehir), adım, bozuk para,
+fırlatma, düğme. Havlama ve miyavlama henüz yok.
+
 **İnsan karakterleri** Tripo'dan değil, MakeHuman'in CC0 lisanslı verisinden (temel gövde, ten, giysi, saç) üretilir:
 `python3 tools/make_human.py <mh_klasörü> kadin assets/models/kadin.glb`. Araç yalnızca veri dosyalarını okur; gövdeyi
 biçimlendirir, giysileri gövdeye oturtur, Mixamo adlı iskeleti ve ağırlıkları ekler, tişörtteki logoyu siler. Gereken veri:

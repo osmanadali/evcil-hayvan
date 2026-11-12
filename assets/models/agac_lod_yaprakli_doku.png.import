@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6dbttfssnaf"
-path="res://.godot/imported/agac_0.jpg-f3afa35e48bac92e799db2c91bd23108.ctex"
+uid="uid://cdgmk1eu65a3"
+path="res://.godot/imported/agac_lod_yaprakli_doku.png-bf720de9d54bf8547446d28ea368be53.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "06af59fad3bbdee5537f367785585fa5"
+"md5": "8adb3be1e0ced5cc0d4c66580e4853fc"
 }
 
 [deps]
 
-source_file="res://assets/models/agac_0.jpg"
-dest_files=["res://.godot/imported/agac_0.jpg-f3afa35e48bac92e799db2c91bd23108.ctex"]
+source_file="res://assets/models/agac_lod_yaprakli_doku.png"
+dest_files=["res://.godot/imported/agac_lod_yaprakli_doku.png-bf720de9d54bf8547446d28ea368be53.ctex"]
 
 [params]
 

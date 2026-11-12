@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b4ma7e1m77e03"
-path="res://.godot/imported/kafe_0.jpg-74d9f65f23ae14eda83c158fa21a9742.ctex"
+uid="uid://b341e4pao2vqn"
+path="res://.godot/imported/dondurmaci_Image_0.jpg-24d36191f4677819d81b7e44c10c6f60.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "7c5552ce07cd165997ff794a6851051b"
+"md5": "0e7c4da94b35f865a67a8daa969bec22"
 }
 
 [deps]
 
-source_file="res://assets/models/kafe_0.jpg"
-dest_files=["res://.godot/imported/kafe_0.jpg-74d9f65f23ae14eda83c158fa21a9742.ctex"]
+source_file="res://assets/models/dondurmaci_Image_0.jpg"
+dest_files=["res://.godot/imported/dondurmaci_Image_0.jpg-24d36191f4677819d81b7e44c10c6f60.ctex"]
 
 [params]
 

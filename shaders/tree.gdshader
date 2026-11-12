@@ -1,9 +1,9 @@
 shader_type spatial;
-render_mode diffuse_lambert_wrap, specular_disabled, world_vertex_coords;
+render_mode diffuse_lambert_wrap, specular_disabled, world_vertex_coords, cull_disabled;
 
-// Dokulu agac modelleri: ruzgarda salinim + ornek basina renk tonu.
+// Yaprak kartli agac modelleri (tools/make_tree.py): saydam yerler atilir, ruzgarda salinim + ornek basina renk tonu.
 // INSTANCE_CUSTOM.x = zemin yuksekligi, .y = agac boyu
-uniform sampler2D tex : source_color, filter_linear_mipmap;
+uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic;
 uniform float sway = 0.035;
 uniform vec3 focus = vec3(0.0, -1000.0, 0.0);
 uniform float see_radius = 3.2;
@@ -32,6 +32,12 @@ void fragment() {
 			discard;
 		}
 	}
-	ALBEDO = texture(tex, UV).rgb * pow(COLOR.rgb, vec3(2.2));
+	vec4 px = texture(tex, UV);
+	if (px.a < 0.42) {
+		discard;
+	}
+	ALBEDO = px.rgb * pow(COLOR.rgb, vec3(2.2)) * 1.08;
+	// Yapraklar isigi gecirir: arkadan vuran gunes de aydinlatsin
+	BACKLIGHT = vec3(0.22, 0.28, 0.1) * step(UV.x, 0.5);
 	ROUGHNESS = 1.0;
 }

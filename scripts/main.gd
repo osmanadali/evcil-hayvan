@@ -8,6 +8,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const PetModel = preload("res://scripts/pet_model.gd")
 const PetAgent = preload("res://scripts/pet_agent.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
+const UiKit = preload("res://scripts/ui_kit.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -82,6 +83,7 @@ func _ready() -> void:
 	if _args.has("shot"):
 		state.reset()
 	_build_environment()
+	_setup_audio()
 	# Dunya kurulurken yukleniyor ekrani goster
 	var loading := CanvasLayer.new()
 	var bg := ColorRect.new()
@@ -241,6 +243,7 @@ func _spawn_cast() -> void:
 	owner_model = PersonModel.new()
 	owner_model.kind = state.d["owner"]
 	owner_model.tint = Color("3f8f8a") if state.d["owner"] == "kadin" else Color("34507a")
+	owner_model.stepped.connect(func(): _sfx("adim%d" % (randi() % 4 + 1), -9.0, randf_range(0.9, 1.1)))
 	owner_node.add_child(owner_model)
 	_place_owner(ParkMap.spot("baslangic"))
 	owner_node.rotation.y = PI
@@ -672,7 +675,46 @@ func _do_feed(id: String) -> void:
 	a.eat()
 
 
+# ---------------------------------------------------------------- ses
+
+var _sounds := {}
+var _voices: Array[AudioStreamPlayer] = []
+var _voice_i := 0
+
+
+func _setup_audio() -> void:
+	for n in ["ortam", "adim1", "adim2", "adim3", "adim4", "para", "firlat", "tik", "mutlu"]:
+		_sounds[n] = load("res://assets/sfx/%s.wav" % n)
+	var amb: AudioStreamWAV = _sounds["ortam"]
+	amb.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	amb.loop_end = int(amb.get_length() * amb.mix_rate)
+	var ap := AudioStreamPlayer.new()
+	ap.stream = amb
+	ap.volume_db = -14.0
+	add_child(ap)
+	ap.play()
+	for i in 6:
+		var v := AudioStreamPlayer.new()
+		add_child(v)
+		_voices.append(v)
+	state.coins_added.connect(func(): _sfx("para", -8.0))
+	state.leveled.connect(func(_k, _l): _sfx("mutlu", -6.0))
+	UiKit.on_click = func(): _sfx("tik", -12.0)
+
+
+func _sfx(sound: String, db := -6.0, pitch := 1.0) -> void:
+	if _voices.is_empty() or not state.d["sound"]:
+		return
+	var v := _voices[_voice_i]
+	_voice_i = (_voice_i + 1) % _voices.size()
+	v.stream = _sounds[sound]
+	v.volume_db = db
+	v.pitch_scale = pitch
+	v.play()
+
+
 func _throw_to(hit: Vector2) -> void:
+	_sfx("firlat", -7.0)
 	var a := _active()
 	if a.kind == "kedi" and agents.has("kopek"):
 		a = agents["kopek"]
@@ -794,6 +836,7 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	AudioServer.set_bus_mute(0, not state.d["sound"])
 	if not _ready_done:
 		return
 	_pet_cd -= dt

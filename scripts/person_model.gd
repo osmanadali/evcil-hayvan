@@ -7,6 +7,8 @@ const Y := Vector3.UP
 const Z := Vector3.BACK
 const FINGERS := ["Index", "Middle", "Ring", "Pinky"]
 
+signal stepped            # ayak yere bastiginda
+
 var kind := "kadin"
 # Yeniden olusturmada isleyici uyarisi vermemesi icin malzemeler canli tutulur
 static var _keep: Array = []
@@ -127,7 +129,10 @@ func _process(dt: float) -> void:
 	_move = move_toward(_move, clampf(speed / 1.0, 0.0, 1.0), dt * 5.0)
 	var move := _move
 	if speed > 0.05:
+		var before := _phase
 		_phase += dt * PI * speed / lerpf(0.72, 1.35, run)
+		if floorf(_phase / PI + 0.5) != floorf(before / PI + 0.5):
+			stepped.emit()
 	_act_t = minf(_act_t + dt / _act_d, 1.0)
 	var k := sin(_act_t * PI) if _act_t < 1.0 else 0.0   # 0 -> 1 -> 0
 

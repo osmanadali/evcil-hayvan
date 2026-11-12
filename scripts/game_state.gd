@@ -3,6 +3,7 @@ extends Node
 ## user://kayit.json dosyasina kaydedilir; oyun kapaliyken gecen sure ihtiyaclara yansir.
 
 signal changed
+signal coins_added
 signal toast(text: String)
 signal leveled(kind: String, level: int)
 
@@ -114,6 +115,7 @@ func add_xp(kind: String, amount: float) -> void:
 
 func add_coins(n: int) -> void:
 	d["coins"] += n
+	coins_added.emit()
 	changed.emit()
 
 

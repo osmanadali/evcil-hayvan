@@ -570,7 +570,7 @@ func _build_spots() -> void:
 	_umbrella_table(cf + Vector2(-8.0, 3.2), "c9ab7a")
 	# Dondurmaci
 	var k := ParkMap.spot("dondurmaci")
-	_model("dondurmaci", k, 4.6, 0.0)
+	_model("dondurmaci", k, 3.4, PI)
 	_add_circle(Vector3(k.x, k.y, 2.3))
 	_umbrella_table(k + Vector2(-4.0, 2.6), "d9a441")
 	# Cardak
@@ -1275,6 +1275,7 @@ func _build_parks() -> void:
 
 	var plant := func(p: Vector2, height: float, kind: int, tint: Color) -> void:
 		var base: Transform3D = kinds[kind][1]
+		height *= 1.35 if kind == 0 else 1.5      # gercek agac boylari
 		var ground := gy(p) - 0.08
 		xf[kind].append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * height), Vector3(p.x, ground, p.y)) * base)
 		col[kind].append(tint)
