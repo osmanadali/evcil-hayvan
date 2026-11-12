@@ -10,6 +10,7 @@ const PetAgent = preload("res://scripts/pet_agent.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
 const UiKit = preload("res://scripts/ui_kit.gd")
 const Bus = preload("res://scripts/bus.gd")
+const Minimap = preload("res://scripts/minimap.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -169,6 +170,11 @@ func _ready() -> void:
 		state.save_game()
 		_mode = "menu"
 		ui.show_screen("menu"))
+	minimap = Minimap.new()
+	minimap.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	ui.hud.add_child(minimap)
+	minimap.tapped.connect(func(): map_screen.open(_owner_pos()))
+	map_screen.place_chosen.connect(func(p: Vector2): _set_nav(p))
 	get_tree().set_auto_accept_quit(false)
 	loading.queue_free()
 	_ready_done = true
@@ -839,6 +845,9 @@ var _steer := 0.0
 var _fps := false          # surerken birinci sahis kamera
 var _cockpit: Node3D
 var _cam_btn: Button
+var minimap: Control
+var _nav := Vector2.INF       # navigasyon hedefi
+var _nav_t := 0.0
 var _exit_btn: Button
 var _engine: AudioStreamPlayer
 
@@ -952,20 +961,20 @@ func _enter_ride() -> void:
 	if _cam_btn == null:
 		_cam_btn = UiKit.button(ui.hud, "", "camera", func(): _fps = not _fps, ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
 		_cam_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		_cam_btn.offset_left = -96
-		_cam_btn.offset_top = -184
-		_cam_btn.offset_right = -28
-		_cam_btn.offset_bottom = -116
+		_cam_btn.offset_left = -330
+		_cam_btn.offset_top = -126
+		_cam_btn.offset_right = -262
+		_cam_btn.offset_bottom = -58
 	_cam_btn.visible = true
 	if _exit_btn == null:
 		_exit_btn = UiKit.button(ui.hud, "", "come", func():
 			if absf(_drive_speed) < 2.0:
 				_exit_ride(), ui.GLASS, Color.WHITE, Vector2(68, 68), 30, 34)
 		_exit_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		_exit_btn.offset_left = -96
-		_exit_btn.offset_top = -264
-		_exit_btn.offset_right = -28
-		_exit_btn.offset_bottom = -196
+		_exit_btn.offset_left = -330
+		_exit_btn.offset_top = -206
+		_exit_btn.offset_right = -262
+		_exit_btn.offset_bottom = -138
 	_exit_btn.visible = true
 	ui.toast("Sol çubuk: gaz, fren, direksiyon · kamera düğmesi (V): içeriden sür")
 
@@ -1128,6 +1137,42 @@ func _update_drive(dt: float) -> void:
 	if _engine and float(cfg["engine"]) > 0.0:
 		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
+# ---------------------------------------------------------------- navigasyon ve mini harita
+
+func _set_nav(p: Vector2) -> void:
+	_nav = p
+	_nav_t = 0.0
+	var best := ""
+	var bd := 1e9
+	for pin in map_screen.PINS:
+		var d: float = (pin[2] as Vector2).distance_to(p)
+		if d < bd:
+			bd = d
+			best = pin[0]
+	minimap.dest_name = best
+
+
+func _update_minimap(dt: float) -> void:
+	minimap.visible = _mode == "play" and not map_screen.visible
+	# Sag altta, komut dugmelerinin ustunde
+	var vp := get_viewport().get_visible_rect().size
+	var bottom := 200.0 if ui._actions.visible else 30.0
+	minimap.position = Vector2(vp.x - minimap.SIZE - 24.0, vp.y - minimap.SIZE - bottom - 26.0)
+	minimap.player = _owner_pos()
+	minimap.heading = _cam_yaw
+	if _nav == Vector2.INF:
+		minimap.route = []
+		return
+	_nav_t -= dt
+	if _nav_t <= 0.0:
+		_nav_t = 1.0
+		# Arabadayken sokaklardan, yuruyerek her yonden
+		minimap.route = ParkMap.find_route(_owner_pos(), _nav) if _ride != null and RIDES[_ride.get_meta("kind")]["hide"] else world.find_path(_owner_pos(), _nav)
+	if _owner_pos().distance_to(_nav) < 6.0:
+		ui.toast("Vardın: %s" % minimap.dest_name)
+		_nav = Vector2.INF
 
 
 # ---------------------------------------------------------------- metro (bolgeler arasi)
@@ -1443,6 +1488,8 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	if minimap:
+		_update_minimap(dt)
 	if _ready_done and _mode == "play" and not _args.has("cmd"):
 		_keyboard_stick()
 	if world:
@@ -1947,6 +1994,9 @@ func _debug_shot() -> void:
 				print("BINDI %s %s" % [_bus_ride.line, _bus_ride.at_stop])
 				break
 			await get_tree().create_timer(0.5).timeout
+	if _args.has("nav"):
+		var pin_i := int(_args["nav"])
+		_set_nav(map_screen.PINS[pin_i][2])
 	if _args.has("drive") and not _rides.is_empty():
 		for r in _rides:
 			if r.get_meta("kind") == (_args["drive"] if _args["drive"] != "1" else "araba"):
