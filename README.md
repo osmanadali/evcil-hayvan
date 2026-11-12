@@ -70,3 +70,8 @@ Yeni bir hayvan türü eklemek için: Tripo'da düz duran, bacakları ayrık bir
 - **Hareketler kodla üretildiği için** hazır animasyonlar kadar akıcı değil; özellikle insan yürüyüşü geliştirilebilir.
 - **Ev içi yok.** Ev dışarıdan görülüyor; arka bahçe oynanabilir.
 - Fotoğraflar telefonda galeriye düşmeyebilir (depolama izni gerekir).
+
+## Hazır APK
+
+`apk/patili-gezinti.apk` (Android, arm64, hata ayıklama imzalı). Telefona indirip kurmak için "bilinmeyen kaynaklardan yükleme"ye
+izin vermek gerekir. Mağazaya yüklemek için ayrıca yayın imzasıyla dışa aktarmak gerekir.

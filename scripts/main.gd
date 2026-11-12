@@ -979,6 +979,56 @@ func _take_photo() -> void:
 
 # ---------------------------------------------------------------- gelistirme
 
+## Menulerden gecen uctan uca deneme: yeni oyun, alisveris, giydirme, sahiplenme, fotograf, menuye donus.
+func _debug_flow() -> void:
+	ui.show_screen("menu")
+	ui.show_screen("setup")
+	ui.start_game.emit("erkek", "kedi", "Mırmır")
+	await get_tree().create_timer(0.5).timeout
+	state.d["coins"] = 600
+	ui.open_shop("food")
+	await get_tree().create_timer(0.2).timeout
+	ui.open_shop("acc")
+	await get_tree().create_timer(0.2).timeout
+	ui.open_shop("pets")
+	await get_tree().create_timer(0.2).timeout
+	for b in ui.find_children("*", "Button", true, false):
+		if b.is_visible_in_tree() and b.find_child("Text", true, false) and (b.find_child("Text", true, false) as Label).text == str(state.ADOPT_PRICE):
+			b.pressed.emit()
+			break
+	await get_tree().create_timer(0.3).timeout
+	state.d["owned"].append("bere")
+	ui.open_closet("hat")
+	await get_tree().create_timer(0.3).timeout
+	state.pet("kedi")["worn"]["hat"] = "bere"
+	ui.worn_changed.emit()
+	ui.open_closet("paws")
+	ui.close_modal()
+	ui.select_pet.emit("kopek")
+	_on_command("play")
+	await get_tree().create_timer(1.0).timeout
+	ui.open_quests()
+	ui.open_pause()
+	ui.close_modal()
+	_on_photo("enter")
+	_on_photo("pose:sit")
+	_on_photo("pose:hop")
+	_on_photo("pose:look")
+	_on_photo("exit")
+	map_screen.open(_owner_pos())
+	await get_tree().create_timer(0.2).timeout
+	map_screen.select_by_name("Pet Shop")
+	map_screen._go()
+	await get_tree().create_timer(3.0).timeout
+	_on_command("icecream")
+	_on_command("npcplay")
+	_on_command("sleep")
+	_on_command("come")
+	ui.back_to_menu.emit()
+	ui.continue_game.emit()
+	print("AKIS tamam: sahip=%s hayvanlar=%s aktif=%s giyilen=%s mesafe=%.0f" % [state.d["owner"], state.owned_pets(), state.d["active"],
+		state.pet("kedi")["worn"], _owner_pos().distance_to(Vector2(0.6, -24.5))])
+
 ## Ekran goruntusu: -- --shot=dosya.png [--screen=menu|setup|play|shop|acc|pets|quests|closet|map|photo|pause]
 ## [--view=top|wide|low] [--at=x,z] [--both] [--level=n] [--wear=id,id] [--cmd=sit] [--pet=kedi] [--frames=n]
 func _debug_shot() -> void:
@@ -1032,6 +1082,8 @@ func _debug_shot() -> void:
 					_throw_to(_owner_pos() + Vector2(float(_args.get("tx", "-3")), float(_args.get("tz", "-8"))))
 				elif c == "walk":
 					_go(_owner_pos() + Vector2(float(_args.get("dx", "0")), float(_args.get("dz", "-30"))))
+				elif c == "flow":
+					await _debug_flow()
 				elif c == "pin":
 					map_screen.select_by_name(_args.get("pin", "Pet Shop"))
 				else:
