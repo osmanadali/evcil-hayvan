@@ -164,29 +164,36 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.74, 0.76, 0.8)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color(0.62, 0.68, 0.8)
+	env.ambient_light_energy = 0.62
+	env.glow_enabled = true
+	env.glow_intensity = 0.25
+	env.glow_bloom = 0.02
+	env.glow_hdr_threshold = 1.05
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_white = 6.0
+	env.tonemap_white = 5.0
+	env.tonemap_exposure = 1.08
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.72, 0.82, 0.9)
 	env.fog_density = 0.0008
 	env.fog_sky_affect = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.05
-	env.adjustment_contrast = 1.08
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.12
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.94, 0.82)
-	sun.light_energy = 0.9
+	sun.light_color = Color(1.0, 0.93, 0.8)
+	sun.light_energy = 1.25
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 90.0
+	sun.directional_shadow_max_distance = 60.0
+	sun.shadow_bias = 0.06
+	sun.shadow_normal_bias = 1.5
 	add_child(sun)
-	sun.look_at_from_position(Vector3(6.5, 8.0, 3.5), Vector3.ZERO)
+	sun.look_at_from_position(Vector3(7.5, 6.5, 4.5), Vector3.ZERO)
 
 
 func _make_ball(hex: String, r: float) -> Node3D:

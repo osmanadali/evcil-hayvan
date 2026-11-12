@@ -282,12 +282,23 @@ def raster(data):
     polys(urban, data['parks'], 0)
     polys(urban, data['pitches'], 0)
     polys(wat, data['water'], 255)
-    soft = lambda im, r=0.8: im.filter(ImageFilter.GaussianBlur(r))
-    shore = Image.eval(soft(wat, 4.0 * k), lambda v: 255 - v)       # 0.5 = kiyi, yaklasik +-4 m
+    # Maskeler mesafe alani olarak saklanir (0.5 = kenar): buyutulunce kenarlar keskin kalir
+    import numpy as np
+    from scipy import ndimage
+    def sdf(mask, reach):
+        m = np.asarray(mask) > 127
+        d = ndimage.distance_transform_edt(~m) - ndimage.distance_transform_edt(m)     # disarida +, iceride -
+        v = np.clip(0.5 - d / k / (2.0 * reach), 0.0, 1.0)                             # iceride > 0.5
+        return Image.fromarray((v * 255).astype(np.uint8), 'L')
+    inv = lambda im: Image.eval(im, lambda v: 255 - v)
     sandbox = L()
     polys(sandbox, data['playgrounds'], 255)
-    Image.merge('RGB', (soft(foot), shore, soft(sandbox))).save('assets/splat_a.png')
-    Image.merge('RGB', (soft(asphalt), soft(walk), soft(urban, 1.5))).save('assets/splat_b.png')
+    built = L()
+    polys(built, data['buildings'], 255)
+    walk_all = Image.fromarray(np.maximum(np.asarray(walk), np.asarray(asphalt)), 'L')
+    Image.merge('RGB', (sdf(foot, 6.0), inv(sdf(wat, 4.0)), sdf(sandbox, 6.0))).save('assets/splat_a.png')    # patika, kiyi, kum
+    Image.merge('RGB', (sdf(asphalt, 6.0), sdf(walk_all, 6.0), sdf(urban, 6.0))).save('assets/splat_b.png')   # asfalt, kaldirim, sehir zemini
+    Image.merge('RGB', (sdf(built, 6.0), L(), L())).resize((1024, 1024), Image.BILINEAR).save('assets/splat_c.png')  # bina yakinligi (golgeleme)
 
     # Harita uygulamasi gorseli
     m = Image.new('RGB', (PX, PX), (236, 233, 224))
@@ -392,7 +403,7 @@ if __name__ == '__main__':
                 q = (c[0] + (i - 2) * h[0] * 0.55, c[1] + (j - 2) * h[1] * 0.55)
                 px = (int((q[0] + EXTENT / 2) * k), int((q[1] + EXTENT / 2) * k))
                 ra, ga, _ = a[px]; rb, gb, bb = b[px]
-                if ra > 40 or ga < 170 or rb > 40 or gb > 40 or bb > 60:
+                if ra > 100 or ga < 175 or rb > 100 or gb > 100 or bb > 110:
                     return False
         return not any(_in(c, bl['p']) for bl in data['buildings'])
     placed = []

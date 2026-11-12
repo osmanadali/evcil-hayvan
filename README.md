@@ -66,6 +66,11 @@ işlenmiş işletmeler görünür.
 Binaların görünüşü (cephe, renk, kat sayısı, çatı), park etmiş araçlar ve lambaların yeri gerçek değil; açık veride bunlar yok.
 Birebir cephe için sokak fotoğraflarından ya da lisanslı 3D şehir verisinden üretim gerekir.
 
+## Dokular
+
+Zemin ve bina dokuları (çim, asfalt, kilit parke, sıva, kiremit, beton, çakıl, kum) Poly Haven'dan alındı (CC0, `assets/tex/`).
+Zemin maskeleri mesafe alanı olarak saklanır; bu sayede yol ve kaldırım kenarları yakından bakınca da keskin kalır.
+
 ## Modeller nasıl üretildi
 
 Köpek, kedi, iki insan, araba, kulübe, ağaçlar, çeşme, bank, lamba, dondurmacı, çardak, pet shop ve kafe Tripo ile üretildi

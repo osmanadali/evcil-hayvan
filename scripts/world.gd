@@ -145,7 +145,7 @@ func _wet(p: Vector2) -> bool:
 	if not ParkMap.water_blocked(p):
 		return false
 	var m := _mask(p)
-	return m[0] < 0.4 and m[2] < 0.4
+	return m[0] < 0.5 and m[2] < 0.5
 
 
 func is_free(p: Vector2, r := 0.4) -> bool:
@@ -172,7 +172,7 @@ func _mask(p: Vector2) -> Array:
 ## Park cimi mi? (yol, su, kaldirim degil ve park icinde)
 func _is_lawn(p: Vector2) -> bool:
 	var m := _mask(p)
-	return m[0] < 0.15 and m[1] > 0.62 and m[2] < 0.15 and m[3] < 0.15 and m[4] < 0.25
+	return m[0] < 0.44 and m[1] > 0.62 and m[2] < 0.44 and m[3] < 0.44 and m[4] < 0.44
 
 
 func _kept_out(p: Vector2, margin := 1.5) -> bool:
@@ -267,9 +267,9 @@ func _build_ground() -> void:
 	m.set_shader_parameter("splat_b", _splat_b)
 	m.set_shader_parameter("splat_center", ParkMap.SPLAT_CENTER)
 	m.set_shader_parameter("splat_extent", ParkMap.SPLAT_EXTENT)
-	m.set_shader_parameter("forest_floor", Color(0.52, 0.5, 0.44))   # binalar arasi zemin
-	m.set_shader_parameter("street_z", 1e6)
-	m.set_shader_parameter("avenue_x", 1e6)
+	m.set_shader_parameter("splat_c", load("res://assets/splat_c.png"))
+	for pair in [["t_grass", "cim"], ["t_asphalt", "asfalt"], ["t_pavers", "kaldirim"], ["t_yard", "zemin"], ["t_gravel", "patika"], ["t_sand", "kum"]]:
+		m.set_shader_parameter(pair[0], load("res://assets/tex/%s.jpg" % pair[1]))
 	Kit.add(self, mesh, m)
 
 
@@ -311,6 +311,9 @@ func _build_water() -> void:
 func _build_buildings() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = BUILDING_SHADER
+	mat.set_shader_parameter("t_wall", load("res://assets/tex/siva.jpg"))
+	mat.set_shader_parameter("t_roof", load("res://assets/tex/kiremit.jpg"))
+	mat.set_shader_parameter("t_flat", load("res://assets/tex/zemin.jpg"))
 	_see_through.append(mat)
 	var chunks := {}
 	for b in ParkMap.data["buildings"]:
@@ -408,7 +411,7 @@ func _build_buildings() -> void:
 			v.append(Vector3(p.x, top, p.y))
 			n.append(Vector3.UP)
 			uv.append(p)
-			uv2.append(Vector2(h, seed * (0.5 if cap != poly else 1.0)))
+			uv2.append(Vector2(h, seed * 0.5 if cap != poly else 0.5 + seed * 0.5))
 			col.append(tint)
 		for t in range(0, tris.size(), 3):
 			var p0 := cap[tris[t]]
@@ -715,7 +718,7 @@ func _build_streets() -> void:
 				side = -side
 				var p := a + dir * carry + perp * side * (w * 0.5 + 1.4)
 				carry += gap
-				if not ParkMap.inside_bounds(p, 4.0) or _mask(p)[2] > 0.3 or not is_free(p, 0.5):
+				if not ParkMap.inside_bounds(p, 4.0) or _mask(p)[2] > 0.5 or not is_free(p, 0.5):
 					continue
 				if big or side > 0.0:
 					_street_lamps.append(Transform3D(Basis(Vector3.UP, atan2(-dir.x, -dir.y) + (PI / 2 if side > 0.0 else -PI / 2)), at(p)))
@@ -1228,7 +1231,7 @@ func _build_parks() -> void:
 		var want := mini(int(box.get_area() * 0.5 / 110.0), 900)
 		for i in want:
 			var p := _random_in(poly, box)
-			if not _is_lawn(p) or _kept_out(p) or ParkMap.water_sd(p) < 2.5 or _mask(p)[0] > 0.02:
+			if not _is_lawn(p) or _kept_out(p) or ParkMap.water_sd(p) < 2.5 or _mask(p)[0] > 0.36:
 				continue
 			var near := false
 			for s in spots:
@@ -1272,7 +1275,7 @@ func _build_parks() -> void:
 	for i in 5200:
 		var p := Vector2(_rng.randf_range(mn.x, mx.x), _rng.randf_range(mn.y, mx.y))
 		var m := _mask(p)
-		if m[2] > 0.05 or m[3] > 0.05 or m[4] < 0.8 or resolve(p, 2.2, p).distance_to(p) > 0.05:
+		if m[2] > 0.38 or m[3] > 0.4 or m[4] < 0.6 or resolve(p, 2.2, p).distance_to(p) > 0.05:
 			continue
 		var near := false
 		for s in spots:

@@ -9,4 +9,7 @@ for o in [o for o in bpy.data.objects if o.type == 'MESH']:
         m = o.modifiers.new('d', 'DECIMATE'); m.ratio = target / tris
         bpy.context.view_layer.objects.active = o
         bpy.ops.object.modifier_apply(modifier='d')
+    # Koseli gorunmesin: yumusak golgeleme
+    for poly in o.data.polygons:
+        poly.use_smooth = True
 bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB', export_animations=False, export_yup=True)
