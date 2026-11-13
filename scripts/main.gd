@@ -1796,6 +1796,7 @@ var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
 var _jump_h := 0.0
 var _blink_t := 0.0
+var _cam_dist_s := 6.0
 const CAR_SEAT_Y := 0.02      # surus pozunda karakterin arac icindeki yuksekligi
 var _cyclists: Array = []
 var _in_water := false
@@ -3332,7 +3333,8 @@ func _process(dt: float) -> void:
 			_save_t = 0.0
 			state.save_game()
 	_update_camera(dt)
-	world.set_focus(owner_node.position, _mode == "play")
+	# Binalar artik delinmiyor (kamera onlarin onune gelir); yalniz agaclar icin
+	world.set_focus(owner_node.position, false)
 
 
 func _update_owner(dt: float) -> void:
@@ -3608,7 +3610,19 @@ func _update_camera_raw(dt: float) -> void:
 				dist = clampf(dist, 3.2, 6.0)
 				_cam_pitch = maxf(_cam_pitch, 0.75)
 				ParkMap.home.update_view(cam.global_position)
-			var pos := _focus + Vector3(0, 1.3, 0) + Vector3(sin(_cam_yaw) * cos(_cam_pitch), sin(_cam_pitch), cos(_cam_yaw) * cos(_cam_pitch)) * dist
+			var dirv := Vector3(sin(_cam_yaw) * cos(_cam_pitch), sin(_cam_pitch), cos(_cam_yaw) * cos(_cam_pitch))
+			# Kamera ile karakter arasina bina girerse kamera binanin onune yaklasir (bina delinmez)
+			if ParkMap.home == null:
+				var from := _focus + Vector3(0, 1.3, 0)
+				var steps := 14
+				for i in range(1, steps + 1):
+					var q := from + dirv * dist * float(i) / steps
+					var q2 := Vector2(q.x, q.z)
+					if world._inside_building(q2):
+						dist = maxf(dist * float(i - 1) / steps - 0.4, 1.4)
+						break
+			_cam_dist_s = lerpf(_cam_dist_s, dist, minf(1.0, get_process_delta_time() * (12.0 if dist < _cam_dist_s else 2.5)))
+			var pos := _focus + Vector3(0, 1.3, 0) + dirv * _cam_dist_s
 			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
 			cam.position = pos
 			cam.look_at(_focus + Vector3(0, 1.55, 0))
