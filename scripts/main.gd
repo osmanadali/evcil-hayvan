@@ -1236,7 +1236,7 @@ func _do_feed(id: String) -> void:
 
 # ---------------------------------------------------------------- arac surme
 
-const VEHICLE_FLIP := {"bisiklet": true, "taksi": true, "dolmus": true}      # modelin onu ters gelenler
+const VEHICLE_FLIP := {"polo": true, "bisiklet": true, "taksi": true, "dolmus": true}      # modelin onu ters gelenler
 var _rides: Array[Node3D] = []       # binilebilen araclar
 var _ride: Node3D                    # su an surulen arac
 var _drive_speed := 0.0
@@ -1317,11 +1317,16 @@ func _spawn_rides() -> void:
 		var dir := (b - a).normalized()
 		var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
 		var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
-		var car: Node3D = world.vehicle("res://assets/models/hatchback.glb", 4.1)
+		# Oyuncunun arabasi: 2015 Polo (kendi modeli); yoksa boyali hatchback
+		var car: Node3D = world.vehicle("res://assets/models/polo.glb", 3.97, bool(VEHICLE_FLIP.get("polo", false)))
+		if car == null:
+			car = world.vehicle("res://assets/models/hatchback.glb", 4.1)
+			if car:
+				_paint(car, Color("b8322c"))
 		if car == null:
 			car = world.make_car(Color("c23b32"))
 		else:
-			_paint(car, Color("b8322c"))
+			_dress_polo(car)
 		car.set_meta("kind", "araba")
 		_place_ride(car, p, atan2(-dir.x, -dir.y))
 	# Bahce kapisinin onunde bisiklet ve scooter
@@ -1348,6 +1353,51 @@ func _paint(v: Node3D, c: Color) -> void:
 				var mm: BaseMaterial3D = m.duplicate()
 				mm.albedo_color = c.lerp(Color.WHITE, 0.15) * 1.6
 				mi.set_surface_override_material(i, mm)
+
+
+## Polo: on/arka "33 OA 2003" plakasi ve marka logolarinin uzerine uydurma amblem (model uzayinda,
+## govde 1.0 birim uzunlukta; +Z on).
+func _dress_polo(car: Node3D) -> void:
+	var body: Node3D = null
+	for mi in car.find_children("tripo_node*", "MeshInstance3D", true, false):
+		body = mi
+	if body == null:
+		return
+	const U := 1.0 / 3.97                  # 1 metre, model biriminde
+	for spec in [[Vector3(0, 0.141, 0.504), 0.0], [Vector3(0, 0.221, -0.475), PI]]:
+		var plate := Node3D.new()
+		plate.position = spec[0]
+		plate.rotation.y = spec[1]
+		body.add_child(plate)
+		Kit.box(plate, Vector3(0.53, 0.12, 0.012) * U, Vector3.ZERO, Kit.mat("111111", 0.5))
+		Kit.box(plate, Vector3(0.51, 0.10, 0.014) * U, Vector3.ZERO, Kit.mat("f6f6f2", 0.4))
+		Kit.box(plate, Vector3(0.045, 0.10, 0.016) * U, Vector3(-0.232 * U, 0, 0), Kit.mat("1f4fa8", 0.4))
+		var tr := Label3D.new()
+		tr.text = "TR"
+		tr.font_size = 32
+		tr.pixel_size = 0.0008 * U
+		tr.modulate = Color.WHITE
+		tr.position = Vector3(-0.232 * U, -0.025 * U, 0.009 * U)
+		plate.add_child(tr)
+		var num := Label3D.new()
+		num.text = "33 OA 2003"
+		num.font_size = 96
+		num.pixel_size = 0.00092 * U
+		num.modulate = Color("111111")
+		num.outline_size = 0
+		num.position = Vector3(0.02 * U, 0, 0.009 * U)
+		plate.add_child(num)
+	# Logolarin uzeri: uydurma amblem (koyu yuvarlak, gumus halka)
+	var chrome := Kit.mat("c9ccd0", 0.25)
+	chrome.metallic = 0.8
+	for spec in [[Vector3(0, 0.176, 0.494), 0.0, "151618"], [Vector3(0, 0.264, -0.481), PI, "f2f2f2"]]:
+		var e := Node3D.new()
+		e.position = spec[0]
+		e.rotation.y = spec[1]
+		body.add_child(e)
+		Kit.cyl(e, 0.088 * U, 0.088 * U, 0.012 * U, Vector3.ZERO, Kit.mat(spec[2], 0.4), 20, Vector3(PI / 2, 0, 0))
+		Kit.torus(e, 0.075 * U, 0.088 * U, Vector3(0, 0, 0.004 * U), chrome, Vector3(PI / 2, 0, 0))
+		Kit.box(e, Vector3(0.08, 0.012, 0.004) * U, Vector3(0, 0, 0.007 * U), chrome)
 
 
 func _place_ride(v: Node3D, p: Vector2, yaw: float) -> void:
@@ -1547,7 +1597,10 @@ func _cockpit_camera() -> void:
 		_set_body_visible(_ride, false)
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
-		wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
+		if wheel.has_meta("model"):
+			wheel.basis = Basis(Vector3.RIGHT, -0.3) * Basis(Vector3.BACK, -_steer * 2.6)
+		else:
+			wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
 		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
 		var kmh := absf(_drive_speed) * 3.6
 		(_cockpit.get_node("Ibre1") as Node3D).rotation.z = 2.1 - clampf(kmh / 200.0, 0.0, 1.0) * 4.2
@@ -1675,18 +1728,27 @@ func _make_cockpit() -> Node3D:
 	prnd.rotation = Vector3(-PI / 2, PI / 2, 0)
 	c.add_child(prnd)
 	Kit.box(c, Vector3(0.04, 0.04, 0.24), Vector3(0.0, 0.62, 0.12), black, Vector3(-0.2, 0, 0))
-	# Direksiyon: kolon + uc kollu simit (kol ve sag, alt), ortada hava yastigi
+	# Direksiyon: kendi modelimiz (Tripo, kolon ve kollariyla) varsa o; yoksa cizilen uc kollu simit
 	var wheel := Node3D.new()
 	wheel.name = "Direksiyon"
-	wheel.position = Vector3(-0.36, 0.92, -0.42)
-	wheel.rotation.x = -1.1
+	wheel.position = Vector3(-0.36, 0.9, -0.4)
 	c.add_child(wheel)
-	Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
-	Kit.torus(wheel, 0.16, 0.19, Vector3.ZERO, Kit.mat("1d1e21", 0.7), Vector3.ZERO)
-	Kit.box(wheel, Vector3(0.3, 0.02, 0.045), Vector3(0, 0, -0.01), soft)
-	Kit.box(wheel, Vector3(0.05, 0.02, 0.15), Vector3(0, 0, 0.08), soft)
-	Kit.box(wheel, Vector3(0.16, 0.022, 0.012), Vector3(0, 0.005, 0.03), silver)
-	Kit.cyl(wheel, 0.065, 0.07, 0.04, Vector3(0, 0.01, 0), Kit.mat("26282b", 0.6), 16)
+	if ResourceLoader.exists("res://assets/models/polo_ic.glb"):
+		var wm: Node3D = load("res://assets/models/polo_ic.glb").instantiate()
+		var k := 0.42                                   # simit capi ~37 cm
+		wm.scale = Vector3.ONE * k
+		wm.position = -Vector3(-0.015, 0.53, 0.0) * k  # simit merkezi pivotta
+		wheel.add_child(wm)
+		wheel.set_meta("model", true)
+		wheel.rotation.x = -0.3
+	else:
+		wheel.rotation.x = -1.1
+		Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
+		Kit.torus(wheel, 0.16, 0.19, Vector3.ZERO, Kit.mat("1d1e21", 0.7), Vector3.ZERO)
+		Kit.box(wheel, Vector3(0.3, 0.02, 0.045), Vector3(0, 0, -0.01), soft)
+		Kit.box(wheel, Vector3(0.05, 0.02, 0.15), Vector3(0, 0, 0.08), soft)
+		Kit.box(wheel, Vector3(0.16, 0.022, 0.012), Vector3(0, 0.005, 0.03), silver)
+		Kit.cyl(wheel, 0.065, 0.07, 0.04, Vector3(0, 0.01, 0), Kit.mat("26282b", 0.6), 16)
 	# Koltuklar (gri kumas, ortasi koyu seritli) ve basliklar
 	for x in [-0.36, 0.36]:
 		Kit.box(c, Vector3(0.52, 0.12, 0.52), Vector3(x, 0.46, 0.22), fabric)
@@ -1717,7 +1779,7 @@ func _make_cockpit() -> Node3D:
 	il.light_color = Color("fff1dc")
 	c.add_child(il)
 	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
-	var paint := Kit.mat("b8322c", 0.35)
+	var paint := Kit.mat("eeeeec" if ResourceLoader.exists("res://assets/models/polo.glb") else "b8322c", 0.3)
 	Kit.box(c, Vector3(1.5, 0.08, 1.2), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))
 	for sx in [-1.0, 1.0]:
 		Kit.box(c, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), black)

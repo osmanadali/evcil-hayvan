@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://bfdh8k0w101wi"
+path="res://.godot/imported/polo_Image_0.jpg-be0bd90d013dd471d93d5d7f92b443f0.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "c774fbf52d6e7edcf34a4f89b83aa32f"
+}
+
+[deps]
+
+source_file="res://assets/models/polo_Image_0.jpg"
+dest_files=["res://.godot/imported/polo_Image_0.jpg-be0bd90d013dd471d93d5d7f92b443f0.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1
