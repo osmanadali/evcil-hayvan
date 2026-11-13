@@ -1430,28 +1430,21 @@ func _end_job(ok: bool, msg: String) -> void:
 
 ## Telefon: arabani yanina cagir## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
-	var body: VBoxContainer = ui._open_modal("Telefon", 120, 120)
-	body.add_theme_constant_override("separation", 10)
-	UiKit.button(body, "İş bul (para kazan)", "coin", func():
-		ui.close_modal()
-		_open_jobs(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+	var apps: Array = [
+		["Harita", "2f80ff", "map", func(): _open_map()],
+		["İş Bul", "34a853", "coin", func(): _open_jobs()],
+		["Arabam", "e8453c", "play", func(): _summon_my_car()],
+		["Taksi", "f2c230", "star", func(): _call_taxi("taksi")],
+		["Dolmuş", "e07b1f", "star", func(): _call_taxi("dolmus")],
+		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
+		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
+		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
+	]
 	if world.vet_pos != Vector2.INF:
-		UiKit.button(body, "Veteriner (yol tarifi)", "plus", func():
-			ui.close_modal()
-			_set_nav(world.vet_pos, "Veteriner"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
-	UiKit.button(body, "Arabamı yanıma getir", "play", func():
-		ui.close_modal()
-		_summon_my_car(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
-	UiKit.button(body, "Taksi çağır", "star", func():
-		ui.close_modal()
-		_call_taxi("taksi"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
-	UiKit.button(body, "Dolmuş çağır", "star", func():
-		ui.close_modal()
-		_call_taxi("dolmus"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
-		UiKit.button(body, "Eve yol tarifi", "home", func():
-			ui.close_modal()
-			_set_nav(HOME_DOOR, "Evim"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+		apps.append(["Evim", "f29f4b", "home", func(): _set_nav(HOME_DOOR, "Evim")])
+	ui.open_phone(apps, state.pet(state.d["active"])["name"] + " ile")
 
 
 ## Oyuncuya en yakin yol kenari: [konum, yon acisi, dugum]
@@ -3757,6 +3750,9 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f % 5 == 0:
 				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
+	if _args.has("phone"):
+		_open_phone()
+		await get_tree().create_timer(0.6).timeout
 	if _args.has("job"):
 		if _args["job"] == "dog":
 			_start_dog_walk()

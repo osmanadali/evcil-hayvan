@@ -770,6 +770,134 @@ func _panel_item(parent: Node, text: String, cb: Callable) -> Button:
 	return b
 
 
+## Telefon: sag altta gercek bir telefon, uygulama simgeleri. apps: [[ad, renk, simge, Callable]]
+func open_phone(apps: Array, owner_name: String) -> void:
+	close_modal()
+	_context.modulate.a = 0.0
+	_modal = Control.new()
+	K.full(_modal)
+	add_child(_modal)
+	_modal.tree_exiting.connect(func(): if is_instance_valid(_context): _context.modulate.a = 1.0)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.25)
+	K.full(dim)
+	dim.gui_input.connect(func(e):
+		if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed:
+			close_modal())
+	_modal.add_child(dim)
+	var phone := Panel.new()
+	var body_sb := StyleBoxFlat.new()
+	body_sb.bg_color = Color("111214")
+	body_sb.set_corner_radius_all(46)
+	body_sb.border_color = Color("3a3d42")
+	body_sb.set_border_width_all(4)
+	body_sb.shadow_color = Color(0, 0, 0, 0.5)
+	body_sb.shadow_size = 24
+	phone.add_theme_stylebox_override("panel", body_sb)
+	phone.size = Vector2(330, 640)
+	var vs := get_viewport().get_visible_rect().size
+	var sc := minf(1.0, (vs.y - 50.0) / 640.0)
+	phone.scale = Vector2.ONE * sc
+	phone.position = Vector2(vs.x - 330.0 * sc - 40.0, vs.y)
+	_modal.add_child(phone)
+	var screen := Panel.new()
+	var scr_sb := StyleBoxFlat.new()
+	var grad := Gradient.new()
+	scr_sb.bg_color = Color("1d3b5a")
+	scr_sb.set_corner_radius_all(36)
+	screen.add_theme_stylebox_override("panel", scr_sb)
+	screen.position = Vector2(12, 12)
+	screen.size = Vector2(306, 616)
+	screen.clip_contents = true
+	phone.add_child(screen)
+	# Duvar kagidi: yumusak gecis
+	var wp := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color("2b5876"))
+	gt.gradient.set_color(1, Color("4e4376"))
+	gt.fill_to = Vector2(0.4, 1)
+	wp.texture = gt
+	wp.stretch_mode = TextureRect.STRETCH_SCALE
+	wp.position = Vector2.ZERO
+	wp.size = screen.size
+	wp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(wp)
+	# Centik ve durum cubugu
+	var notch := Panel.new()
+	var nsb := StyleBoxFlat.new()
+	nsb.bg_color = Color("050505")
+	nsb.set_corner_radius_all(14)
+	notch.add_theme_stylebox_override("panel", nsb)
+	notch.position = Vector2(108, 10)
+	notch.size = Vector2(90, 26)
+	screen.add_child(notch)
+	var tl := _fx_label(screen, clock_label.text, F_BODY, 20, Color.WHITE)
+	tl.position = Vector2(26, 10)
+	var bat := _fx_label(screen, "4G  ▮▮▮  %86", F_BODY, 16, Color.WHITE)
+	bat.position = Vector2(200, 13)
+	var big := _fx_label(screen, clock_label.text, F_BODY, 68, Color.WHITE)
+	big.position = Vector2(0, 52)
+	big.size = Vector2(306, 80)
+	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var who := _fx_label(screen, "%s  ·  %d ₺" % [owner_name, state.d["coins"]], F_BODY, 18, Color(1, 1, 1, 0.8))
+	who.position = Vector2(0, 136)
+	who.size = Vector2(306, 26)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 10)
+	grid.position = Vector2(22, 184)
+	screen.add_child(grid)
+	var first: Button = null
+	for a in apps:
+		var app: Array = a
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 4)
+		grid.add_child(cell)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(76, 76)
+		b.focus_mode = Control.FOCUS_ALL
+		var bs := StyleBoxFlat.new()
+		bs.bg_color = Color(app[1])
+		bs.set_corner_radius_all(20)
+		var hs := bs.duplicate()
+		hs.bg_color = Color(app[1]).lightened(0.2)
+		hs.border_color = Color.WHITE
+		hs.set_border_width_all(3)
+		b.add_theme_stylebox_override("normal", bs)
+		b.add_theme_stylebox_override("hover", hs)
+		b.add_theme_stylebox_override("focus", hs)
+		b.add_theme_stylebox_override("pressed", hs)
+		var ic := Icon.new(app[2], Color.WHITE, 40)
+		ic.position = Vector2(18, 18)
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(ic)
+		var cb: Callable = app[3]
+		b.pressed.connect(func():
+			if K.on_click.is_valid():
+				K.on_click.call()
+			close_modal()
+			cb.call())
+		cell.add_child(b)
+		var nl := _fx_label(cell, app[0], F_BODY, 15, Color.WHITE)
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nl.custom_minimum_size = Vector2(76, 0)
+		if first == null:
+			first = b
+	# Ana ekran cubugu
+	var home := ColorRect.new()
+	home.color = Color(1, 1, 1, 0.7)
+	home.position = Vector2(103, 596)
+	home.size = Vector2(100, 5)
+	screen.add_child(home)
+	var tw := create_tween()
+	tw.tween_property(phone, "position:y", vs.y - 640.0 * sc - 25.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if first:
+		first.call_deferred("grab_focus")
+
+
 func _focus_first(body: Node) -> void:
 	for c in body.get_children():
 		if c is Button:
