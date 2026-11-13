@@ -99,6 +99,7 @@ var _args := {}
 var _ready_done := false
 var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
+var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -123,6 +124,10 @@ func _ready() -> void:
 	fuel.m = self
 	fuel.state = state
 	add_child(fuel)
+	street_food = preload("res://scripts/street_food.gd").new()
+	street_food.m = self
+	street_food.state = state
+	add_child(street_food)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -173,6 +178,7 @@ func _ready() -> void:
 	_spawn_cast()
 	_spawn_npcs()
 	_spawn_coins()
+	street_food.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -1124,6 +1130,10 @@ func _use_item(name: String) -> void:
 				Kit.ball(it, 0.008, Vector3(0, cos(k * 0.63) * 0.058, sin(k * 0.63) * 0.058) + Vector3(0.02, 0, 0), Kit.mat("f2e6c8", 0.8), Vector3.ONE, 4)
 		"Ekmek":
 			Kit.capsule(it, 0.045, 0.22, Vector3.ZERO, Kit.mat("d9a85a", 0.9), Vector3(0, 0, PI / 2))
+		"Poğaça":
+			Kit.ball(it, 0.05, Vector3.ZERO, Kit.mat("d9a04c", 0.6), Vector3(1.0, 0.65, 1.0), 10)
+		"Çay":
+			street_food.tea_glass(it, Vector3(0, -0.04, 0), true, false)
 		"Su", "Ayran", "Meyve Suyu":
 			Kit.cyl(it, 0.032, 0.032, 0.18, Vector3.ZERO, Kit.mat({"Su": "cfe8f5", "Ayran": "f4f4f0", "Meyve Suyu": "f29f4b"}[name], 0.3), 12)
 		"Dondurma":
@@ -1145,8 +1155,14 @@ func _use_item(name: String) -> void:
 			ui.toast("Su içtin. %s'e de biraz verdin." % pn)
 			for k in agents:
 				state.add_need(k, "hunger", 5.0)
-		"Simit", "Ekmek":
+		"Simit", "Ekmek", "Poğaça":
 			ui.toast("%s yedin. %s kırıntıları kaptı!" % [name, pn])
+			for k in agents:
+				state.add_need(k, "fun", 4.0)
+		"Ayran":
+			ui.toast("Ayran içtin, serinledin!")
+		"Çay":
+			ui.toast("Çay içtin, keyfin yerine geldi.")
 			_pet_voice(a.kind)
 		_:
 			ui.toast("%s kullanıldı." % name)
@@ -1494,6 +1510,8 @@ func _open_phone() -> void:
 	]
 	if not world.fuel_stations.is_empty():
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
+	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
+		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
@@ -1682,6 +1700,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
+		return
+	if cmd.begins_with("food_"):
+		street_food.command(cmd)
 		return
 	var a := _active()
 	var p: Dictionary = state.pet(a.kind)
@@ -3388,7 +3409,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty():
+	if _play_ride.is_empty() and not street_food.is_seated():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3401,6 +3422,7 @@ func _process(dt: float) -> void:
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
 	fuel.update(dt)
+	street_food.update(dt)
 	_update_job(dt)
 	_update_health(dt)
 	_update_play_ride(dt)
@@ -3656,6 +3678,10 @@ func _update_context() -> void:
 		return
 	if not _play_ride.is_empty():
 		ui.set_context("İn", "playexit", "come")
+		return
+	var sf: Array = street_food.context()
+	if not sf.is_empty():
+		ui.set_context(sf[0], sf[1], sf[2])
 		return
 	if _ride == null and _taxi == null:
 		for pr in world.play_rides:
@@ -3961,6 +3987,12 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f % 5 == 0:
 				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
+	if _args.has("tea"):
+		street_food.debug_sit()
+	if _args.has("cart"):
+		street_food.debug_cart()
+		if _args["cart"] == "menu":
+			street_food.open_menu("cart")
 	if _args.has("eat"):
 		var bag: Dictionary = state.d.get("bag", {})
 		bag["Simit"] = 2

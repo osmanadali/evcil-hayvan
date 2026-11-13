@@ -25,6 +25,7 @@ const AnimRetarget = preload("res://scripts/anim_retarget.gd")
 var anim: Node                 # hazir animasyonlar (yoksa kodla poz)
 var use_anims := true
 var airborne := false
+var seated := false            # taburede / sandalyede oturuyor (Sitting_Idle)
 var _lod_i := randi() % 4          # ziplarken (main ayarlar)
 var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
 const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
@@ -293,7 +294,9 @@ func _ride_pose(dt: float) -> void:
 func _anim_pose() -> void:
 	if airborne:
 		anim.play("Jump" if anim.current == "Jump" or anim.current == "Jump_Start" and anim.player.current_animation_position > 0.25 else "Jump_Start", 0.08, 1.4)
-	elif _act_t < 1.0 and _act == "eat":
+	elif seated:
+		anim.play("Sitting_Idle", 0.35)
+	elif _act_t < 1.0 and (_act == "eat" or _act == "sip"):
 		anim.play("Idle", 0.2)
 	elif _act_t < 1.0 and ACT_CLIPS.has(_act):
 		anim.play(ACT_CLIPS[_act], 0.15, 1.3)
@@ -306,11 +309,11 @@ func _anim_pose() -> void:
 	else:
 		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
 	anim.apply()
-	if _act_t < 1.0 and _act == "eat":
-		# Yemek: sol el agiza gider, iki kez isirir
+	if _act_t < 1.0 and (_act == "eat" or _act == "sip"):
+		# Yemek: sol el agiza gider, iki kez isirir; yudum: el yavasca agiza gider, kisa bekler
 		var w := clampf(sin(_act_t * PI) * 1.6, 0.0, 1.0)
 		var head := _skel.get_bone_global_pose(_bones["Head"]).origin
-		var mouth := head + Vector3(0.0, 0.0, 0.2) * _scale_k() + Vector3(0, 0.02, 0) * sin(_act_t * 18.0)
+		var mouth := head + Vector3(0.0, 0.0, 0.2) * _scale_k() + Vector3(0, 0.02, 0) * (sin(_act_t * 18.0) if _act == "eat" else 0.0)
 		var hand_p := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
 		_arm_ik("Left", hand_p.lerp(mouth, w))
 

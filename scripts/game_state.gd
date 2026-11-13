@@ -30,6 +30,7 @@ const QUESTS := [
 	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["job", "Bir iş bitir (köpek gezdir / kurye)", 1, 25], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
 	["weather", "Yağmurda ya da karda 1 dakika dışarıda gez", 60, 20],
 	["fuel", "Benzinlikte aracına yakıt al", 1, 20],
+	["tea", "Çay ocağında çay iç", 1, 15],
 ]
 
 
