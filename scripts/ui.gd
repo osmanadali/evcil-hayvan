@@ -28,6 +28,7 @@ var photo_hud: Control
 var _cards := {}
 var _coins: Label
 var clock_label: Label
+var weather_label: Label
 var _clock_icon: Control
 var _actions: GridContainer
 var _context: Button
@@ -159,6 +160,13 @@ func _build_hud() -> void:
 	row.add_child(_clock_icon)
 	clock_label = K.label(row, "10:00", 26, Color.WHITE)
 	clock_label.add_theme_font_override("font", load("res://assets/fonts/Anton-Regular.ttf"))
+	# Hava durumu ve sicaklik (saatin yaninda, kucuk)
+	var wsep := ColorRect.new()
+	wsep.color = Color(1, 1, 1, 0.3)
+	wsep.custom_minimum_size = Vector2(2, 26)
+	row.add_child(wsep)
+	weather_label = K.label(row, "", 20, Color(0.86, 0.93, 1.0))
+	weather_label.add_theme_font_override("font", load("res://assets/fonts/Anton-Regular.ttf"))
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
 	var phone_btn := K.button(right, "", "phone", func(): command.emit("phone"), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
 	_glass(phone_btn)

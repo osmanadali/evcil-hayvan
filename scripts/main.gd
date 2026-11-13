@@ -97,6 +97,10 @@ var _slow_t := 0.0
 var _save_t := 0.0
 var _args := {}
 var _ready_done := false
+var weather: Weather
+var _weather_seen := ""
+var _weather_t := 0.0
+var _umbrella: Node3D
 
 
 func _ready() -> void:
@@ -112,6 +116,11 @@ func _ready() -> void:
 		state.reset()
 	_build_environment()
 	_setup_audio()
+	weather = Weather.new()
+	add_child(weather)
+	if _args.has("weather"):
+		weather.force(_args["weather"])
+	_weather_seen = weather.kind
 	# Dunya kurulurken yukleniyor ekrani goster
 	var loading := CanvasLayer.new()
 	var bg := ColorRect.new()
@@ -736,6 +745,8 @@ func _input(e: InputEvent) -> void:
 				_open_jobs()
 			KEY_R:
 				_on_command("come")
+			KEY_U:
+				_on_command("umbrella")
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -1472,6 +1483,7 @@ func _open_phone() -> void:
 		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
 		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
+		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
@@ -1652,6 +1664,12 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "jump":
 		_jump()
+		return
+	if cmd == "umbrella":
+		_toggle_umbrella()
+		return
+	if cmd == "weather":
+		_open_weather()
 		return
 	var a := _active()
 	var p: Dictionary = state.pet(a.kind)
@@ -3066,6 +3084,67 @@ func _setup_audio() -> void:
 	UiKit.on_click = func(): _sfx("tik", -12.0)
 
 
+## Hava durumu: ortam, parcaciklar, semsiyeler, HUD yazisi; yagmurda hayvan cabuk kirlenir.
+func _update_weather(dt: float) -> void:
+	if weather == null:
+		return
+	weather.indoor = ParkMap.home != null or _mode == "metro"
+	weather.update(dt, clock, cam, env, sun, _sky_mat, world._clouds, 1.0 - night)
+	weather.update_people(dt, _npc_people)
+	if ui.clock_label and ui.weather_label:
+		ui.weather_label.text = weather.hud_text()
+		if weather.icon() != "sun":
+			ui._clock_icon.icon = weather.icon()
+	if weather.kind != _weather_seen:
+		_weather_seen = weather.kind
+		if _ready_done and _mode == "play":
+			ui.toast({"yagmur": "Yağmur başladı. Şemsiyeni açmak için U.", "saganak": "Sağanak geliyor! Bir yere sığın.",
+				"kar": "Kar yağmaya başladı!", "sis": "Sis çöktü, görüş azaldı.", "bulutlu": "Hava kapandı.",
+				"acik": "Hava açtı, güneş çıktı!"}.get(weather.kind, "Hava değişti."))
+	if _umbrella != null and _umbrella.visible and weather.rain < 0.05 and weather.snow < 0.05 and weather.kind == "acik":
+		_umbrella.visible = false
+	# Saniyede bir: yagis altindaki hayvanlar kirlenir, gorev sayaci
+	_weather_t -= dt
+	if _weather_t > 0.0 or not _ready_done or _mode != "play" or weather.indoor:
+		return
+	_weather_t = 1.0
+	var wetness := maxf(weather.rain, weather.snow * 0.5)
+	if wetness > 0.2:
+		var cover := 0.5 if _umbrella != null and _umbrella.visible else 1.0
+		if _ride != null or _taxi != null or _bus_ride != null:
+			cover = 0.0
+		for k in agents:
+			state.add_need(k, "clean", -0.45 * wetness * cover)
+		if cover > 0.0:
+			state.count("weather", 1.0)
+
+
+func _toggle_umbrella() -> void:
+	if _ride != null or _taxi != null:
+		return
+	if _umbrella == null:
+		_umbrella = weather.make_umbrella(1)
+		_umbrella.position = Vector3(0.3, 0.0, 0.0)
+		owner_node.add_child(_umbrella)
+		_umbrella.visible = false
+	_umbrella.visible = not _umbrella.visible
+	if _umbrella.visible:
+		_umbrella.scale = Vector3(0.3, 0.3, 0.3)
+		_umbrella.create_tween().tween_property(_umbrella, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_BACK)
+		owner_model.act("wave", 0.5)
+		if weather.rain < 0.1 and weather.snow < 0.1:
+			ui.toast("Yağmur yok ama şemsiye güneşten de korur.")
+	_sfx("tik", -6.0)
+
+
+func _open_weather() -> void:
+	var body: VBoxContainer = ui._open_panel("HAVA DURUMU", "%s · şimdi %s\n%s" % [ParkMap.ZONE_TITLES.get(ParkMap.zone, "Keçiören"), weather.hud_text(), weather.describe()])
+	for f in weather.forecast(clock):
+		ui._panel_item(body, "%s   %s   %d°C" % [f[0], f[1], f[2]], func(): pass)
+	ui._panel_item(body, "Kapat", func(): ui.close_modal())
+	ui._focus_first(body)
+
+
 ## Sokak hayati: sokak kopekleri havlar, kediler miyavlar (sesi bulunduklari yerden gelir),
 ## yanindan gecen insanlar durup selam verir.
 func _update_street_life(dt: float) -> void:
@@ -3289,6 +3368,7 @@ func _process(dt: float) -> void:
 		_metro.stick = ui.stick
 	if world:
 		_update_daylight(dt)
+		_update_weather(dt)
 	AudioServer.set_bus_mute(0, not state.d["sound"])
 	if not _ready_done or _mode == "metro":
 		return
@@ -3590,6 +3670,8 @@ func _update_context() -> void:
 		ui.set_context("Kulübede Uyut", "bed", "moon")
 	elif _near_npc and not a.is_busy():
 		ui.set_context("Arkadaşıyla Oynat", "npcplay", "play")
+	elif ParkMap.home == null and (weather.rain > 0.3 or (_umbrella != null and _umbrella.visible)):
+		ui.set_context("Şemsiyeyi Kapat" if _umbrella != null and _umbrella.visible else "Şemsiye Aç", "umbrella", "drop")
 	else:
 		ui.set_context("", "")
 
@@ -3865,6 +3947,13 @@ func _debug_shot() -> void:
 		state.d["bag"] = bag
 		_use_item("Simit")
 		await get_tree().create_timer(float(_args.get("eat", "1.0"))).timeout
+	if _args.has("weather"):
+		if _args.has("umbrella"):
+			_toggle_umbrella()
+		if _args.has("forecast"):
+			_open_weather()
+			await get_tree().create_timer(0.6).timeout
+		print("HAVA ", weather.kind, " ", weather.hud_text(), " islak=", snappedf(weather.wet, 0.01), " kar=", snappedf(weather.cover, 0.01))
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout

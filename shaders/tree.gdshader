@@ -8,6 +8,9 @@ uniform float sway = 0.035;
 uniform vec3 focus = vec3(0.0, -1000.0, 0.0);
 uniform float see_radius = 3.2;
 
+global uniform float weather_snow;
+global uniform float weather_wet;
+
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -36,7 +39,13 @@ void fragment() {
 	if (px.a < 0.42) {
 		discard;
 	}
-	ALBEDO = px.rgb * pow(COLOR.rgb, vec3(2.2)) * 1.08;
+	ALBEDO = px.rgb * pow(COLOR.rgb, vec3(2.2)) * 1.08 * (1.0 - 0.15 * weather_wet);
+	if (weather_snow > 0.01) {
+		// Yapraklarin ust yuzune kar
+		vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+		float up = smoothstep(0.05, 0.6, abs(wn.y)) * step(0.5, hash(floor(wpos.xz * 3.0 + wpos.y * 2.0)) + weather_snow * 0.6);
+		ALBEDO = mix(ALBEDO, vec3(0.86, 0.89, 0.94), up * clamp(weather_snow * 1.2, 0.0, 0.85));
+	}
 	// Yapraklar isigi gecirir: arkadan vuran gunes de aydinlatsin
 	BACKLIGHT = vec3(0.22, 0.28, 0.1) * step(UV.x, 0.5);
 	ROUGHNESS = 1.0;

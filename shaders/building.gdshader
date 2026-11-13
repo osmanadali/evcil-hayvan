@@ -17,6 +17,9 @@ uniform sampler2D t_flat : source_color, filter_linear_mipmap_anisotropic, repea
 uniform sampler2D n_wall : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D n_roof : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 
+global uniform float weather_wet;
+global uniform float weather_snow;
+
 varying vec3 wpos;
 varying vec3 wnormal;
 
@@ -171,5 +174,13 @@ void fragment() {
 		EMISSION = mix(vec3(1.0, 0.74, 0.4), vec3(0.85, 0.9, 1.0), step(0.8, hash(id + 3.0))) * lit * night * 1.3;
 		ROUGHNESS = rough;
 		SPECULAR = 0.4;
+	}
+	// Hava: yagmurda siva koyulasir, karda catilar beyazlar
+	if (h >= 0.0 && wnormal.y > 0.5) {
+		float sc = smoothstep(0.05, 0.5, weather_snow) * (0.85 + 0.15 * hash(floor(wpos.xz * 2.0)));
+		ALBEDO = mix(ALBEDO * (1.0 - 0.25 * weather_wet), vec3(0.88, 0.9, 0.95), sc);
+		ROUGHNESS = mix(mix(ROUGHNESS, 0.45, weather_wet), 0.7, sc);
+	} else {
+		ALBEDO *= 1.0 - 0.2 * weather_wet * step(0.5, ROUGHNESS);
 	}
 }

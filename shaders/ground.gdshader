@@ -19,6 +19,11 @@ uniform sampler2D n_grass : hint_normal, filter_linear_mipmap_anisotropic, repea
 uniform sampler2D n_asphalt : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D n_pavers : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 
+// Hava durumu (weather.gd): islaklik, kar ortusu, yagis siddeti
+global uniform float weather_wet;
+global uniform float weather_snow;
+global uniform float weather_rain;
+
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -90,8 +95,45 @@ void fragment() {
 	nm = mix(nm, vec3(0.5, 0.5, 1.0), edge(b.b, 0.03) * 0.7);
 	nm = mix(nm, texture(n_pavers, p * 0.5).rgb, on_pave);
 	nm = mix(nm, texture(n_asphalt, p * 0.16).rgb, on_road);
+	float rough = mix(1.0, 0.82, on_road);
+
+	// Yagmur: zemin koyulasir ve parlar; asfalt ve kaldirim cukurlarinda su birikintisi, damla halkalari
+	float hard = max(on_road, on_pave * 0.85);
+	if (weather_wet > 0.001) {
+		float wet = weather_wet;
+		col *= 1.0 - wet * mix(0.22, 0.4, hard);
+		rough = mix(rough, mix(0.6, 0.22, hard), wet);
+		float pn = vnoise(p * 0.21 + 31.0) * 0.72 + vnoise(p * 0.83 + 5.0) * 0.28;
+		float pud = smoothstep(0.56, 0.64, pn) * hard * smoothstep(0.35, 0.95, wet);
+		col = mix(col, col * 0.5 + vec3(0.01, 0.012, 0.016), pud);
+		rough = mix(rough, 0.02, pud);
+		vec3 flat_n = vec3(0.5, 0.5, 1.0);
+		if (weather_rain > 0.01) {
+			vec2 q = p * 1.6;
+			vec2 cid = floor(q);
+			vec2 cf = fract(q) - 0.5 - (vec2(hash(cid), hash(cid + 7.3)) - 0.5) * 0.4;
+			float ph = fract(TIME * 1.1 + hash(cid + 3.1));
+			float d = length(cf);
+			float ring = exp(-pow((d - ph * 0.42) * 30.0, 2.0)) * (1.0 - ph);
+			flat_n.xy += cf / max(d, 0.001) * ring * 0.45 * weather_rain;
+		}
+		nm = mix(nm, vec3(0.5, 0.5, 1.0), 0.5 * wet * hard);
+		nm = mix(nm, flat_n, pud);
+	}
+	// Kar: zemin yavas yavas beyazlar; yollarda daha az tutar (tekerlek izi, eriyen kar)
+	if (weather_snow > 0.001) {
+		float cov = smoothstep(0.12, 0.6, weather_snow * (1.0 - 0.62 * on_road - 0.15 * on_pave) + (macro - 0.5) * 0.35 + (mid - 0.5) * 0.18);
+		cov *= 0.97 - 0.12 * smoothstep(0.6, 0.85, vnoise(p * 1.7 + 11.0)) * on_road;
+		float grain = dot(texture(t_sand, p * 0.45).rgb, vec3(0.33));
+		vec3 snow_c = vec3(0.8, 0.84, 0.9) * (0.82 + 0.1 * mid + 0.35 * grain);
+		// Yolda kar kirli ve yer yer erimis (camurlu)
+		snow_c = mix(snow_c, vec3(0.5, 0.5, 0.52) * (0.85 + 0.3 * grain), on_road * 0.45);
+		col = mix(col, snow_c, cov);
+		rough = mix(rough, mix(0.62, 0.4, on_road), cov);
+		nm = mix(nm, mix(vec3(0.5, 0.5, 1.0), texture(n_grass, p * 0.11).rgb, 0.35), cov * 0.9);
+	}
 	NORMAL_MAP = nm;
 	NORMAL_MAP_DEPTH = 1.2;
 	ALBEDO = col;
-	ROUGHNESS = mix(1.0, 0.82, on_road);
+	ROUGHNESS = rough;
 }
