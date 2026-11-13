@@ -1595,8 +1595,9 @@ func _update_play_ride(dt: float) -> void:
 func _jump() -> void:
 	if _jump_h > 0.0 or _ride != null or _bus_ride != null:
 		return
-	_jump_v = 5.2
+	_jump_v = 5.6
 	_jump_h = 0.001
+	owner_model.airborne = true
 
 
 func _on_command(cmd: String) -> void:
@@ -3190,6 +3191,7 @@ func _process(dt: float) -> void:
 			_sfx("adim%d" % (randi() % 4 + 1), -4.0)
 		if _ride == null:
 			owner_model.position.y = _jump_h
+		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
 	_update_job(dt)
 	_update_health(dt)
@@ -3713,6 +3715,24 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f > 120 and fmod(_blink_t, 0.8) < 0.3:
 				break
+	if _args.has("perf"):
+		await get_tree().create_timer(6.0).timeout
+		var t0 := Time.get_ticks_usec()
+		var f0 := Engine.get_process_frames()
+		await get_tree().create_timer(5.0).timeout
+		var ms := float(Time.get_ticks_usec() - t0) / 1000.0 / float(Engine.get_process_frames() - f0)
+		print("PERF kare=%.1f ms  islem=%.2f ms  kisi=%d" % [ms, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, _npc_people.size()])
+		get_tree().quit()
+	if _args.has("jumptest"):
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_SPACE
+		ev.physical_keycode = KEY_SPACE
+		ev.pressed = true
+		Input.parse_input_event(ev)
+		for f in 30:
+			await get_tree().process_frame
+			if f % 5 == 0:
+				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
 	if _args.has("job"):
 		if _args["job"] == "dog":
 			_start_dog_walk()

@@ -21,6 +21,14 @@ var ride_lean := -1.0      # surucunun one egilmesi (radyan); -1 = varsayilan
 var grips: Array = []     # [sol, sag] gidon tutaclarinin dunya konumu (surerken)
 var hand_twist := 1.2     # avucu asagi cevirmek icin on kol donusu
 var _pedal := 0.0
+const AnimRetarget = preload("res://scripts/anim_retarget.gd")
+var anim: Node                 # hazir animasyonlar (yoksa kodla poz)
+var use_anims := true
+var airborne := false
+var _lod_i := randi() % 4          # ziplarken (main ayarlar)
+var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
+const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
+	"eat": "Interact", "sit": "Sitting_Idle"}
 var tint := Color.WHITE   # tisort rengi
 var tint2 := Color.WHITE  # desen ikinci rengi
 var pattern := 0          # 0 duz, 1 cizgili, 2 kareli
@@ -161,7 +169,26 @@ func _process(dt: float) -> void:
 			stepped.emit()
 	_act_t = minf(_act_t + dt / _act_d, 1.0)
 	if riding != "":
+		if anim and riding == "araba":
+			anim.play("Driving", 0.2)
+			anim.apply()
+			return
 		_ride_pose(dt)
+		return
+	if use_anims and anim == null and _anim_wait <= 0 and ResourceLoader.exists(AnimRetarget.SRC):
+		anim = AnimRetarget.new()
+		add_child(anim)
+		anim.setup(_skel)
+	_anim_wait -= 1
+	if anim:
+		# Uzaktakiler daha seyrek guncellenir (performans)
+		var cam := get_viewport().get_camera_3d()
+		var far := cam.global_position.distance_to(global_position) if cam else 0.0
+		anim.player.active = far < 120.0
+		_lod_i += 1
+		if far > 120.0 or (far > 35.0 and _lod_i % (2 if far < 70.0 else 4) != 0):
+			return
+		_anim_pose()
 		return
 	var k := sin(_act_t * PI) if _act_t < 1.0 else 0.0   # 0 -> 1 -> 0
 
@@ -260,6 +287,23 @@ func _ride_pose(dt: float) -> void:
 		if grips.size() == 2:
 			var tgt: Vector3 = _skel.global_transform.affine_inverse() * (grips[0] if side == "Left" else grips[1])
 			_arm_ik(side, tgt)
+
+
+## Hazir animasyon secimi: hiza gore dur / yuru / kos / depar; tek seferlik hareketler.
+func _anim_pose() -> void:
+	if airborne:
+		anim.play("Jump" if anim.current == "Jump" or anim.current == "Jump_Start" and anim.player.current_animation_position > 0.25 else "Jump_Start", 0.08, 1.4)
+	elif _act_t < 1.0 and ACT_CLIPS.has(_act):
+		anim.play(ACT_CLIPS[_act], 0.15, 1.3)
+	elif speed < 0.15:
+		anim.play("Idle", 0.3)
+	elif speed < 2.3:
+		anim.play("Walk", 0.25, clampf(speed / 1.35, 0.5, 1.6))
+	elif speed < 4.6:
+		anim.play("Jog_Fwd", 0.25, clampf(speed / 3.3, 0.7, 1.4))
+	else:
+		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
+	anim.apply()
 
 
 func _rot_between(u: Vector3, v: Vector3) -> Basis:
