@@ -718,6 +718,8 @@ func _input(e: InputEvent) -> void:
 				_open_phone()
 			KEY_G:
 				ui.open_quests()
+			KEY_J:
+				_open_jobs()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -1082,10 +1084,246 @@ func _use_item(name: String) -> void:
 			ui.toast("%s kullanıldı." % name)
 
 
+# ---------------------------------------------------------------- isler (para kazanma)
+
+var _job := {}          # {type, stage, target, client, dog, box, t, pay, base}
+var _job_label: Label
+const DOG_NAMES := ["Karabaş", "Çomar", "Boncuk", "Fındık", "Zeytin", "Paşa", "Tarçın", "Duman"]
+const CLIENTS := ["Ayşe Teyze", "Mehmet Bey", "Zeynep Hanım", "Ali Amca", "Elif", "Hasan Bey"]
+
+
+## Belirtme hali eki (unlu uyumu): Karabas -> Karabas'i, Boncuk -> Boncuk'u, Pasa -> Pasa'yi.
+func _acc(name: String) -> String:
+	var last := ""
+	for ch in name.to_lower():
+		if ch in "aeıioöuü":
+			last = ch
+	var v: String = {"a": "ı", "ı": "ı", "e": "i", "i": "i", "o": "u", "u": "u", "ö": "ü", "ü": "ü"}.get(last, "ı")
+	var ends_vowel := name.to_lower().right(1) in ["a", "e", "ı", "i", "o", "ö", "u", "ü"]
+	return name + "'" + ("y" if ends_vowel else "") + v
+
+
+## En yakin sokagin adi (adres yazmak icin).
+func _street_name(p: Vector2) -> String:
+	var best := ""
+	var bd := 1e9
+	for r in ParkMap.data["roads"]:
+		if r["name"] == "":
+			continue
+		var ids: Array = r["n"]
+		for i in ids.size() - 1:
+			var d := ParkMap.seg_dist(p, ParkMap.nodes[int(ids[i])], ParkMap.nodes[int(ids[i + 1])])
+			if d < bd:
+				bd = d
+				best = r["name"]
+	return best
+
+
+## Rastgele bir apartman kapisi: [konum, adres], oyuncudan min..max metre uzakta.
+func _random_door(min_d: float, max_d: float) -> Array:
+	var me := _owner_pos()
+	var cands: Array = []
+	for b in ParkMap.data["buildings"]:
+		var dr = b.get("door")
+		if dr == null or not (dr is Array) or dr.size() < 4:
+			continue
+		var p := Vector2(dr[0], dr[1]) + Vector2(dr[2], dr[3]) * 1.5
+		var d := p.distance_to(me)
+		if d > min_d and d < max_d and ParkMap.inside_bounds(p, 10.0):
+			cands.append([p, "%s No: %s" % [_street_name(p), b["no"] if b["no"] != "" else str(randi() % 60 + 1)]])
+	return cands[randi() % cands.size()] if not cands.is_empty() else []
+
+
+func _open_jobs() -> void:
+	if not _job.is_empty():
+		var body: VBoxContainer = ui._open_page("İŞ", _job_text())
+		ui._menu_item(body, "İŞİ BIRAK", func():
+			_end_job(false, "İşi bıraktın.")
+			ui.close_modal())
+		ui._menu_item(body, "GERİ", func(): ui.close_modal())
+		ui._focus_first(body)
+		return
+	var body: VBoxContainer = ui._open_page("İŞ BUL", "Para kazan: işi seç, haritadaki noktaya git")
+	ui._menu_item(body, "KÖPEK GEZDİR  ·  40–60 ₺", func():
+		ui.close_modal()
+		_start_dog_walk())
+	ui._menu_item(body, "KURYE (MOTOR)  ·  25–70 ₺", func():
+		ui.close_modal()
+		_start_courier())
+	ui._menu_item(body, "GERİ", func(): ui.close_modal())
+	ui._focus_first(body)
+
+
+func _job_text() -> String:
+	if _job.is_empty():
+		return ""
+	var left := int(maxf(_job["t"], 0.0))
+	var tm := "%d:%02d" % [left / 60, left % 60]
+	match _job["type"]:
+		"dog":
+			return ("%s parka götür" % _acc(_job["name"]) if _job["stage"] == "go" else "%s sahibine (%s) geri getir" % [_acc(_job["name"]), _job["client_name"]]) + "  ·  " + tm
+		"courier":
+			return ("Paketi al: %s" if _job["stage"] == "pickup" else "Teslim et: %s") % _job["addr"] + "  ·  " + tm
+	return ""
+
+
+## Komsunun kopegini gezdir: kopek seni izler, parka goturup sahibine geri getir.
+func _start_dog_walk() -> void:
+	var me := _owner_pos()
+	var cpos: Vector2 = world.resolve(me + Vector2(2.5, 1.0), 0.4, me)
+	var client := Npc.new()
+	var cv := PersonModel.new()
+	cv.kind = "kadin" if randi() % 2 == 0 else "erkek"
+	cv.tint = Color(["8a5a8a", "3f6fb5", "c94f4f", "4f8f5a"][randi() % 4])
+	client.visual = cv
+	client.add_child(cv)
+	client.roam_center = cpos
+	client.roam_radius = 0.1
+	add_child(client)
+	client.place(cpos)
+	client.hold = 1e6
+	client.hold_face = me
+	var dog := _npc_pet("kopek", Color(["c9a070", "3a3330", "f4f4f4", "8a6a4a", "e8d6b0"][randi() % 5]), randf_range(0.85, 1.15))
+	dog.follow = owner_node
+	dog.place(cpos + Vector2(0.8, 0.4))
+	var tgt := ParkMap.spot("oyun_alani") if ParkMap.has_spot("oyun_alani") else Vector2.ZERO
+	if tgt == Vector2.ZERO or tgt.distance_to(me) < 60.0:
+		var dd := _random_door(120.0, 260.0)
+		tgt = dd[0] if not dd.is_empty() else me + Vector2(120, 0)
+	var nm: String = DOG_NAMES[randi() % DOG_NAMES.size()]
+	var cn: String = CLIENTS[randi() % CLIENTS.size()]
+	_job = {"type": "dog", "stage": "go", "target": tgt, "client": client, "client_pos": cpos, "dog": dog,
+		"name": nm, "client_name": cn, "t": 300.0, "pay": 40 + int(tgt.distance_to(me) / 15.0)}
+	_job["pay"] = mini(int(_job["pay"]), 60)
+	_say(client, "%s parka götürür müsün?" % _acc(nm))
+	_set_nav(tgt, "Gezdirme: Park")
+	ui.toast("%s, köpeği %s sana emanet etti. Parka götür, geri getir." % [cn, nm])
+
+
+## Kurye: motor/scooter ile dukkandan paketi al, adrese teslim et.
+func _start_courier() -> void:
+	var me := _owner_pos()
+	var pick := Vector2.INF
+	var pick_name := ""
+	var bd := 1e9
+	for sp in world.shop_spots:
+		var d: float = (sp["pos"] as Vector2).distance_to(me)
+		if d < bd and d > 15.0:
+			bd = d
+			pick = sp["pos"]
+			pick_name = sp["name"]
+	if pick == Vector2.INF:
+		pick = me + Vector2(30, 0)
+		pick_name = "Dükkan"
+	var dd := _random_door(200.0, 520.0)
+	if dd.is_empty():
+		ui.toast("Şu an teslimat yok.")
+		return
+	_job = {"type": "courier", "stage": "pickup", "target": pick, "addr": pick_name, "drop": dd[0], "drop_addr": dd[1],
+		"t": 360.0, "pay": 25 + int(pick.distance_to(dd[0]) / 12.0)}
+	_job["pay"] = mini(int(_job["pay"]), 70)
+	_set_nav(pick, "Paket: " + pick_name)
+	ui.toast("Kurye işi: paket hazır, %s. Motorla daha hızlı!" % pick_name)
+
+
+func _update_job(dt: float) -> void:
+	if _job_label == null:
+		_job_label = ui._fx_label(ui.hud, "", ui.F_BODY, 26, Color.WHITE, 7)
+		_job_label.position = Vector2(26, 104)
+		_job_label.size = Vector2(760, 40)
+	_job_label.visible = not _job.is_empty() and ui.hud.visible
+	if _job.is_empty():
+		return
+	_job["t"] -= dt
+	_job_label.text = "▶  " + _job_text()
+	_job_label.add_theme_color_override("font_color", Color("ff6b6b") if _job["t"] < 30.0 else Color.WHITE)
+	var me := _owner_pos()
+	match _job["type"]:
+		"dog":
+			if _job["stage"] == "go" and me.distance_to(_job["target"]) < 9.0:
+				_job["stage"] = "back"
+				_set_nav(_job["client_pos"], _job["client_name"])
+				_pet_voice("kopek")
+				ui.toast("%s parkı çok sevdi! Şimdi sahibine geri götür." % _job["name"])
+			elif _job["stage"] == "back" and me.distance_to(_job["client_pos"]) < 3.5:
+				_end_job(true, "%s: \"Çok teşekkürler, al bakalım!\"" % _job["client_name"])
+		"courier":
+			if _job["stage"] == "pickup" and me.distance_to(_job["target"]) < 5.0:
+				_job["stage"] = "drop"
+				_job["target"] = _job["drop"]
+				_job["addr"] = _job["drop_addr"]
+				_set_nav(_job["drop"], _job["drop_addr"])
+				_courier_box(true)
+				_sfx("tik", -4.0)
+				ui.toast("Paketi aldın. Adres: %s" % _job["drop_addr"])
+			elif _job["stage"] == "drop" and me.distance_to(_job["drop"]) < 6.0:
+				_end_job(true, "Teslim edildi! Müşteri memnun.")
+	if not _job.is_empty() and _job["t"] <= 0.0:
+		_end_job(false, "Süre doldu! İş iptal oldu.")
+
+
+## Kuryede motorun arkasinda turuncu teslimat cantasi.
+func _courier_box(on: bool) -> void:
+	if _job.has("box") and is_instance_valid(_job["box"]):
+		_job["box"].queue_free()
+		_job.erase("box")
+	if not on:
+		return
+	var holder: Node3D = _ride if _ride != null and not RIDES[_ride.get_meta("kind")]["hide"] else owner_node
+	var b := Node3D.new()
+	holder.add_child(b)
+	if holder == owner_node:
+		b.position = Vector3(0, 1.25, 0.22)
+		Kit.box(b, Vector3(0.36, 0.4, 0.22), Vector3.ZERO, Kit.mat("e8622c", 0.6))
+	else:
+		b.position = Vector3(0, 1.15, 0.55)
+		Kit.box(b, Vector3(0.42, 0.42, 0.42), Vector3.ZERO, Kit.mat("e8622c", 0.6))
+	Kit.box(b, Vector3(0.2, 0.08, 0.005), Vector3(0, 0.05, 0.23 if holder != owner_node else 0.115), Kit.mat("ffffff", 0.5))
+	_job["box"] = b
+
+
+func _end_job(ok: bool, msg: String) -> void:
+	if _job.is_empty():
+		return
+	var job := _job
+	_job = {}
+	if job.has("box") and is_instance_valid(job["box"]):
+		job["box"].queue_free()
+	if job["type"] == "dog":
+		var dog: Node3D = job["dog"]
+		_npc_pets.erase(dog)
+		var client: Node3D = job["client"]
+		if is_instance_valid(dog):
+			dog.follow = client
+		get_tree().create_timer(6.0).timeout.connect(func():
+			if is_instance_valid(dog):
+				dog.queue_free()
+			if is_instance_valid(client):
+				client.queue_free())
+		if is_instance_valid(client):
+			client.hold = 0.0
+			client.graph_node = ParkMap.nearest_node(job["client_pos"])
+	_nav = Vector2.INF
+	minimap.route = []
+	if ok:
+		var pay: int = job["pay"] + (10 if job["t"] > 120.0 else 0)
+		state.d["coins"] += pay
+		state.count("job")
+		state.changed.emit()
+		state.save_game()
+		_sfx("para", -4.0)
+		ui.toast("%s  +%d ₺%s" % [msg, pay, "  (hızlı teslim bonusu!)" if job["t"] > 120.0 else ""])
+	else:
+		ui.toast(msg)
+
+
 ## Telefon: arabani yanina cagir## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
 	var body: VBoxContainer = ui._open_modal("Telefon", 120, 120)
 	body.add_theme_constant_override("separation", 10)
+	UiKit.button(body, "İş bul (para kazan)", "coin", func():
+		ui.close_modal()
+		_open_jobs(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
 	UiKit.button(body, "Arabamı yanıma getir", "play", func():
 		ui.close_modal()
 		_summon_my_car(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
@@ -2848,6 +3086,7 @@ func _process(dt: float) -> void:
 		if _ride == null:
 			owner_model.position.y = _jump_h
 	_update_street_life(dt)
+	_update_job(dt)
 	_update_play_ride(dt)
 	_update_wet(dt)
 	for k in agents:
@@ -3038,7 +3277,7 @@ func _update_context() -> void:
 	var a := _active()
 	_near_npc = null
 	for n in _npc_pets:
-		if Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
+		if n != _job.get("dog") and Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
 			_near_npc = n
 	if _bus_ride != null:
 		if _bus_ride.at_stop != "":
@@ -3361,6 +3600,20 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f > 120 and fmod(_blink_t, 0.8) < 0.3:
 				break
+	if _args.has("job"):
+		if _args["job"] == "dog":
+			_start_dog_walk()
+		else:
+			_start_courier()
+		if _args.has("jobrun"):
+			print("IS ", _job_text(), " ucret=", _job["pay"])
+			for step in 3:
+				if _job.is_empty():
+					break
+				await get_tree().create_timer(0.5).timeout
+				_place_owner(_job["client_pos"] if _job["type"] == "dog" and _job["stage"] == "back" else _job["target"])
+				await get_tree().create_timer(0.5).timeout
+				print("IS ADIM ", step, " ", _job_text() if not _job.is_empty() else "bitti", " para=", state.d["coins"])
 	if _args.has("summon"):
 		if _args["summon"] == "car":
 			_summon_my_car()

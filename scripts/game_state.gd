@@ -27,7 +27,7 @@ const QUESTS := [
 	["metro", "Metroyla bir yolculuk yap", 1, 40], ["drive", "Arabayla 1 km sür", 1000, 30],
 	["shop", "Market ya da eczaneden alışveriş yap", 1, 20], ["swim", "Göle gir, ıslan", 1, 10],
 	["seesaw", "Hayvanınla tahterevalliye bin", 1, 15], ["npcplay", "Başka bir hayvanla oynat", 1, 20],
-	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
+	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["job", "Bir iş bitir (köpek gezdir / kurye)", 1, 25], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
 ]
 
 
