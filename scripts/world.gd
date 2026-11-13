@@ -17,6 +17,7 @@ const CELL := 16.0
 var toys: Array[Node3D] = []
 var bowl_pos := Vector2.ZERO
 var pool_pos := Vector2(1e6, 1e6)
+var benches: Array = []        # [Vector2 konum, float yaw] (oyuncu bankta kestirebilir)
 var play_rides: Array = []     # [{kind: "tahterevalli"/"salincak", pos: Vector2, pivot: Node3D}]
 var kennel_pos := Vector2(1e6, 1e6)
 var yarn_pos := Vector2.ZERO
@@ -748,6 +749,7 @@ func _water_dir(p: Vector2) -> Vector2:
 
 func _bench(p: Vector2, rot_y: float) -> void:
 	_model("bank_lod", p, 1.9, rot_y)
+	benches.append([p, rot_y])
 	_add_circle(Vector3(p.x, p.y, 0.8))
 
 

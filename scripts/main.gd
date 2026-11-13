@@ -99,6 +99,7 @@ var _args := {}
 var _ready_done := false
 var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
+var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var _weather_seen := ""
@@ -129,6 +130,10 @@ func _ready() -> void:
 	street_food.m = self
 	street_food.state = state
 	add_child(street_food)
+	needs = preload("res://scripts/player_needs.gd").new()
+	needs.m = self
+	needs.state = state
+	add_child(needs)
 	traffic = preload("res://scripts/traffic_law.gd").new()
 	traffic.m = self
 	traffic.state = state
@@ -769,7 +774,7 @@ func _input(e: InputEvent) -> void:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
 					_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
-	if k.keycode == KEY_SPACE and _mode == "play" and _ride == null:
+	if k.keycode == KEY_SPACE and _mode == "play" and _ride == null and not needs.busy():
 		_jump()
 	if _mode == "metro" and _metro and (k.keycode == KEY_SPACE or k.keycode == KEY_ENTER):
 		_metro.fast = true
@@ -794,7 +799,7 @@ func _keyboard_stick() -> void:
 			ui.stick = Vector2.ZERO
 			_kb_stick = false
 		return
-	var run := Input.is_physical_key_pressed(KEY_SHIFT) or _ride != null
+	var run: bool = (Input.is_physical_key_pressed(KEY_SHIFT) and not needs.tired()) or _ride != null
 	ui.stick = v.normalized() * (1.0 if run else 0.3)
 	_kb_stick = true
 
@@ -1171,6 +1176,7 @@ func _use_item(name: String) -> void:
 			_pet_voice(a.kind)
 		_:
 			ui.toast("%s kullanıldı." % name)
+	needs.on_item(name)
 
 
 # ---------------------------------------------------------------- saglik ve veteriner
@@ -1703,6 +1709,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "weather":
 		_open_weather()
+		return
+	if cmd == "sleep" or cmd == "nap":
+		needs.command(cmd)
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
@@ -3415,7 +3424,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated():
+	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3432,6 +3441,7 @@ func _process(dt: float) -> void:
 	traffic.update(dt)
 	_update_job(dt)
 	_update_health(dt)
+	needs.update(dt)
 	_update_play_ride(dt)
 	_update_wet(dt)
 	for k in agents:
@@ -3532,6 +3542,7 @@ func _update_owner(dt: float) -> void:
 		_marker.visible = false
 		to = _target - p
 		d = to.length()
+	limit = minf(limit, needs.max_speed())     # yorgunken yavas yurur, kosamaz
 	if _moving and d < 1.0 and not _queue.is_empty():
 		_go(_queue.pop_front())
 	elif _moving and d > 0.15:
@@ -3617,7 +3628,7 @@ func _update_thrown(dt: float) -> void:
 
 
 func _update_context() -> void:
-	if _mode != "play":
+	if _mode != "play" or needs.busy():
 		ui.set_context("", "")
 		return
 	var o := _owner_pos()
@@ -3689,6 +3700,10 @@ func _update_context() -> void:
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
 		ui.set_context(sf[0], sf[1], sf[2])
+		return
+	var nc: Array = needs.context()
+	if nc.size() == 3 and nc[1] != "":
+		ui.set_context(nc[0], nc[1], nc[2])
 		return
 	if _ride == null and _taxi == null:
 		for pr in world.play_rides:
@@ -4059,6 +4074,31 @@ func _debug_shot() -> void:
 				i += 1
 		for f in 3:
 			await get_tree().process_frame
+	if _args.has("tired"):
+		needs.me()["energy"] = 8.0
+		needs.me()["hunger"] = 14.0
+		print("YORGUN enerji=8 tokluk=14 hiz_siniri=", needs.max_speed())
+	if _args.has("sleep"):
+		if ParkMap.home == null:
+			_enter_home()
+		_place_owner(_home.w2(Vector2(4.55, 3.9)))
+		for f in 3:
+			await get_tree().process_frame
+		_update_context()
+		print("UYKU baglam=", ui._context_cmd, " saat=", clock)
+		needs.sleep()
+	if _args.has("nap") and not world.benches.is_empty():
+		var bb: Array = world.benches[0]
+		var bo := _owner_pos()
+		for b in world.benches:
+			if bo.distance_to(b[0]) < bo.distance_to(bb[0]):
+				bb = b
+		_place_owner(bb[0] + Vector2(-sin(bb[1]), -cos(bb[1])) * 1.0)
+		for f in 3:
+			await get_tree().process_frame
+		_update_context()
+		print("BANK ", bb[0], " baglam=", ui._context_cmd)
+		needs.nap(bb)
 	var view: String = _args.get("view", "")
 	if view != "":
 		ui.visible = false

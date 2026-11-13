@@ -32,6 +32,7 @@ const QUESTS := [
 	["fuel", "Benzinlikte aracına yakıt al", 1, 20],
 	["tea", "Çay ocağında çay iç", 1, 15],
 	["lawful", "Hız sınırına uyarak 1 km araba sür", 1000, 30],
+	["sleep", "Evinde uyu ya da bankta kestir", 1, 15],
 ]
 
 
@@ -76,6 +77,7 @@ func reset() -> void:
 		"pets": {"kopek": _new_pet("Pamuk"), "kedi": _new_pet("Limon")},
 		"found": [], "places": [], "quests": {}, "quest_done": [], "day": "",
 		"last_time": Time.get_unix_time_from_system(), "sound": true,
+		"me": {"hunger": 85.0, "energy": 90.0},
 	}
 	d["pets"]["kopek"]["worn"] = {"neck": "tasma_kirmizi"}
 
