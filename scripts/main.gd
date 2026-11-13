@@ -1792,6 +1792,7 @@ var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
 var _jump_h := 0.0
 var _blink_t := 0.0
+const CAR_SEAT_Y := 0.02      # surus pozunda karakterin arac icindeki yuksekligi
 var _cyclists: Array = []
 var _in_water := false
 var _play_ride: Dictionary = {}
@@ -1913,6 +1914,14 @@ func _dress_polo(car: Node3D) -> void:
 	if body == null:
 		return
 	const U := 1.0 / 3.97                  # 1 metre, model biriminde
+	# Saydam camlar: govde malzemesi cam bolgelerini yari saydam yapan shader ile degisir
+	var src_mat: BaseMaterial3D = (body as MeshInstance3D).get_active_material(0)
+	if src_mat and src_mat.albedo_texture:
+		var gm := ShaderMaterial.new()
+		gm.shader = load("res://shaders/car_body.gdshader")
+		gm.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
+		(body as MeshInstance3D).material_override = gm
+		car.set_meta("glass", true)
 	for spec in [[Vector3(0, 0.141, 0.504), 0.0], [Vector3(0, 0.221, -0.475), PI]]:
 		var plate := Node3D.new()
 		plate.position = spec[0]
@@ -2008,10 +2017,22 @@ func _enter_ride() -> void:
 	_queue.clear()
 	_marker.visible = false
 	owner_model.speed = 0.0
-	_board_pets(not cfg["hide"], cfg.get("pet", Vector3.ZERO))
+	var glass := _ride.has_meta("glass")
+	# Saydam camli arabada hayvan on yolcu koltugunda gorunur
+	_board_pets(not cfg["hide"] or glass, cfg.get("pet", Vector3(0.36, 1.18, 0.12)) if not glass else Vector3(0.36, 1.18, 0.12))
 	if cfg["hide"]:
 		_sfx("araba_kapi", -6.0)
-	if cfg["hide"]:
+	if cfg["hide"] and glass:
+		# Surucu koltugunda oturan karakter + ic mekan (camdan gorunur)
+		owner_model.visible = true
+		owner_model.riding = "araba"
+		owner_model.position = Vector3(-0.36, CAR_SEAT_Y, 0.2)
+		if _cockpit == null:
+			_cockpit = _make_cockpit()
+			_ride.add_child(_cockpit)
+		_cockpit.get_node("Dis").visible = false
+		_cockpit.get_node("Ust").visible = false
+	elif cfg["hide"]:
 		owner_model.visible = false
 	else:
 		owner_model.riding = _ride.get_meta("kind")
@@ -2127,7 +2148,11 @@ func _toggle_fps() -> void:
 	if not _fps:
 		_set_body_visible(_ride, true)
 		if _cockpit:
-			_cockpit.visible = false
+			_cockpit.visible = _ride.has_meta("glass")
+			_cockpit.get_node("Dis").visible = false
+			_cockpit.get_node("Ust").visible = false
+		if _ride.has_meta("glass"):
+			owner_model.visible = true
 		cam.near = 0.05
 		cam.fov = 60.0
 
@@ -2143,6 +2168,11 @@ func _cockpit_camera() -> void:
 			_cockpit = _make_cockpit()
 			_ride.add_child(_cockpit)
 		_cockpit.visible = true
+		_cockpit.get_node("Dis").visible = true
+		_cockpit.get_node("Ust").visible = true
+		owner_model.visible = false
+		if _rider_pet:
+			_rider_pet.visible = true
 		_set_body_visible(_ride, false)
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
@@ -2163,7 +2193,7 @@ func _cockpit_camera() -> void:
 		cpn.clock = ui.clock_label.text
 		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
 			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
-		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.06), Vector3(-0.36, 1.18, 0.22))
+		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.3))
 		cam.near = 0.05
 		cam.fov = 72.0
 	else:
@@ -2307,27 +2337,27 @@ func _make_cockpit() -> Node3D:
 		Kit.cyl(wheel, 0.065, 0.07, 0.04, Vector3(0, 0.01, 0), Kit.mat("26282b", 0.6), 16)
 	# Koltuklar (gri kumas, ortasi koyu seritli) ve basliklar
 	for x in [-0.36, 0.36]:
-		Kit.box(c, Vector3(0.52, 0.12, 0.52), Vector3(x, 0.46, 0.22), fabric)
-		Kit.box(c, Vector3(0.28, 0.125, 0.5), Vector3(x, 0.462, 0.22), fabric2)
-		Kit.box(c, Vector3(0.5, 0.72, 0.12), Vector3(x, 0.86, 0.5), fabric, Vector3(0.12, 0, 0))
-		Kit.box(c, Vector3(0.26, 0.6, 0.125), Vector3(x, 0.86, 0.49), fabric2, Vector3(0.12, 0, 0))
-		Kit.box(c, Vector3(0.26, 0.18, 0.1), Vector3(x, 1.32, 0.57), fabric)
+		_seat(c, Vector3(x, 0.0, 0.0), fabric, fabric2)
 	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)
 	Kit.box(c, Vector3(1.4, 0.6, 0.12), Vector3(0, 0.82, 1.3), fabric, Vector3(0.15, 0, 0))
 	Kit.box(c, Vector3(1.5, 0.02, 1.6), Vector3(0, 0.38, 0.2), Kit.mat("232427", 1.0))
 	# Kapi dosemeleri: kol dayama, gumus kapi kolu, hoparlor
+	# Tavan, direkler, ayna: yalniz birinci sahista (disaridan bakinca govdeden tasmasin)
+	var _ust := Node3D.new()
+	_ust.name = "Ust"
+	c.add_child(_ust)
 	for sx in [-1.0, 1.0]:
 		Kit.box(c, Vector3(0.06, 0.5, 1.5), Vector3(sx * 0.78, 0.72, 0.0), soft)
 		Kit.box(c, Vector3(0.1, 0.05, 0.5), Vector3(sx * 0.72, 0.8, 0.05), dash)
 		Kit.box(c, Vector3(0.02, 0.025, 0.12), Vector3(sx * 0.745, 0.92, -0.32), silver)
 		Kit.cyl(c, 0.07, 0.07, 0.01, Vector3(sx * 0.745, 0.55, -0.35), black, 16, Vector3(0, 0, PI / 2))
 		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)
-		Kit.box(c, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), head, Vector3(-0.55, 0, 0))
-		Kit.box(c, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), head)
-		Kit.box(c, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), head)
-		Kit.box(c, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), head, Vector3(0.15, 0, 0))
-	Kit.box(c, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), head)
-	Kit.box(c, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), black)
+		Kit.box(_ust, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), head, Vector3(-0.55, 0, 0))
+		Kit.box(_ust, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), head)
+		Kit.box(_ust, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), head)
+		Kit.box(_ust, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), head, Vector3(0.15, 0, 0))
+	Kit.box(_ust, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), head)
+	Kit.box(_ust, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), black)
 	var il := OmniLight3D.new()
 	il.position = Vector3(0, 1.3, 0.0)
 	il.omni_range = 1.8
@@ -2335,11 +2365,38 @@ func _make_cockpit() -> Node3D:
 	il.light_color = Color("fff1dc")
 	c.add_child(il)
 	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
+	var dis := Node3D.new()
+	dis.name = "Dis"
+	c.add_child(dis)
 	var paint := Kit.mat("eeeeec" if ResourceLoader.exists("res://assets/models/polo.glb") else "b8322c", 0.3)
-	Kit.box(c, Vector3(1.5, 0.08, 1.2), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))
+	Kit.box(dis, Vector3(1.5, 0.08, 1.2), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))
 	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), black)
+		Kit.box(dis, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), black)
 	return c
+
+
+## Yuvarlak hatli on koltuk: minder + sirt (yumusak kenarli), yan destekler, baslik.
+func _seat(parent: Node3D, at: Vector3, fabric: Material, center: Material) -> void:
+	var s := Node3D.new()
+	s.position = at
+	parent.add_child(s)
+	var cushion := Kit.capsule(s, 0.07, 0.5, Vector3(0, 0.47, 0.22), fabric, Vector3(PI / 2, 0, 0))
+	cushion.scale = Vector3(3.4, 1.0, 1.0)
+	Kit.box(s, Vector3(0.26, 0.05, 0.42), Vector3(0, 0.53, 0.22), center)
+	var back := Node3D.new()
+	back.position = Vector3(0, 0.52, 0.47)
+	back.rotation.x = 0.16
+	s.add_child(back)
+	var bk := Kit.capsule(back, 0.07, 0.62, Vector3(0, 0.33, 0), fabric)
+	bk.scale = Vector3(3.4, 1.0, 1.0)
+	Kit.box(back, Vector3(0.24, 0.5, 0.05), Vector3(0, 0.33, -0.06), center)
+	for sx in [-1.0, 1.0]:
+		Kit.capsule(back, 0.05, 0.55, Vector3(sx * 0.22, 0.32, -0.05), fabric)
+		Kit.capsule(s, 0.05, 0.42, Vector3(sx * 0.22, 0.52, 0.2), fabric, Vector3(PI / 2, 0, 0))
+	var head := Kit.capsule(back, 0.06, 0.24, Vector3(0, 0.8, 0.0), fabric, Vector3(0, 0, PI / 2))
+	head.scale = Vector3(1.0, 1.0, 0.8)
+	for hx in [-0.07, 0.07]:
+		Kit.cyl(back, 0.008, 0.008, 0.12, Vector3(hx, 0.7, 0.0), Kit.mat("b9bcc0", 0.3), 6)
 
 
 func _update_drive(dt: float) -> void:
@@ -2418,7 +2475,8 @@ func _update_drive(dt: float) -> void:
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
 	if absf(_drive_speed) > 1.0 and not _dragging:
-		_cam_yaw = lerp_angle(_cam_yaw, yaw, minf(1.0, dt * 2.2))
+		# Geri giderken kamera arkaya doner
+		_cam_yaw = lerp_angle(_cam_yaw, yaw + (PI if _drive_speed < -1.0 else 0.0), minf(1.0, dt * 2.2))
 	state.count("drive", absf(_drive_speed) * dt)
 	if _engine and float(cfg["engine"]) > 0.0:
 		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
@@ -3914,6 +3972,19 @@ func _debug_shot() -> void:
 				owner_node.position = r.position + Vector3(1.0, 0, 0)
 		_enter_ride()
 		_fps = _args.has("fps")
+		if _args.has("seatdbg"):
+			for f in 20:
+				await get_tree().process_frame
+			var sk: Skeleton3D = owner_model.find_children("*", "Skeleton3D", true, false)[0]
+			var hip := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Hips")).origin
+			var head := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Head")).origin
+			var foot := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("LeftFoot")).origin
+			if _args.has("sidecam"):
+				_mode = "debug"
+				var side := _ride.global_basis.x
+				cam.global_position = _ride.global_position - side * 3.2 + Vector3(0, 1.5, 0) - _ride.global_basis.z * 0.8
+				cam.look_at(_ride.global_position + Vector3(0, 0.9, 0))
+			print("KOLTUK car_y=", _ride.global_position.y, " hip=", hip.y - _ride.global_position.y, " head=", head.y - _ride.global_position.y, " foot=", foot.y - _ride.global_position.y, " anim=", owner_model.anim.current if owner_model.anim else "yok", " vis=", owner_model.visible)
 	if _args.has("trace"):
 		for i in int(_args["trace"]):
 			if _args.get("cmd", "") == "stick":
