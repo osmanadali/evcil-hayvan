@@ -76,7 +76,10 @@ func show_screen(which: String) -> void:
 	photo_hud.visible = which == "photo"
 	close_modal()
 	if which == "menu":
-		menu.get_node("Box/Continue").visible = state.d["started"]
+		var cb: Button = menu.get_node("Box/Continue")
+		cb.visible = state.d["started"]
+		var first: Button = cb if cb.visible else menu.get_node("Box").get_child(1)
+		first.call_deferred("grab_focus")
 	if which == "hud":
 		refresh()
 
@@ -152,7 +155,8 @@ func _build_hud() -> void:
 	pill.add_child(row)
 	_clock_icon = Icon.new("sun", Color("ffd36b"), 24)
 	row.add_child(_clock_icon)
-	clock_label = K.label(row, "10:00", 23, Color.WHITE)
+	clock_label = K.label(row, "10:00", 26, Color.WHITE)
+	clock_label.add_theme_font_override("font", load("res://assets/fonts/Anton-Regular.ttf"))
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
 	var phone_btn := K.button(right, "", "phone", func(): command.emit("phone"), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
 	_glass(phone_btn)
@@ -170,6 +174,17 @@ func _build_hud() -> void:
 	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toast.visible = false
+	# GTA tarzi bildirim: koyu, kose yumusak, solda sari serit
+	var tsb := StyleBoxFlat.new()
+	tsb.bg_color = Color(0.04, 0.04, 0.06, 0.86)
+	tsb.border_width_left = 8
+	tsb.border_color = Color("f5c518")
+	tsb.set_corner_radius_all(4)
+	tsb.content_margin_left = 26
+	tsb.content_margin_right = 22
+	tsb.content_margin_top = 12
+	tsb.content_margin_bottom = 12
+	_toast.add_theme_stylebox_override("panel", tsb)
 	_toast_label = K.label(_toast, "", 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast_label.custom_minimum_size = Vector2(520, 0)
@@ -700,43 +715,133 @@ func open_closet(slot := "") -> void:
 
 # ---------------------------------------------------------------- ana menu ve kurulum
 
+const F_TITLE := preload("res://assets/fonts/Bangers-Regular.ttf")
+const F_BODY := preload("res://assets/fonts/Anton-Regular.ttf")
+const ACCENT := Color("f5c518")     # sari
+const ACCENT2 := Color("ff5f8f")    # pembe
+
+
+func _fx_label(parent: Node, text: String, font: Font, size: int, color: Color, outline := 0) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", font)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	if outline > 0:
+		l.add_theme_constant_override("outline_size", outline)
+		l.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.05))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.45))
+	l.add_theme_constant_override("shadow_offset_x", 4)
+	l.add_theme_constant_override("shadow_offset_y", 5)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
+
+
+## GTA tarzi menu maddesi: buyuk egik yazi; ustune gelince / secilince sari egik serit.
+func _menu_item(parent: Node, text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(470, 74)
+	b.add_theme_font_override("font", F_BODY)
+	b.add_theme_font_size_override("font_size", 50)
+	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	b.add_theme_color_override("font_hover_color", Color("111111"))
+	b.add_theme_color_override("font_focus_color", Color("111111"))
+	b.add_theme_color_override("font_pressed_color", Color("111111"))
+	b.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	b.add_theme_constant_override("outline_size", 6)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0, 0, 0, 0)
+	normal.content_margin_left = 28
+	var hi := StyleBoxFlat.new()
+	hi.bg_color = ACCENT
+	hi.skew = Vector2(0.3, 0)
+	hi.content_margin_left = 28
+	hi.shadow_color = Color(0, 0, 0, 0.35)
+	hi.shadow_size = 8
+	hi.shadow_offset = Vector2(6, 6)
+	b.add_theme_stylebox_override("normal", normal)
+	b.add_theme_stylebox_override("hover", hi)
+	b.add_theme_stylebox_override("focus", hi)
+	b.add_theme_stylebox_override("pressed", hi)
+	b.pressed.connect(cb)
+	b.pressed.connect(func():
+		if K.on_click.is_valid():
+			K.on_click.call())
+	b.mouse_entered.connect(func(): b.grab_focus())
+	parent.add_child(b)
+	return b
+
+
 func _build_menu() -> void:
 	menu = Control.new()
 	K.full(menu)
 	add_child(menu)
-	var shade := ColorRect.new()
-	shade.color = Color(0.12, 0.09, 0.06, 0.28)
-	K.full(shade)
-	menu.add_child(shade)
-	var title := K.outline(K.label(menu, "Patili\nGezinti", 96, Color("fff3d6"), HORIZONTAL_ALIGNMENT_CENTER), 22, Color("6b4a2f"))
-	title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	title.offset_top = 70
-	title.offset_bottom = 330
-	title.add_theme_constant_override("line_spacing", -18)
-	var sub := K.outline(K.label(menu, "Dostunla birlikte Keçiören'i keşfet", 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER), 10, Color("6b4a2f"))
-	sub.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	sub.offset_top = 330
-	sub.offset_bottom = 376
-	var paw := Icon.new("paw", Color("fff3d6"), 70)
-	paw.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	paw.offset_left = -35
-	paw.offset_right = 35
-	paw.offset_top = 14
-	paw.offset_bottom = 78
-	menu.add_child(paw)
+	# Solda koyu gecis (sehir arkada akarken yazilar okunsun)
+	var grad := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color(0.02, 0.02, 0.05, 0.88))
+	gt.gradient.set_color(1, Color(0.02, 0.02, 0.05, 0.0))
+	gt.fill_from = Vector2(0, 0.5)
+	gt.fill_to = Vector2(1, 0.5)
+	grad.texture = gt
+	grad.stretch_mode = TextureRect.STRETCH_SCALE
+	grad.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	grad.offset_right = 900
+	grad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(grad)
+	# Logo: iki renkli, egik
+	var logo := Control.new()
+	logo.position = Vector2(60, 40)
+	logo.rotation = -0.05
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(logo)
+	var paw := Icon.new("paw", ACCENT2, 64)
+	paw.position = Vector2(4, 8)
+	logo.add_child(paw)
+	_fx_label(logo, "PATİLİ", F_TITLE, 128, ACCENT, 18).position = Vector2(76, -18)
+	_fx_label(logo, "GEZİNTİ", F_TITLE, 104, ACCENT2, 16).position = Vector2(40, 96)
+	var tag := _fx_label(logo, "KEÇİÖREN · ANKARA", F_BODY, 26, Color.WHITE, 6)
+	tag.position = Vector2(46, 218)
+	# Menu maddeleri (eski kodla uyum icin Box/Continue adlari korunur)
 	var box := VBoxContainer.new()
 	box.name = "Box"
-	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	box.offset_left = -220
-	box.offset_right = 220
-	box.offset_top = -300
-	box.offset_bottom = -50
-	box.alignment = BoxContainer.ALIGNMENT_END
-	box.add_theme_constant_override("separation", 18)
+	box.position = Vector2(40, 330)
+	box.add_theme_constant_override("separation", 6)
 	menu.add_child(box)
-	var cont := K.button(box, "Devam Et", "play", func(): continue_game.emit(), K.GREEN, Color.WHITE, Vector2(440, 88), 32, 40)
+	var cont := _menu_item(box, "DEVAM ET", func(): continue_game.emit())
 	cont.name = "Continue"
-	K.button(box, "Yeni Oyun", "paw", func(): show_screen("setup"), K.CREAM, K.BROWN, Vector2(440, 88), 32, 40)
+	_menu_item(box, "YENİ OYUN", func(): show_screen("setup"))
+	_menu_item(box, "AYARLAR", func(): open_pause())
+	if not DisplayServer.is_touchscreen_available():
+		_menu_item(box, "ÇIKIŞ", func(): get_tree().quit())
+	# Alt serit: ipucu
+	var bar := ColorRect.new()
+	bar.color = Color(0, 0, 0, 0.55)
+	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.offset_top = -54
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(bar)
+	var hint := _fx_label(bar, "↑ ↓  SEÇ      ENTER  ONAYLA" if not DisplayServer.is_touchscreen_available() else "BİR SEÇENEĞE DOKUN",
+		F_BODY, 22, Color(1, 1, 1, 0.8))
+	hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hint.offset_left = 60
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var ver := _fx_label(bar, "v0.9", F_BODY, 20, Color(1, 1, 1, 0.5))
+	ver.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ver.offset_right = -40
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ver.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var accent := ColorRect.new()
+	accent.color = ACCENT2
+	accent.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	accent.offset_top = -58
+	accent.offset_bottom = -54
+	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(accent)
 
 
 func _build_setup() -> void:

@@ -15,6 +15,7 @@ const Home = preload("res://scripts/home.gd")
 const MetroRide = preload("res://scripts/metro_ride.gd")
 const CarPlay = preload("res://scripts/carplay.gd")
 const ShopInterior = preload("res://scripts/shop_interior.gd")
+const Intro = preload("res://scripts/intro.gd")
 const Npc = preload("res://scripts/npc.gd")
 const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
@@ -201,7 +202,53 @@ func _ready() -> void:
 				_spawn_at_gate(g)
 				break
 	if _args.has("shot"):
-		_debug_shot()
+		if _args.has("intro"):
+			_play_intro()
+			await get_tree().create_timer(float(_args.get("secs", "3"))).timeout
+			get_viewport().get_texture().get_image().save_png(_args["shot"])
+			get_tree().quit()
+		else:
+			_debug_shot()
+	elif travel_to == "" and _mode == "menu":
+		_play_intro()
+
+
+## Acilis introsu: sehrin uzerinde sinematik cekimler, sonra ana menu.
+func _play_intro() -> void:
+	var shots: Array = []
+	var h := func(p: Vector2) -> float: return ParkMap.terrain_height(p)
+	var st := ParkMap.spot("baslangic") if ParkMap.has_spot("baslangic") else Vector2.ZERO
+	shots.append([Vector3(st.x - 90, h.call(st) + 70, st.y + 70), Vector3(st.x - 30, h.call(st) + 48, st.y + 45),
+		Vector3(st.x, h.call(st), st.y), Vector3(st.x + 10, h.call(st), st.y), "KEÇİÖREN", "SUBAYEVLERİ · ANKARA", Color("f5c518")])
+	if ParkMap.zone == "":
+		# Altinpark golu: kiyidan suyun uzerine dogru alcak cekim
+		var c := Vector2(540, 160)
+		shots.append([Vector3(c.x - 25, h.call(c) + 5, c.y - 15), Vector3(c.x - 8, h.call(c) + 3.5, c.y - 4),
+			Vector3(c.x + 40, h.call(c) + 0.5, c.y + 20), Vector3(c.x + 55, h.call(c), c.y + 30), "ALTINPARK", "BİR DOST, KOCA BİR ŞEHİR", Color("2fb7a8")])
+	for r in _rides:
+		if r.get_meta("kind") == "araba":
+			var cp := Vector2(r.position.x, r.position.z)
+			var f := Vector2(-sin(r.rotation.y), -cos(r.rotation.y))
+			var sd := Vector2(-f.y, f.x)
+			var a3 := func(v: Vector2, up: float) -> Vector3: return Vector3(v.x, h.call(v) + up, v.y)
+			shots.append([a3.call(cp + f * 7.0 + sd * 3.5, 1.1), a3.call(cp + f * 5.0 - sd * 2.5, 0.8),
+				r.position + Vector3(0, 0.6, 0), r.position + Vector3(0, 0.5, 0), "33 OA 2003", "SENİN ARABAN HAZIR", Color("ff5f8f")])
+			break
+	if not world.metro_gates.is_empty():
+		var g: Vector2 = world.metro_gates[0]["pos"]
+		shots.append([Vector3(g.x + 14, h.call(g) + 6, g.y + 10), Vector3(g.x + 6, h.call(g) + 3, g.y + 12),
+			Vector3(g.x, h.call(g) + 1, g.y), Vector3(g.x, h.call(g) + 1, g.y), "M4 METRO", "METEOROLOJİ → GAR", Color("e8453c")])
+	var it := Intro.new()
+	it.cam = cam
+	it.shots = shots
+	ui.add_child(it)
+	ui.menu.visible = false
+	ui.hud.visible = false
+	_mode = "intro"
+	it.finished.connect(func():
+		it.queue_free()
+		_mode = "menu"
+		ui.show_screen("menu"))
 
 
 func _notification(what: int) -> void:
@@ -2931,7 +2978,7 @@ func _update_camera_raw(dt: float) -> void:
 			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.25)
 			cam.position = pos
 			cam.look_at(_focus)
-		"debug", "metro":
+		"debug", "metro", "intro":
 			pass
 		"closet":
 			var a := _active()
