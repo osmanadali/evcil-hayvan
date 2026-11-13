@@ -2137,7 +2137,7 @@ func _cockpit_camera() -> void:
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
 		if wheel.has_meta("model"):
-			wheel.basis = Basis(Vector3.RIGHT, -0.3) * Basis(Vector3.BACK, -_steer * 2.6)
+			(wheel.get_node("Simit") as Node3D).rotation.z = -_steer * 2.6
 		else:
 			wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
 		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
@@ -2275,11 +2275,18 @@ func _make_cockpit() -> Node3D:
 	if ResourceLoader.exists("res://assets/models/polo_ic.glb"):
 		var wm: Node3D = load("res://assets/models/polo_ic.glb").instantiate()
 		var k := 0.42                                   # simit capi ~37 cm
-		wm.scale = Vector3.ONE * k
-		wm.position = -Vector3(-0.015, 0.53, 0.0) * k  # simit merkezi pivotta
-		wheel.add_child(wm)
+		# Modelde simidin dusunu capraz: normali ve "yukari" yonu geometriden hesaplandi
+		var n := Vector3(-0.659, 0.403, 0.635).normalized()
+		var up := (Vector3.UP - n * n.dot(Vector3.UP)).normalized()
+		var model_frame := Basis(up.cross(n).normalized(), up, n)      # x, y, z sutunlari
+		var rb := model_frame.inverse()                                 # model -> yerel (z = sururucuye)
+		var spin := Node3D.new()
+		spin.name = "Simit"
+		wheel.add_child(spin)
+		wm.transform = Transform3D(rb.scaled(Vector3.ONE * k), rb * (-Vector3(0.047, 0.566, 0.029)) * k)
+		spin.add_child(wm)
 		wheel.set_meta("model", true)
-		wheel.rotation.x = -0.3
+		wheel.rotation.x = -0.35
 	else:
 		wheel.rotation.x = -1.1
 		Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
