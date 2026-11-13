@@ -103,6 +103,8 @@ var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (script
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
+var radio: Node           # araba radyosu (scripts/car_radio.gd)
+var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -143,6 +145,13 @@ func _ready() -> void:
 	traffic.m = self
 	traffic.state = state
 	add_child(traffic)
+	radio = preload("res://scripts/car_radio.gd").new()
+	radio.m = self
+	add_child(radio)
+	dealer = preload("res://scripts/dealership.gd").new()
+	dealer.m = self
+	dealer.state = state
+	add_child(dealer)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -780,6 +789,8 @@ func _input(e: InputEvent) -> void:
 				_on_command("leash")
 			KEY_T:
 				_on_command("train")
+			KEY_N:
+				radio.cycle()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -1534,6 +1545,8 @@ func _open_phone() -> void:
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
+	if dealer.center != Vector2.INF:
+		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
@@ -1725,6 +1738,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "sleep" or cmd == "nap":
 		needs.command(cmd)
+		return
+	if cmd == "dealer":
+		dealer.open_panel()
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
@@ -2008,6 +2024,8 @@ func _spawn_rides() -> void:
 				break
 			p += Vector2(0.8, 0.0)
 		_place_ride(v, p, PI)
+	dealer.build()
+	dealer.spawn_garage()
 
 
 ## Govde boyasini degistirir (lastik ve camlar koyu oldugu icin carpim az etkiler).
@@ -2179,10 +2197,12 @@ func _enter_ride() -> void:
 		_exit_btn.offset_bottom = -138
 	_exit_btn.visible = touch      # bilgisayarda E tusu
 	_cam_blend = 0.6
+	radio.on_enter()
+	var radio_hint := (" · N radyo" if cfg["hide"] else "")
 	if touch:
-		ui.toast("Çubuk: gaz, fren, direksiyon · kamera düğmesi: içeriden sür")
+		ui.toast("Çubuk: gaz, fren, direksiyon · kamera düğmesi: içeriden sür" + (" · nota düğmesi: radyo" if cfg["hide"] else ""))
 	else:
-		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · E in")
+		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · E in" + radio_hint)
 
 
 ## Hayvanlar araca biner: arabada iceride (gorunmez), iki tekerlide aktif hayvan arkada oturur.
@@ -2229,6 +2249,7 @@ func _exit_ride() -> void:
 		_cam_btn.visible = false
 	if _exit_btn:
 		_exit_btn.visible = false
+	radio.on_exit()
 	_fps = false
 	cam.near = 0.05
 	cam.fov = 60.0
@@ -2307,6 +2328,9 @@ func _cockpit_camera() -> void:
 		cpn.dest_name = minimap.dest_name
 		cpn.speed_kmh = absf(_drive_speed) * 3.6
 		cpn.clock = ui.clock_label.text
+		cpn.radio_name = radio.label()
+		cpn.radio_sub = radio.sub_label()
+		cpn.radio_color = radio.color()
 		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
 			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
 		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.3))
@@ -3460,6 +3484,7 @@ func _process(dt: float) -> void:
 	_update_health(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
+	radio.update(dt)
 	_update_wet(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
@@ -3744,6 +3769,10 @@ func _update_context() -> void:
 	var tx := _nearest_taxi()
 	if tx:
 		ui.set_context("%s Bin" % ("Dolmuşa" if _car_model(tx) == "dolmus" else "Taksiye"), "taxi", "play")
+		return
+	var dc: Array = dealer.context()
+	if not dc.is_empty():
+		ui.set_context(dc[0], dc[1], dc[2])
 		return
 	var rd := _nearest_rideable()
 	if rd:
@@ -4280,6 +4309,18 @@ func _debug_shot() -> void:
 			await get_tree().create_timer(2.0).timeout
 			print("IZ %d %s moving=%s queue=%d%s" % [i * 2, _owner_pos(), _moving, _queue.size(),
 				(" otobus=%s durak=%s hiz=%.1f" % [_bus_ride.line, _bus_ride.at_stop, _bus_ride.speed]) if _bus_ride else (" ev_yerel=%s" % _home.local2(_owner_pos()) if ParkMap.home else "")])
+	if _args.has("radio"):
+		# Test: arabaya bin, iceriden bak, istasyonu ac (CarPlay'de radyo karti)
+		if _ride == null:
+			for r in _rides:
+				if r.get_meta("kind") == "araba" and not r.has_meta("garage"):
+					owner_node.position = r.position + Vector3(1.0, 0, 0)
+			_enter_ride()
+		_fps = true
+		radio.set_station(int(_args["radio"]))
+		print("RADYO ", radio.label(), " · ", radio.sub_label())
+	if _args.has("dealer"):
+		await dealer.debug(_args["dealer"])
 	if _args.has("police") or _args.has("redlight") or _args.has("parkfine"):
 		traffic.update(0.0)
 	if _args.has("police"):

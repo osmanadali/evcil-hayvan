@@ -13,6 +13,9 @@ var route: Array = []
 var dest_name := ""
 var speed_kmh := 0.0
 var clock := "10:00"
+var radio_name := ""
+var radio_sub := ""
+var radio_color := Color("5a5f68")
 var _tex: Texture2D
 var _font: Font
 
@@ -104,6 +107,17 @@ func _draw() -> void:
 		var eta := int(ceil(total / maxf(speed_kmh / 3.6, 8.0) / 60.0))
 		var dist := ("%.1f km" % (total / 1000.0)) if total > 1000.0 else ("%d m" % int(total))
 		draw_string(_font, card.position + Vector2(14, 108), "%s · %d dk" % [dist, eta], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("34c759"))
+	# Radyo karti
+	if radio_name != "":
+		var rc := Rect2(W - 230, 150, 210, 92)
+		draw_rect(rc, Color(0.09, 0.1, 0.12, 0.92))
+		draw_rect(Rect2(rc.position, Vector2(6, rc.size.y)), radio_color)
+		draw_string(_font, rc.position + Vector2(16, 24), "♪ RADYO", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, radio_color.lightened(0.3))
+		draw_string(_font, rc.position + Vector2(16, 50), radio_name, HORIZONTAL_ALIGNMENT_LEFT, 186, 20, Color.WHITE)
+		draw_string(_font, rc.position + Vector2(16, 76), radio_sub, HORIZONTAL_ALIGNMENT_LEFT, 186, 15, Color("a0a4ab"))
+		# Dock'taki muzik simgesinin cevresi: radyo aciksa renkli cerceve
+		if radio_sub != "N ile aç":
+			draw_rect(Rect2(Vector2(10, 112), Vector2(50, 50)), radio_color, false, 3.0)
 	# Hiz
 	draw_circle(Vector2(118, H - 50), 32.0, Color.WHITE)
 	draw_string(_font, Vector2(86, H - 42), "%d" % int(speed_kmh), HORIZONTAL_ALIGNMENT_CENTER, 64, 26, Color.BLACK)
