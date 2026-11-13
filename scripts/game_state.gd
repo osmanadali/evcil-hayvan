@@ -36,6 +36,8 @@ const QUESTS := [
 	["train", "Hayvanına numara öğret: 3 kez ödül ver", 3, 25],
 	["radio", "Arabada radyo aç", 1, 10],
 	["dealer", "Otokent Galeri'den araç satın al", 1, 50],
+	["bill", "Bir faturanı öde", 1, 20],
+	["atm", "ATM'den para çek ya da yatır", 1, 10],
 ]
 
 

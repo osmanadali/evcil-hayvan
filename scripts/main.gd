@@ -105,6 +105,7 @@ var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_car
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
+var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -152,6 +153,10 @@ func _ready() -> void:
 	dealer.m = self
 	dealer.state = state
 	add_child(dealer)
+	bank = preload("res://scripts/bank.gd").new()
+	bank.m = self
+	bank.state = state
+	add_child(bank)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -204,6 +209,7 @@ func _ready() -> void:
 	_spawn_coins()
 	street_food.build()
 	pet_care.build()
+	bank.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -1544,6 +1550,8 @@ func _open_phone() -> void:
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
+	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
+	apps.append(["Faturalar" + (" (%d)" % bank.unpaid().size() if not bank.unpaid().is_empty() else ""), "d9423a", "list", func(): bank.open_bills(false)])
 	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
 	if dealer.center != Vector2.INF:
 		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
@@ -1744,6 +1752,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
+		return
+	if cmd == "atm" or cmd == "bank_app" or cmd == "bills_app":
+		bank.command(cmd)
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
@@ -3476,6 +3487,7 @@ func _process(dt: float) -> void:
 			owner_model.position.y = _jump_h
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
+	bank.update(dt)
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
@@ -3769,6 +3781,10 @@ func _update_context() -> void:
 	var tx := _nearest_taxi()
 	if tx:
 		ui.set_context("%s Bin" % ("Dolmuşa" if _car_model(tx) == "dolmus" else "Taksiye"), "taxi", "play")
+		return
+	var bc: Array = bank.context()
+	if not bc.is_empty():
+		ui.set_context(bc[0], bc[1], bc[2])
 		return
 	var dc: Array = dealer.context()
 	if not dc.is_empty():
@@ -4083,6 +4099,12 @@ func _debug_shot() -> void:
 			fuel.set_frac(fk, float(_args["fuel"]))
 	if _args.has("atpump"):
 		await fuel.debug_at_pump(_args["atpump"] if _args["atpump"] != "1" else "")
+	if _args.has("atm"):
+		bank.debug_atm()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("bills"):
+		bank.debug_bills()
+		await get_tree().create_timer(0.6).timeout
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout
