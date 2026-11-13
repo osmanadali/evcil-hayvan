@@ -720,6 +720,8 @@ func _input(e: InputEvent) -> void:
 				ui.open_quests()
 			KEY_J:
 				_open_jobs()
+			KEY_R:
+				_on_command("come")
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -955,9 +957,24 @@ func _exit_shop() -> void:
 	_cam_pitch = 0.27
 
 
+## Eczane tezgahi: eczacidan iste (kucuk panel).
 func _shop_buy() -> void:
-	_sfx("kasa", -8.0)
-	ui.open_store(_shop.kind, _shop.title)
+	var a := _active()
+	var body: VBoxContainer = ui._open_panel("ECZANE", "%s için · Cüzdan: %d ₺" % [state.pet(a.kind)["name"], state.d["coins"]])
+	for it in ui.SHOP_ITEMS["eczane"]:
+		var item: Array = it
+		ui._panel_item(body, "%s  ·  %d ₺" % [item[1].to_upper(), item[2]], func():
+			if not state.spend(int(item[2])):
+				ui.toast("Paran yetmiyor.")
+				return
+			_on_bought({item[0]: 1}, int(item[2]))
+			if item[3] == "bag":
+				var bag: Dictionary = state.d.get("bag", {})
+				bag[item[1]] = int(bag.get(item[1], 0)) + 1
+				state.d["bag"] = bag
+			_shop_buy())
+	ui._panel_item(body, "KAPAT", func(): ui.close_modal())
+	ui._focus_first(body)
 
 
 var _cart := {}            # marketteki sepet: kimlik -> adet
@@ -1127,7 +1144,7 @@ func _open_vet() -> void:
 	var sick: String = p.get("sick", "")
 	var vac: Dictionary = p.get("vaccines", {})
 	var sub := "%s · %s" % [p["name"], ("Teşhis: " + sick) if sick != "" else "Sağlıklı görünüyor"]
-	var body: VBoxContainer = ui._open_page("MUAYENE", sub)
+	var body: VBoxContainer = ui._open_panel("MUAYENE", sub)
 	# Hayvan masaya cikar
 	a.place(_shop.w2(_shop.table_local))
 	a.position.y = _shop.global_position.y + 0.93
@@ -1137,7 +1154,7 @@ func _open_vet() -> void:
 		if is_instance_valid(a):
 			a.set_process(true)
 			a.place(_owner_pos() + Vector2(0.8, 0.6)))
-	ui._menu_item(body, ("TEDAVİ ET  ·  60 ₺" if sick != "" else "GENEL KONTROL  ·  30 ₺"), func():
+	ui._panel_item(body, ("TEDAVİ ET  ·  60 ₺" if sick != "" else "GENEL KONTROL  ·  30 ₺"), func():
 		var cost := 60 if sick != "" else 30
 		if not state.spend(cost):
 			ui.toast("Paran yetmiyor.")
@@ -1155,7 +1172,7 @@ func _open_vet() -> void:
 		var vn: String = v[0]
 		var cost: int = v[1]
 		var done := vac.has(vn)
-		ui._menu_item(body, ("%s AŞISI  ·  YAPILDI ✓" % vn.to_upper()) if done else ("%s AŞISI  ·  %d ₺" % [vn.to_upper(), cost]), func():
+		ui._panel_item(body, ("%s AŞISI  ·  YAPILDI ✓" % vn.to_upper()) if done else ("%s AŞISI  ·  %d ₺" % [vn.to_upper(), cost]), func():
 			if done:
 				ui.toast("%s aşısı %s tarihinde yapıldı." % [vn, vac[vn]])
 				return
@@ -1168,13 +1185,13 @@ func _open_vet() -> void:
 			_pet_voice(a.kind)
 			ui.toast("%s aşısı yapıldı. %s biraz mızmızlandı ama ödül bisküvisiyle unuttu." % [vn, p["name"]])
 			_open_vet())
-	ui._menu_item(body, "AŞI KARNESİ", func():
+	ui._panel_item(body, "AŞI KARNESİ", func():
 		var lines := []
 		for vn in ["Kuduz", "Karma", "İç-Dış Parazit"]:
 			lines.append("%s: %s" % [vn, vac.get(vn, "yapılmadı")])
 		lines.append("Son kontrol: %s" % p.get("checkup", "yok"))
 		ui.toast("  ·  ".join(lines)))
-	ui._menu_item(body, "GERİ", func(): ui.close_modal())
+	ui._panel_item(body, "KAPAT", func(): ui.close_modal())
 	ui._focus_first(body)
 
 

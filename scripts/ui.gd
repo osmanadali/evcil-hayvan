@@ -89,6 +89,8 @@ func is_blocking() -> bool:
 
 
 func _process(dt: float) -> void:
+	if _hint:
+		_hint.modulate.a = 0.0 if _modal != null else 1.0
 	_refresh_t -= dt
 	if _refresh_t <= 0.0 and hud.visible:
 		_refresh_t = 0.3
@@ -208,7 +210,7 @@ func _build_hud() -> void:
 	_context.offset_right = 170
 	_context.offset_top = -110
 	_context.offset_bottom = -40
-	_actions = GridContainer.new()
+	_actions = ActionGrid.new()
 	_actions.columns = 4
 	_actions.add_theme_constant_override("h_separation", 14)
 	_actions.add_theme_constant_override("v_separation", 10)
@@ -276,11 +278,47 @@ func _input(e: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+var _hint: PanelContainer
+var _hint_label: Label
+
+
+## Etkilesim: bilgisayarda ekranda dugme yok, sol ustte "[F] ..." ipucu; tablette kucuk F dugmesi.
 func set_context(text: String, cmd: String, icon := "star") -> void:
-	if cmd == _context_cmd and _context.visible == (cmd != ""):
+	if _hint == null:
+		_hint = PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.03, 0.03, 0.05, 0.82)
+		sb.border_width_left = 6
+		sb.border_color = ACCENT
+		sb.content_margin_left = 16
+		sb.content_margin_right = 18
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		_hint.add_theme_stylebox_override("panel", sb)
+		_hint.position = Vector2(24, 150)
+		_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hud.add_child(_hint)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		_hint.add_child(row)
+		var key := PanelContainer.new()
+		var ks := StyleBoxFlat.new()
+		ks.bg_color = Color.WHITE
+		ks.set_corner_radius_all(6)
+		ks.content_margin_left = 10
+		ks.content_margin_right = 10
+		key.add_theme_stylebox_override("panel", ks)
+		row.add_child(key)
+		_fx_label(key, "F", F_BODY, 24, Color("111111"))
+		_hint_label = _fx_label(row, "", F_BODY, 24, Color.WHITE)
+	if cmd == _context_cmd and _hint.visible == (cmd != "" or text != ""):
 		return
 	_context_cmd = cmd
-	_context.visible = cmd != ""
+	var touch := DisplayServer.is_touchscreen_available()
+	_hint.visible = text != "" and not touch
+	(_hint.get_child(0).get_child(0) as Control).visible = cmd != ""
+	_hint_label.text = text
+	_context.visible = cmd != "" and touch
 	K.set_text(_context, text)
 	var ic := _context.find_children("*", "Control", true, false)
 	for c in ic:
@@ -675,6 +713,61 @@ func _open_page(title: String, subtitle := "") -> VBoxContainer:
 	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_modal.add_child(accent)
 	return body
+
+
+## Kucuk yan panel (dukkan, veteriner): oyun gorunur kalir, sagda koyu kart.
+func _open_panel(title: String, subtitle := "") -> VBoxContainer:
+	close_modal()
+	_context.modulate.a = 0.0
+	_modal = Control.new()
+	K.full(_modal)
+	_modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_modal)
+	_modal.tree_exiting.connect(func(): if is_instance_valid(_context): _context.modulate.a = 1.0)
+	var card := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.03, 0.05, 0.88)
+	sb.border_width_top = 6
+	sb.border_color = ACCENT
+	sb.content_margin_left = 22
+	sb.content_margin_right = 22
+	sb.content_margin_top = 14
+	sb.content_margin_bottom = 16
+	card.add_theme_stylebox_override("panel", sb)
+	card.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	card.offset_left = -470
+	card.offset_right = -36
+	card.offset_top = -120
+	card.offset_bottom = 120
+	card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_modal.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	card.add_child(col)
+	_fx_label(col, title, F_TITLE, 52, ACCENT, 8)
+	if subtitle != "":
+		var st := _fx_label(col, subtitle, F_BODY, 20, Color(1, 1, 1, 0.8))
+		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		st.custom_minimum_size = Vector2(400, 0)
+	var sep := ColorRect.new()
+	sep.color = ACCENT2
+	sep.custom_minimum_size = Vector2(0, 3)
+	col.add_child(sep)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 0)
+	col.add_child(body)
+	var hint := _fx_label(col, "ESC  KAPAT", F_BODY, 18, Color(1, 1, 1, 0.5))
+	hint.custom_minimum_size = Vector2(0, 30)
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	return body
+
+
+## Paneldeki kucuk madde.
+func _panel_item(parent: Node, text: String, cb: Callable) -> Button:
+	var b := _menu_item(parent, text, cb)
+	b.custom_minimum_size = Vector2(400, 46)
+	b.add_theme_font_size_override("font_size", 28)
+	return b
 
 
 func _focus_first(body: Node) -> void:
@@ -1217,3 +1310,13 @@ func _build_photo_hud() -> void:
 func set_photo_chrome(on: bool) -> void:
 	for c in photo_hud.get_children():
 		c.visible = on
+
+
+## Komut dugmeleri yalniz dokunmatik ekranda gorunur (bilgisayarda klavye: R cagir, Bosluk zipla).
+class ActionGrid extends GridContainer:
+	func _process(_dt: float) -> void:
+		if visible and not DisplayServer.is_touchscreen_available():
+			modulate.a = 0.0
+			mouse_filter = Control.MOUSE_FILTER_IGNORE
+			for c in find_children("*", "Button", true, false):
+				c.mouse_filter = Control.MOUSE_FILTER_IGNORE
