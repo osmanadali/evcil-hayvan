@@ -3198,6 +3198,7 @@ func _debug_shot() -> void:
 				"quests": ui.open_quests()
 				"closet": ui.open_closet()
 				"pause": ui.open_pause()
+				"settings": ui.open_settings()
 				"map": map_screen.open(_owner_pos())
 				"photo": _on_photo("enter")
 			if _args.has("cmd"):

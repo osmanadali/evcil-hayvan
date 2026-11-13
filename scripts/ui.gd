@@ -603,19 +603,128 @@ func open_quests() -> void:
 		K.label(chip, pl[0] if found else "? ? ?", 19, Color.WHITE if found else K.MUTED)
 
 
+## GTA tarzi tam ekran sayfa (duraklatma / ayarlar): solda koyu gecis, egik baslik, buyuk maddeler.
+func _open_page(title: String, subtitle := "") -> VBoxContainer:
+	close_modal()
+	_modal = Control.new()
+	K.full(_modal)
+	add_child(_modal)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.05, 0.45)
+	K.full(dim)
+	_modal.add_child(dim)
+	var grad := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color(0.02, 0.02, 0.05, 0.92))
+	gt.gradient.set_color(1, Color(0.02, 0.02, 0.05, 0.0))
+	gt.fill_to = Vector2(1, 0)
+	grad.texture = gt
+	grad.stretch_mode = TextureRect.STRETCH_SCALE
+	grad.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	grad.offset_right = 980
+	grad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_modal.add_child(grad)
+	var head := Control.new()
+	head.position = Vector2(60, 40)
+	head.rotation = -0.04
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_modal.add_child(head)
+	_fx_label(head, title, F_TITLE, 96, ACCENT, 16)
+	var stripe := Panel.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = ACCENT2
+	sb.skew = Vector2(0.35, 0)
+	stripe.add_theme_stylebox_override("panel", sb)
+	stripe.position = Vector2(8, 104)
+	stripe.size = Vector2(70 + title.length() * 46, 14)
+	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(stripe)
+	if subtitle != "":
+		_fx_label(head, subtitle, F_BODY, 26, Color.WHITE, 6).position = Vector2(14, 126)
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	scroll.offset_left = 40
+	scroll.offset_right = 760
+	scroll.offset_top = 210
+	scroll.offset_bottom = -70
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	_modal.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 4)
+	scroll.add_child(body)
+	var bar := ColorRect.new()
+	bar.color = Color(0, 0, 0, 0.55)
+	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.offset_top = -54
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_modal.add_child(bar)
+	var hint := _fx_label(bar, "ESC  GERİ      ENTER  SEÇ" if not DisplayServer.is_touchscreen_available() else "BİR SEÇENEĞE DOKUN", F_BODY, 22, Color(1, 1, 1, 0.8))
+	hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hint.offset_left = 60
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var accent := ColorRect.new()
+	accent.color = ACCENT2
+	accent.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	accent.offset_top = -58
+	accent.offset_bottom = -54
+	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_modal.add_child(accent)
+	return body
+
+
+func _focus_first(body: Node) -> void:
+	for c in body.get_children():
+		if c is Button:
+			c.call_deferred("grab_focus")
+			return
+
+
 func open_pause() -> void:
-	var body := _open_modal("Menü", 90, 90)
-	body.add_theme_constant_override("separation", 12)
-	K.button(body, "Devam Et", "play", close_modal, K.GREEN, Color.WHITE, Vector2(0, 72), 26, 28)
-	K.button(body, "Görevler", "list", func(): open_quests(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
-	K.button(body, "Dolap", "shirt", func(): open_closet(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
-	K.button(body, "Fotoğraf Çek", "camera", func():
+	if menu.visible:
+		open_settings()
+		return
+	var body := _open_page("DURAKLATILDI", "%d altın  ·  %s" % [state.d["coins"], clock_label.text])
+	_menu_item(body, "DEVAM ET", close_modal)
+	_menu_item(body, "GÖREVLER", func(): open_quests())
+	_menu_item(body, "DOLAP", func(): open_closet())
+	_menu_item(body, "FOTOĞRAF ÇEK", func():
 		close_modal()
-		photo.emit("enter"), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
-	K.button(body, "Ses: Açık" if state.d["sound"] else "Ses: Kapalı", "sound", func():
+		photo.emit("enter"))
+	_menu_item(body, "AYARLAR", func(): open_settings())
+	_menu_item(body, "ANA MENÜ", func(): back_to_menu.emit())
+	_focus_first(body)
+
+
+## Ayarlar: ses, tam ekran, kontroller.
+func open_settings() -> void:
+	var body := _open_page("AYARLAR")
+	var snd := "SES:  AÇIK" if state.d["sound"] else "SES:  KAPALI"
+	_menu_item(body, snd, func():
 		state.d["sound"] = not state.d["sound"]
-		open_pause(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
-	K.button(body, "Ana Menü", "home", func(): back_to_menu.emit(), K.SOFT, K.BROWN, Vector2(0, 72), 26, 28)
+		state.save_game()
+		open_settings())
+	if not DisplayServer.is_touchscreen_available():
+		var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+		_menu_item(body, "TAM EKRAN:  " + ("AÇIK" if full else "KAPALI"), func():
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+			open_settings())
+	var info := _fx_label(body, "KONTROLLER", F_BODY, 30, ACCENT, 6)
+	info.custom_minimum_size = Vector2(0, 56)
+	info.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var keys := "W A S D  yürü / sür     SHIFT  koş     BOŞLUK  zıpla, el freni\nE  etkileşim     V  araç içi kamera     M  harita\nP  telefon     G  görevler     C  fotoğraf     ESC  menü" \
+		if not DisplayServer.is_touchscreen_available() else "Sol alttaki çubukla yürü, ekranı sürükleyerek etrafına bak.\nHayvanına dokun: sev, besle, oyna."
+	var kl := _fx_label(body, keys, F_BODY, 22, Color(1, 1, 1, 0.85))
+	kl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	kl.add_theme_constant_override("line_spacing", 6)
+	_menu_item(body, "GERİ", func():
+		if menu.visible:
+			close_modal()
+		else:
+			open_pause())
+	_focus_first(body)
 
 
 func _open_food() -> void:
@@ -743,9 +852,9 @@ func _menu_item(parent: Node, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.custom_minimum_size = Vector2(470, 74)
+	b.custom_minimum_size = Vector2(470, 66)
 	b.add_theme_font_override("font", F_BODY)
-	b.add_theme_font_size_override("font_size", 50)
+	b.add_theme_font_size_override("font_size", 46)
 	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	b.add_theme_color_override("font_hover_color", Color("111111"))
 	b.add_theme_color_override("font_focus_color", Color("111111"))
@@ -815,7 +924,7 @@ func _build_menu() -> void:
 	var cont := _menu_item(box, "DEVAM ET", func(): continue_game.emit())
 	cont.name = "Continue"
 	_menu_item(box, "YENİ OYUN", func(): show_screen("setup"))
-	_menu_item(box, "AYARLAR", func(): open_pause())
+	_menu_item(box, "AYARLAR", func(): open_settings())
 	if not DisplayServer.is_touchscreen_available():
 		_menu_item(box, "ÇIKIŞ", func(): get_tree().quit())
 	# Alt serit: ipucu
@@ -848,22 +957,73 @@ func _build_setup() -> void:
 	setup = Control.new()
 	K.full(setup)
 	add_child(setup)
-	var shade := ColorRect.new()
-	shade.color = Color(0.12, 0.09, 0.06, 0.45)
-	K.full(shade)
-	setup.add_child(shade)
-	var p := K.panel(setup, K.CREAM, 48, 0, Color.WHITE, 16)
-	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	p.offset_left = -400
-	p.offset_right = 400
-	p.offset_top = -340
-	p.offset_bottom = 340
+	var grad := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color(0.02, 0.02, 0.05, 0.92))
+	gt.gradient.set_color(1, Color(0.02, 0.02, 0.05, 0.05))
+	gt.fill_to = Vector2(1, 0)
+	grad.texture = gt
+	grad.stretch_mode = TextureRect.STRETCH_SCALE
+	K.full(grad)
+	grad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	setup.add_child(grad)
+	var head := Control.new()
+	head.position = Vector2(60, 36)
+	head.rotation = -0.04
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	setup.add_child(head)
+	_fx_label(head, "YENİ OYUN", F_TITLE, 96, ACCENT, 16)
+	var stripe := Panel.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = ACCENT2
+	sb.skew = Vector2(0.35, 0)
+	stripe.add_theme_stylebox_override("panel", sb)
+	stripe.position = Vector2(8, 104)
+	stripe.size = Vector2(430, 14)
+	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(stripe)
 	var col := VBoxContainer.new()
 	col.name = "Col"
-	col.add_theme_constant_override("separation", 10)
-	K.full(col, 30, 20, 30, 22)
-	p.add_child(col)
+	col.add_theme_constant_override("separation", 8)
+	col.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	col.offset_left = 64
+	col.offset_right = 720
+	col.offset_top = 160
+	col.offset_bottom = -20
+	setup.add_child(col)
 	_fill_setup()
+
+
+## Egik secim karosu: secili = sari zemin siyah yazi, degil = koyu yari saydam.
+func _tile(parent: Node, text: String, on: bool, cb: Callable, color := ACCENT, size := Vector2(0, 66), font_size := 38) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = size
+	b.add_theme_font_override("font", F_BODY)
+	b.add_theme_font_size_override("font_size", font_size)
+	var fg := Color("111111") if on else Color.WHITE
+	for k in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color"]:
+		b.add_theme_color_override(k, fg)
+	var st := StyleBoxFlat.new()
+	st.bg_color = color if on else Color(1, 1, 1, 0.08)
+	st.border_color = color
+	st.set_border_width_all(0 if on else 3)
+	st.skew = Vector2(0.25, 0)
+	st.content_margin_left = 18
+	st.content_margin_right = 18
+	var hv := st.duplicate()
+	hv.bg_color = color.lerp(Color.WHITE, 0.15) if on else Color(1, 1, 1, 0.2)
+	b.add_theme_stylebox_override("normal", st)
+	b.add_theme_stylebox_override("hover", hv)
+	b.add_theme_stylebox_override("focus", hv)
+	b.add_theme_stylebox_override("pressed", hv)
+	b.pressed.connect(cb)
+	b.pressed.connect(func():
+		if K.on_click.is_valid():
+			K.on_click.call())
+	parent.add_child(b)
+	return b
 
 
 func _fill_setup() -> void:
@@ -871,49 +1031,51 @@ func _fill_setup() -> void:
 	var old_name := _name_edit.text if _name_edit else ""
 	for c in col.get_children():
 		c.queue_free()
-	K.label(col, "Yeni Oyun", 36, K.BROWN, HORIZONTAL_ALIGNMENT_CENTER)
-	K.label(col, "Sen kimsin?", 24, K.MUTED)
-	_choice(col, [["Kadın", "kadin", "walk"], ["Erkek", "erkek", "walk"]], _setup_owner, func(v): _setup_owner = v)
-	K.label(col, "İlk dostun", 24, K.MUTED)
-	_choice(col, [["Köpek", "kopek", "paw"], ["Kedi", "kedi", "paw"]], _setup_pet, func(v): _setup_pet = v)
-	K.label(col, "Dostunun adı", 24, K.MUTED)
+	_fx_label(col, "SEN KİMSİN?", F_BODY, 30, Color.WHITE, 6)
+	_choice(col, [["KADIN", "kadin", "walk"], ["ERKEK", "erkek", "walk"]], _setup_owner, func(v): _setup_owner = v)
+	_fx_label(col, "İLK DOSTUN", F_BODY, 30, Color.WHITE, 6)
+	_choice(col, [["KÖPEK", "kopek", "paw"], ["KEDİ", "kedi", "paw"]], _setup_pet, func(v): _setup_pet = v)
+	_fx_label(col, "DOSTUNUN ADI", F_BODY, 30, Color.WHITE, 6)
 	_name_edit = LineEdit.new()
 	_name_edit.text = old_name
 	_name_edit.placeholder_text = "Pamuk" if _setup_pet == "kopek" else "Limon"
 	_name_edit.max_length = 12
-	_name_edit.custom_minimum_size = Vector2(0, 70)
-	_name_edit.add_theme_font_size_override("font_size", 30)
-	_name_edit.add_theme_color_override("font_color", K.BROWN)
-	_name_edit.add_theme_color_override("font_placeholder_color", K.MUTED)
-	var sb := K.style(K.SOFT, 24)
+	_name_edit.custom_minimum_size = Vector2(0, 64)
+	_name_edit.add_theme_font_override("font", F_BODY)
+	_name_edit.add_theme_font_size_override("font_size", 38)
+	_name_edit.add_theme_color_override("font_color", Color.WHITE)
+	_name_edit.add_theme_color_override("font_placeholder_color", Color(1, 1, 1, 0.4))
+	_name_edit.add_theme_color_override("caret_color", ACCENT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1, 1, 1, 0.08)
+	sb.border_width_bottom = 5
+	sb.border_color = ACCENT
 	sb.content_margin_left = 22
-	for s in ["normal", "focus"]:
-		_name_edit.add_theme_stylebox_override(s, sb)
+	for s2 in ["normal", "focus"]:
+		_name_edit.add_theme_stylebox_override(s2, sb)
 	col.add_child(_name_edit)
 	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	spacer.custom_minimum_size = Vector2(0, 8)
 	col.add_child(spacer)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", 18)
 	col.add_child(row)
-	K.button(row, "Geri", "come", func(): show_screen("menu"), K.SOFT, K.BROWN, Vector2(180, 84), 28, 34)
-	var go := K.button(row, "Başla", "play", func():
+	_tile(row, "GERİ", false, func(): show_screen("menu"), Color.WHITE, Vector2(200, 74), 38)
+	var go := _tile(row, "BAŞLA", true, func():
 		var n := _name_edit.text.strip_edges()
-		start_game.emit(_setup_owner, _setup_pet, n if n != "" else _name_edit.placeholder_text),
-		K.GREEN, Color.WHITE, Vector2(0, 84), 32, 34)
+		start_game.emit(_setup_owner, _setup_pet, n if n != "" else _name_edit.placeholder_text), ACCENT2, Vector2(0, 74), 42)
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
 func _choice(parent: Node, options: Array, current: String, cb: Callable) -> void:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", 18)
 	parent.add_child(row)
 	for o in options:
 		var id: String = o[1]
-		var on := id == current
-		var b := K.button(row, o[0], o[2], func():
+		var b := _tile(row, o[0], id == current, func():
 			cb.call(id)
-			_fill_setup(), K.ORANGE if on else K.SOFT, Color.WHITE if on else K.BROWN, Vector2(0, 88), 30, 30)
+			_fill_setup())
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
