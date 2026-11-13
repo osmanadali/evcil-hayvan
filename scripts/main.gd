@@ -533,6 +533,30 @@ func _spawn_npcs() -> void:
 			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
 			add_child(car)
 			_cars.append(car)
+	# Bisikletliler: yolun saginda yavas gider, donerken kolla isaret verir
+	for i in (4 if ParkMap.zone == "" else 2):
+		var bike := _vehicle("res://assets/models/bisiklet.glb", 1.75, true)
+		if bike == null:
+			break
+		var cy := Car.new()
+		cy.cruise = rng.randf_range(3.8, 5.2)
+		for t in 40:
+			var k := rng.randi() % ParkMap.nodes.size()
+			if ParkMap.road_next[k].size() > 0 and ParkMap.inside_bounds(ParkMap.nodes[k], 20.0):
+				cy.node = k
+				break
+		cy.owner_node = owner_node
+		cy.add_child(bike)
+		add_child(cy)
+		var rd := PersonModel.new()
+		rd.kind = "kadin" if i % 2 == 0 else "erkek"
+		rd.tint = Color(["2f62a8", "e07b1f", "3f8f4a", "c8322b"][i % 4])
+		bike.add_child(rd)
+		rd.riding = "bisiklet"
+		rd.ride_lean = 0.6
+		rd.position = Vector3(0, 0.97 + 0.09 - rd.hips_height(), 0.2)
+		cy.rider = rd
+		_cyclists.append(cy)
 	# Sokak kopekleri: kulaklari kupeli, sokak aginda kendi baslarina gezer
 	for i in 5:
 		var sd := _npc_pet("kopek", Color(["c9a070", "8a7a66", "e8dcc4", "6b5a48", "b89a74"][i]), rng.randf_range(1.0, 1.15))
@@ -1292,6 +1316,8 @@ var _steer := 0.0
 var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
 var _jump_h := 0.0
+var _blink_t := 0.0
+var _cyclists: Array = []
 var _in_water := false
 var _play_ride: Dictionary = {}
 ## Dolaptaki kiyafetler: [ad, tisort, desen rengi, desen (0 duz, 1 cizgili, 2 kareli), pantolon ("" = kot)]
@@ -1375,6 +1401,7 @@ func _spawn_rides() -> void:
 		else:
 			_dress_polo(car)
 		car.set_meta("kind", "araba")
+		car.set_meta("blinkers", Car.add_blinkers(car))
 		_place_ride(car, p, atan2(-dir.x, -dir.y))
 	# Bahce kapisinin onunde bisiklet ve scooter
 	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.6)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(2.2, 3.6)],
@@ -1880,6 +1907,10 @@ func _update_drive(dt: float) -> void:
 	var pitch_to := slope + clampf(accel * 0.004, -0.03, 0.02) * (1.0 if hide else 0.5)
 	_ride.rotation.x = lerpf(_ride.rotation.x, pitch_to, minf(1.0, dt * 6.0))
 	World.spin_wheels(_ride, _drive_speed * dt, _steer * float(cfg["lock"]))
+	_blink_t += dt
+	var turn := (1 if _steer > 0.0 else -1) if absf(_steer) > 0.3 and absf(_drive_speed) < 14.0 else 0
+	if _ride.has_meta("blinkers"):
+		Car.blink(_ride.get_meta("blinkers"), turn, _blink_t)
 	if hide:
 		# Araba: virajda govde hafif disa yatar
 		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.04, minf(1.0, dt * 3.0))
@@ -1890,7 +1921,15 @@ func _update_drive(dt: float) -> void:
 		owner_model.ride_speed = absf(_drive_speed)
 		if cfg.has("grip"):
 			var g: Vector3 = cfg["grip"]
-			owner_model.grips = [_ride.global_transform * Vector3(-g.x, g.y, g.z), _ride.global_transform * Vector3(g.x, g.y, g.z)]
+			var gl := _ride.global_transform * Vector3(-g.x, g.y, g.z)
+			var gr := _ride.global_transform * Vector3(g.x, g.y, g.z)
+			# Bisiklette donerken el isareti (yavas giderken direksiyonu kirinca)
+			if _ride.get_meta("kind") == "bisiklet" and turn != 0 and absf(_drive_speed) > 1.0 and absf(_drive_speed) < 5.0:
+				if turn < 0:
+					gl = _ride.global_transform * Vector3(-0.95, 1.42, 0.2)
+				else:
+					gr = _ride.global_transform * Vector3(0.95, 1.42, 0.2)
+			owner_model.grips = [gl, gr]
 	if _rider_pet:
 		var seat: Vector3 = _rider_pet.get_meta("seat")
 		_rider_pet.global_transform = _ride.global_transform * Transform3D(Basis(), seat - Vector3(0, 0.62, 0))
@@ -3159,6 +3198,20 @@ func _debug_shot() -> void:
 		for sp in world.shop_spots:
 			if sp.get("kind", "") == _args["shop"]:
 				_enter_shop(sp)
+				break
+	if _args.has("follow"):
+		# Test: bir bisikletliyi / arabayi arkadan izle, sinyali zorla
+		var tgt: Node3D = _cyclists[0] if _args["follow"] == "bike" else _cars[1]
+		_mode = "debug"
+		ui.visible = false
+		for f in 400:
+			tgt.turn_sign = -1 if _args["follow"] == "bike" else 1
+			var fw := -tgt.global_basis.z
+			var side := tgt.global_basis.x
+			cam.global_position = tgt.global_position + (fw * 3.2 - side * 2.4 + Vector3(0, 1.6, 0) if _args["follow"] == "bike" else -fw * 4.2 + side * 1.2 + Vector3(0, 1.4, 0))
+			cam.look_at(tgt.global_position + Vector3(0, 1.0, 0))
+			await get_tree().process_frame
+			if f > 120 and fmod(_blink_t, 0.8) < 0.3:
 				break
 	if _args.has("summon"):
 		if _args["summon"] == "car":
