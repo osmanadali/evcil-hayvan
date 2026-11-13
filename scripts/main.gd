@@ -1841,7 +1841,7 @@ const RIDES := {
 		"grip": Vector3(0.25, 1.0, -0.36), "pet": Vector3(0, 0.84, 0.66)},
 	"motosiklet": {"max": 16.0, "acc": 2.8, "brake": 8.0, "steer": 1.0, "lock": 0.4, "base": 1.45, "r": 0.55, "hide": false,
 		"seat": Vector3(0, 0.8, 0.3), "lean": 0.78, "engine": 1.35, "ad": "Motosiklete Bin",
-		"grip": Vector3(0.34, 1.0, -0.44), "pet": Vector3(0, 0.9, 0.72)},
+		"grip": Vector3(0.40, 0.99, -0.35), "pet": Vector3(0, 0.9, 0.72)},
 	"bisiklet": {"max": 6.5, "acc": 1.5, "brake": 6.0, "steer": 1.3, "lock": 0.5, "base": 1.1, "r": 0.45, "hide": false,
 		"seat": Vector3(0, 0.97, 0.2), "lean": 0.6, "engine": 0.0, "ad": "Bisiklete Bin",
 		"grip": Vector3(0.3, 1.02, -0.36), "pet": Vector3(0, 0.82, 0.58)},
