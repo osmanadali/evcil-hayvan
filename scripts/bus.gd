@@ -1,4 +1,5 @@
 extends Node3D
+const _Car = preload("res://scripts/car.gd")
 ## EGO otobusu: hattin gercek guzergahini izler, duraklarda durur, kapilarini acar.
 ## Guzergah assets/transit.json'dan gelir (tools/transit_build.py). Harita disina cikinca bir sure gorunmez
 ## (hattin Ulus / Kizilay kismi), sonra ters yonde geri gelir.
@@ -185,6 +186,15 @@ func _process(dt: float) -> void:
 			var ahead := rel.dot(dir)
 			if ahead > 0.0 and ahead < 13.0 and absf(rel.dot(Vector2(-dir.y, dir.x)) - LANE) < 2.4:
 				want = 0.0          # yolun ortasindaki oyuncuya yol verir
+		var here2 := _point(s)
+		var dir2 := (_point(s + 2.0) - here2).normalized()
+		for o in _Car.traffic:
+			if o == self or not is_instance_valid(o) or not o.is_visible_in_tree():
+				continue
+			var rel2 := Vector2(o.global_position.x, o.global_position.z) - here2
+			var ah := rel2.dot(dir2)
+			if ah > 0.5 and ah < 14.0 and absf(rel2.dot(Vector2(-dir2.y, dir2.x)) - LANE) < 2.2:
+				want = minf(want, maxf(ah - 8.0, 0.0) * 1.0)
 		speed = move_toward(speed, want, dt * (3.0 if want < speed else 1.6))
 		s += speed * dt
 		if not _wheels.is_empty():

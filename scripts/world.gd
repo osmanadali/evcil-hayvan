@@ -1793,6 +1793,16 @@ func _build_cars() -> void:
 						var p: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6)) + perp * side * (w * 0.5 - 1.0)
 						if not ParkMap.inside_bounds(p, 4.0) or ParkMap.water_sd(p) < 3.0:
 							continue
+						# Otobus duragi ve metro girisi onune park edilmez
+						var blocked := false
+						for st in stops:
+							if (st["pos"] as Vector2).distance_to(p) < 16.0:
+								blocked = true
+						for g in metro_gates:
+							if (g["pos"] as Vector2).distance_to(p) < 8.0:
+								blocked = true
+						if blocked:
+							continue
 						var slope := atan2(gy(p + dir * 2.0) - gy(p - dir * 2.0), 4.0)
 						var facing := dir if side > 0.0 else -dir
 						var basis := Basis(Vector3.UP, atan2(-facing.x, -facing.y)) * Basis(Vector3.RIGHT, slope * (1.0 if side > 0.0 else -1.0))

@@ -1,4 +1,5 @@
 extends Node3D
+const _Car = preload("res://scripts/car.gd")
 ## NPC hareketi: rota boyunca git-gel, bir bolgede gezin veya birini takip et.
 
 const ParkMap = preload("res://scripts/park_map.gd")
@@ -116,6 +117,16 @@ func _process(dt: float) -> void:
 		return
 	var to := _target - p
 	var d := to.length()
+	# Arac (otobus/araba) yolunun ustundeyse bekle; icinden gecme
+	if d > 0.2:
+		var fw := to / d
+		for o in _Car.traffic:
+			if not is_instance_valid(o) or not o.is_visible_in_tree():
+				continue
+			var rel := Vector2(o.global_position.x, o.global_position.z) - p
+			if rel.length() < 7.0 and rel.dot(fw) > -1.0:
+				visual.speed = 0.0
+				return
 	if d < 0.2:
 		if not follow:
 			_next()

@@ -534,6 +534,9 @@ func _spawn_npcs() -> void:
 			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
 			add_child(car)
 			_cars.append(car)
+	Car.traffic.clear()
+	for c in _cars:
+		Car.traffic.append(c)
 	# Bisikletliler: yolun saginda yavas gider, donerken kolla isaret verir
 	for i in (4 if ParkMap.zone == "" else 2):
 		var bike := _vehicle("res://assets/models/bisiklet.glb", 1.75, true)
@@ -558,6 +561,7 @@ func _spawn_npcs() -> void:
 		rd.position = Vector3(0, 0.97 + 0.09 - rd.hips_height(), 0.2)
 		cy.rider = rd
 		_cyclists.append(cy)
+		Car.traffic.append(cy)
 	# Sokak kopekleri: kulaklari kupeli, sokak aginda kendi baslarina gezer
 	for i in 5:
 		var sd := _npc_pet("kopek", Color(["c9a070", "8a7a66", "e8dcc4", "6b5a48", "b89a74"][i]), rng.randf_range(1.0, 1.15))
@@ -2400,6 +2404,8 @@ func _seat(parent: Node3D, at: Vector3, fabric: Material, center: Material) -> v
 
 
 func _update_drive(dt: float) -> void:
+	if not _ride in Car.traffic:
+		Car.traffic.append(_ride)
 	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	var top: float = cfg["max"]
 	var gas: float = -ui.stick.y
@@ -2935,6 +2941,7 @@ func _spawn_buses() -> void:
 		b.owner_node = owner_model       # binince gizlenir: otobus kendi yolcusuna yol vermez
 		add_child(b)
 		_buses.append(b)
+		Car.traffic.append(b)
 
 
 func _set_party_visible(on: bool, at := Vector2.ZERO) -> void:

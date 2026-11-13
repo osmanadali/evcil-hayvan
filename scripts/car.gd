@@ -15,6 +15,7 @@ var _t := 0.0
 var _len := 1.0
 var _speed := 0.0
 var hold := 0.0               # > 0 iken bekler (cagrilan taksi)
+static var traffic: Array = []   # tum hareketli araclar (araba, otobus, oyuncunun araci): carpismamak icin
 var cruise := CRUISE
 var rider: Node3D             # bisikletli: surucu (PersonModel); donerken kolla isaret verir
 var grip := Vector3(0.3, 1.02, -0.36)
@@ -97,6 +98,15 @@ func _process(dt: float) -> void:
 		var ahead := rel.dot(dir)
 		if ahead > -1.0 and ahead < 11.0 and absf(rel.dot(Vector2(-dir.y, dir.x))) < 3.2:
 			want = 0.0
+	# Onundeki araca carpma: ayni yonde, serit icinde ve yakinsa yavasla / dur
+	var me := p if _pos == Vector2.INF else _pos
+	for o in traffic:
+		if o == self or not is_instance_valid(o) or not o.is_visible_in_tree():
+			continue
+		var rel := Vector2(o.global_position.x, o.global_position.z) - me
+		var ahead := rel.dot(dir)
+		if ahead > 0.5 and ahead < 9.0 and absf(rel.dot(Vector2(-dir.y, dir.x))) < 2.0:
+			want = minf(want, maxf(ahead - 5.0, 0.0) * 1.2)
 	_speed = move_toward(_speed, want, dt * (9.0 if want < _speed else 3.5))
 	_t += _speed * dt / _len
 	# Kavsaga yaklasirken sonraki yolu sec ve donus yonunu hesapla (sinyal)
