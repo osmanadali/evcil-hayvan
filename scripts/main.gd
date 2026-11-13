@@ -100,6 +100,7 @@ var _ready_done := false
 var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
+var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -128,6 +129,10 @@ func _ready() -> void:
 	street_food.m = self
 	street_food.state = state
 	add_child(street_food)
+	traffic = preload("res://scripts/traffic_law.gd").new()
+	traffic.m = self
+	traffic.state = state
+	add_child(traffic)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -1512,6 +1517,7 @@ func _open_phone() -> void:
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
+	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
@@ -3423,6 +3429,7 @@ func _process(dt: float) -> void:
 	_update_street_life(dt)
 	fuel.update(dt)
 	street_food.update(dt)
+	traffic.update(dt)
 	_update_job(dt)
 	_update_health(dt)
 	_update_play_ride(dt)
@@ -4195,8 +4202,39 @@ func _debug_shot() -> void:
 			await get_tree().create_timer(2.0).timeout
 			print("IZ %d %s moving=%s queue=%d%s" % [i * 2, _owner_pos(), _moving, _queue.size(),
 				(" otobus=%s durak=%s hiz=%.1f" % [_bus_ride.line, _bus_ride.at_stop, _bus_ride.speed]) if _bus_ride else (" ev_yerel=%s" % _home.local2(_owner_pos()) if ParkMap.home else "")])
+	if _args.has("police") or _args.has("redlight") or _args.has("parkfine"):
+		traffic.update(0.0)
+	if _args.has("police"):
+		# Polis testi: araca binip duz bir yolda hizla git, polis arkadan kovalasin
+		if _ride == null:
+			for r in _rides:
+				if r.get_meta("kind") == "araba":
+					owner_node.position = r.position + Vector3(1.0, 0, 0)
+			_enter_ride()
+		if _ride:
+			traffic.debug_police_scene()
+			print("POLIS kovalama=", traffic.chasing, " yildiz=", traffic.stars, " uzaklik=", traffic._police_dist())
+	if _args.has("redlight"):
+		traffic.debug_redlight_scene()
+	if _args.has("parkfine"):
+		traffic.debug_parkfine()
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
+	if _args.has("police"):
+		print("POLIS SON kovalama=", traffic.chasing, " uzaklik=%.1f" % traffic._police_dist(), " para=", state.d["coins"], " borc=", state.d.get("traffic_debt", 0))
+	if _args.has("pview") and traffic.police:
+		# Polis arabasini onden-yandan goster
+		_mode = "debug"
+		ui.visible = _args.get("pview") == "hud"
+		var pc: Node3D = traffic.police
+		var pf := -pc.global_basis.z
+		var ps := pc.global_basis.x
+		cam.global_position = pc.global_position + pf * 5.5 + ps * 3.2 + Vector3(0, 1.7, 0)
+		cam.look_at(pc.global_position + Vector3(0, 0.9, 0) - pf * 0.6)
+		await get_tree().process_frame
+	if _args.has("ticket"):
+		traffic._issue_ticket()
+		await get_tree().create_timer(0.5).timeout
 	if _args.has("more"):
 		ui._on_action("more")
 		await get_tree().process_frame

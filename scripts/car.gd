@@ -24,6 +24,33 @@ var _queued := -1             # bir sonraki kavsakta secilen yol (onceden; sinya
 var _blinkers: Array = []     # [MeshInstance3D, taraf]
 var _blink_t := 0.0
 var _pos := Vector2.INF       # gercek konum: serit noktasini yumusakca izler (koselerde ziplamaz)
+var obey_lights := true       # trafik isiklarina uyar (polis kovalamada uymaz)
+static var lights := {}       # isikli kavsak dugumu -> {axis: Vector2, off: float, r: float, ped: bool} (traffic_law.gd doldurur)
+static var light_clock := 0.0
+
+const CYCLE := 31.0           # isik dongusu (sn): A yesil 11, sari 3, hepsi kirmizi 1.5, B yesil 11, sari 3, hepsi kirmizi 1.5
+
+
+## Isik durumu: 0 yesil, 1 sari, 2 kirmizi, 3 hepsi kirmizi (gecis); isik yoksa -1. dir: kavsaga girerken gidis yonu.
+static func light_at(k: int, dir: Vector2) -> int:
+	var j: Dictionary = lights.get(k, {})
+	if j.is_empty():
+		return -1
+	var t := fmod(light_clock + float(j["off"]), CYCLE)
+	if j["ped"]:
+		# Yaya gecidi isigi: arabalara 20 sn yesil, 3 sn sari, 8 sn kirmizi
+		return 0 if t < 20.0 else (1 if t < 23.0 else 2)
+	var ax: Vector2 = j["axis"]
+	var main := absf(dir.dot(ax)) > 0.6
+	if not main:
+		t = fmod(t + 15.5, CYCLE)
+	if t < 11.0:
+		return 0
+	if t < 14.0:
+		return 1
+	if t < 15.5 or t >= 29.5:
+		return 3
+	return 2
 
 
 func _ready() -> void:
@@ -107,6 +134,15 @@ func _process(dt: float) -> void:
 		var ahead := rel.dot(dir)
 		if ahead > 0.5 and ahead < 9.0 and absf(rel.dot(Vector2(-dir.y, dir.x))) < 2.0:
 			want = minf(want, maxf(ahead - 5.0, 0.0) * 1.2)
+	# Trafik isigi: kirmizida ve saride (durabilecek mesafedeyse) dur cizgisinde bekle
+	if obey_lights and lights.has(_next):
+		var j: Dictionary = lights[_next]
+		var to_j := (1.0 - _t) * _len
+		var stop_d := to_j - float(j["r"])
+		if stop_d > -0.5 and to_j < 45.0:
+			var ls := light_at(_next, dir)
+			if ls >= 2 or (ls == 1 and stop_d > 7.0):
+				want = minf(want, maxf(stop_d - 0.6, 0.0) * 0.9)
 	_speed = move_toward(_speed, want, dt * (9.0 if want < _speed else 3.5))
 	_t += _speed * dt / _len
 	# Kavsaga yaklasirken sonraki yolu sec ve donus yonunu hesapla (sinyal)

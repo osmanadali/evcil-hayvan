@@ -1256,15 +1256,7 @@ func _build_details() -> void:
 				south = Vector2(q[0], q[1])
 		if ParkMap.inside_bounds(south, 4.0):
 			_sign(south + Vector2(0, 0.4), bname, "2f3a45", "ffffff", minf(float(b["h"]), 7.5), false, 0.42)
-	# Trafik isiklari
-	for sg in d["signals"]:
-		var p := Vector2(sg[0], sg[1]) + Vector2(4.5, 4.5)
-		var r := _root(p)
-		Kit.cyl(r, 0.06, 0.08, 3.4, Vector3(0, 1.7, 0), Kit.mat("3f4750", 0.5), 8)
-		Kit.box(r, Vector3(0.34, 0.95, 0.3), Vector3(0, 3.0, 0.1), Kit.mat("2b2b2e", 0.6))
-		for i in 3:
-			Kit.ball(r, 0.11, Vector3(0, 3.3 - i * 0.3, 0.26), Kit.glow(["e0352b", "f2c230", "3fbf5a"][i], 1.2), Vector3.ONE, 8)
-		_add_circle(Vector3(p.x, p.y, 0.15))
+	# Trafik isiklari: calisan isiklar scripts/traffic_law.gd'de kurulur
 	# Yaya gecitleri
 	var white := Kit.mat("eeeeea", 0.8)
 	for c in d["crossings"]:
