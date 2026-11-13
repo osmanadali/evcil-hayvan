@@ -760,6 +760,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 ## Bilgisayar: WASD / oklar yurur, Shift kosar, E etkilesim, 1-2-3 sev-mama-top, Q komutlar, M harita, Esc menu,
 ## C fotograf, fare tekeri yakinlastirir, sol tikla surukleyince kamera doner.
+## Ayrica: F etkilesim, V FPS, P telefon, G gorevler, J isler, R cagir, U semsiye, L tasma, T numara egitimi,
+## N radyo, K mesajlar, Tab hayvan degistir, Space zipla (aracta el freni).
 func _input(e: InputEvent) -> void:
 	if not (e is InputEventKey) or e.echo or not _ready_done:
 		return
@@ -4242,7 +4244,7 @@ func _debug_shot() -> void:
 			pet_care.open_shelter()
 	if _args.has("leash"):
 		pet_care.debug_leash()
-	if _args.has("chase"):
+	if _args.has("petchase"):
 		pet_care.debug_chase()
 	if _args.has("train"):
 		state.d["foods"]["odul"] = 9

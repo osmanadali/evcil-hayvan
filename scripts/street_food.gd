@@ -147,7 +147,6 @@ func _flat_spot(p: Vector2, r: float, road_gap: float) -> Vector2:
 				best = q
 		if best_rng < 0.2:
 			break
-	print("CAY OCAGI YERI ", best, " egim=", snappedf(best_rng, 0.01))
 	return best
 
 
