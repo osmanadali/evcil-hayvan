@@ -1084,7 +1084,26 @@ func _on_bought(items: Dictionary, total: int) -> void:
 
 ## Cantadan bir sey kullan: ye / ic.
 func _use_item(name: String) -> void:
-	owner_model.act("wave", 0.8)
+	owner_model.act("eat", 2.4)
+	# Eldeki yiyecek/icecek: kisa sure elde gorunur
+	var it := Node3D.new()
+	owner_model.hand.add_child(it)
+	it.scale = Vector3.ONE * 0.85
+	match name:
+		"Simit":
+			Kit.torus(it, 0.04, 0.075, Vector3.ZERO, Kit.mat("b8803a", 0.8), Vector3(0, 0, PI / 2))
+			for k in 10:
+				Kit.ball(it, 0.008, Vector3(0, cos(k * 0.63) * 0.058, sin(k * 0.63) * 0.058) + Vector3(0.02, 0, 0), Kit.mat("f2e6c8", 0.8), Vector3.ONE, 4)
+		"Ekmek":
+			Kit.capsule(it, 0.045, 0.22, Vector3.ZERO, Kit.mat("d9a85a", 0.9), Vector3(0, 0, PI / 2))
+		"Su", "Ayran", "Meyve Suyu":
+			Kit.cyl(it, 0.032, 0.032, 0.18, Vector3.ZERO, Kit.mat({"Su": "cfe8f5", "Ayran": "f4f4f0", "Meyve Suyu": "f29f4b"}[name], 0.3), 12)
+		"Dondurma":
+			Kit.cyl(it, 0.035, 0.005, 0.11, Vector3(0, -0.04, 0), Kit.mat("c9962e", 0.8), 10)
+			Kit.ball(it, 0.042, Vector3(0, 0.04, 0), Kit.mat("f2c2d0", 0.6))
+		_:
+			Kit.box(it, Vector3(0.1, 0.03, 0.06), Vector3.ZERO, Kit.mat("6b3a2a", 0.6))
+	get_tree().create_timer(2.4).timeout.connect(func(): if is_instance_valid(it): it.queue_free())
 	var a := _active()
 	var pn: String = state.pet(a.kind)["name"]
 	match name:
@@ -3829,6 +3848,12 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f % 5 == 0:
 				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
+	if _args.has("eat"):
+		var bag: Dictionary = state.d.get("bag", {})
+		bag["Simit"] = 2
+		state.d["bag"] = bag
+		_use_item("Simit")
+		await get_tree().create_timer(float(_args.get("eat", "1.0"))).timeout
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout

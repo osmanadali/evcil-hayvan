@@ -293,6 +293,8 @@ func _ride_pose(dt: float) -> void:
 func _anim_pose() -> void:
 	if airborne:
 		anim.play("Jump" if anim.current == "Jump" or anim.current == "Jump_Start" and anim.player.current_animation_position > 0.25 else "Jump_Start", 0.08, 1.4)
+	elif _act_t < 1.0 and _act == "eat":
+		anim.play("Idle", 0.2)
 	elif _act_t < 1.0 and ACT_CLIPS.has(_act):
 		anim.play(ACT_CLIPS[_act], 0.15, 1.3)
 	elif speed < 0.15:
@@ -304,6 +306,19 @@ func _anim_pose() -> void:
 	else:
 		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
 	anim.apply()
+	if _act_t < 1.0 and _act == "eat":
+		# Yemek: sol el agiza gider, iki kez isirir
+		var w := clampf(sin(_act_t * PI) * 1.6, 0.0, 1.0)
+		var head := _skel.get_bone_global_pose(_bones["Head"]).origin
+		var mouth := head + Vector3(0.0, 0.0, 0.2) * _scale_k() + Vector3(0, 0.02, 0) * sin(_act_t * 18.0)
+		var hand_p := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
+		_arm_ik("Left", hand_p.lerp(mouth, w))
+
+
+## Iskelet birimi -> metre (ice aktarilan modelin olcegi).
+func _scale_k() -> float:
+	var h := _skel.get_bone_global_rest(_bones["Head"]).origin.y
+	return maxf(h, 0.001) / 1.55
 
 
 func _rot_between(u: Vector3, v: Vector3) -> Basis:
