@@ -1084,6 +1084,100 @@ func _use_item(name: String) -> void:
 			ui.toast("%s kullanıldı." % name)
 
 
+# ---------------------------------------------------------------- saglik ve veteriner
+
+const ILLNESSES := [["Öksürük", "Hapşırıyor ve öksürüyor"], ["Mide bozukluğu", "Yemek istemiyor"],
+	["Pire", "Sürekli kaşınıyor"], ["Halsizlik", "Hiç enerjisi yok"]]
+var _sick_t := 30.0
+var _sneeze_t := 4.0
+
+
+## Ihtiyaclar uzun sure dusukse (kirli, ac, yorgun) hayvan hastalanabilir; hastayken ihtiyaclar hizli duser.
+func _update_health(dt: float) -> void:
+	if _mode != "play":
+		return
+	_sick_t -= dt
+	for k in agents:
+		var p: Dictionary = state.pet(k)
+		var sick: String = p.get("sick", "")
+		if sick != "":
+			state.add_need(k, "energy", -0.05 * dt)
+			state.add_need(k, "fun", -0.04 * dt)
+			_sneeze_t -= dt
+			if _sneeze_t <= 0.0 and k == state.d["active"]:
+				_sneeze_t = randf_range(6.0, 12.0)
+				var a: Node3D = agents[k]
+				_voice_at(a, "kedi" if k == "kedi" else "kopek", false)
+				_say(a, "hapşu!" if sick == "Öksürük" else ("*kaşınıyor*" if sick == "Pire" else "..."))
+		elif _sick_t <= 0.0:
+			var low := float(p["clean"]) < 25.0 or float(p["hunger"]) < 20.0 or float(p["energy"]) < 15.0
+			if (low and randf() < 0.35) or randf() < 0.01:
+				var ill: Array = ILLNESSES[randi() % ILLNESSES.size()]
+				p["sick"] = ill[0]
+				state.save_game()
+				ui.toast("%s hasta görünüyor: %s. Veterinere götür! (Telefon > Veteriner)" % [p["name"], ill[1].to_lower()])
+	if _sick_t <= 0.0:
+		_sick_t = 90.0
+
+
+## Muayene: teshis, tedavi ve asilar.
+func _open_vet() -> void:
+	var a := _active()
+	var p: Dictionary = state.pet(a.kind)
+	var sick: String = p.get("sick", "")
+	var vac: Dictionary = p.get("vaccines", {})
+	var sub := "%s · %s" % [p["name"], ("Teşhis: " + sick) if sick != "" else "Sağlıklı görünüyor"]
+	var body: VBoxContainer = ui._open_page("MUAYENE", sub)
+	# Hayvan masaya cikar
+	a.place(_shop.w2(_shop.table_local))
+	a.position.y = _shop.global_position.y + 0.93
+	a.set_process(false)
+	a.model.speed = 0.0
+	ui._modal.tree_exiting.connect(func():
+		if is_instance_valid(a):
+			a.set_process(true)
+			a.place(_owner_pos() + Vector2(0.8, 0.6)))
+	ui._menu_item(body, ("TEDAVİ ET  ·  60 ₺" if sick != "" else "GENEL KONTROL  ·  30 ₺"), func():
+		var cost := 60 if sick != "" else 30
+		if not state.spend(cost):
+			ui.toast("Paran yetmiyor.")
+			return
+		p.erase("sick")
+		for n in state.NEEDS:
+			state.add_need(a.kind, n, 15.0)
+		p["checkup"] = Time.get_date_string_from_system()
+		state.save_game()
+		_pet_voice(a.kind, true)
+		_hearts(a.position)
+		ui.close_modal()
+		ui.toast("Veteriner: \"%s\"" % ("İlacını verdim, birkaç günde toparlanır. Geçmiş olsun!" if sick != "" else "Turp gibi! Aşılarını aksatmayın.")))
+	for v in [["Kuduz", 25], ["Karma", 25], ["İç-Dış Parazit", 20]]:
+		var vn: String = v[0]
+		var cost: int = v[1]
+		var done := vac.has(vn)
+		ui._menu_item(body, ("%s AŞISI  ·  YAPILDI ✓" % vn.to_upper()) if done else ("%s AŞISI  ·  %d ₺" % [vn.to_upper(), cost]), func():
+			if done:
+				ui.toast("%s aşısı %s tarihinde yapıldı." % [vn, vac[vn]])
+				return
+			if not state.spend(cost):
+				ui.toast("Paran yetmiyor.")
+				return
+			vac[vn] = Time.get_date_string_from_system()
+			p["vaccines"] = vac
+			state.save_game()
+			_pet_voice(a.kind)
+			ui.toast("%s aşısı yapıldı. %s biraz mızmızlandı ama ödül bisküvisiyle unuttu." % [vn, p["name"]])
+			_open_vet())
+	ui._menu_item(body, "AŞI KARNESİ", func():
+		var lines := []
+		for vn in ["Kuduz", "Karma", "İç-Dış Parazit"]:
+			lines.append("%s: %s" % [vn, vac.get(vn, "yapılmadı")])
+		lines.append("Son kontrol: %s" % p.get("checkup", "yok"))
+		ui.toast("  ·  ".join(lines)))
+	ui._menu_item(body, "GERİ", func(): ui.close_modal())
+	ui._focus_first(body)
+
+
 # ---------------------------------------------------------------- isler (para kazanma)
 
 var _job := {}          # {type, stage, target, client, dog, box, t, pay, base}
@@ -1324,6 +1418,10 @@ func _open_phone() -> void:
 	UiKit.button(body, "İş bul (para kazan)", "coin", func():
 		ui.close_modal()
 		_open_jobs(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
+	if world.vet_pos != Vector2.INF:
+		UiKit.button(body, "Veteriner (yol tarifi)", "plus", func():
+			ui.close_modal()
+			_set_nav(world.vet_pos, "Veteriner"), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
 	UiKit.button(body, "Arabamı yanıma getir", "play", func():
 		ui.close_modal()
 		_summon_my_car(), UiKit.SOFT, UiKit.BROWN, Vector2(0, 68), 24, 28)
@@ -1551,6 +1649,10 @@ func _on_command(cmd: String) -> void:
 				_exit_shop()
 		"shop_basket":
 			_take_basket()
+		"vet_desk":
+			ui.toast("Hoş geldiniz! Muayene için masanın yanına geçin. Muayene 30 ₺, aşı 25 ₺.")
+		"vet_exam":
+			_open_vet()
 		"shop_pay":
 			_pay_cart()
 		"shop_buy":
@@ -2491,6 +2593,8 @@ func _open_map() -> void:
 		dyn.append([st["name"] + ((" · " + " ".join(st["lines"])) if not st["lines"].is_empty() else ""), st["pos"], "1a4fa0", "pin"])
 	for g in world.metro_gates:
 		dyn.append(["M · " + str(g["name"]), g["pos"], "c8322b", "pin"])
+	if world.vet_pos != Vector2.INF:
+		dyn.append(["Veteriner", world.vet_pos, "1e9a8a", "plus"])
 	map_screen.dynamic = dyn
 	map_screen.open(_owner_pos())
 
@@ -2912,7 +3016,8 @@ func _voice_at(n: Node3D, kind: String, loud: bool) -> void:
 	var key := ("miyav%d" if kind == "kedi" else "havla%d") % (randi() % 3 + 1)
 	a.stream = _sounds[key]
 	a.volume_db = 0.0 if loud else -4.0
-	a.pitch_scale = randf_range(0.85, 1.15) * (1.1 if n.visual.size_mul < 0.85 else 1.0)
+	var vis = n.visual if "visual" in n else n.model
+	a.pitch_scale = randf_range(0.85, 1.15) * (1.1 if vis.size_mul < 0.85 else 1.0)
 	a.play()
 
 
@@ -3087,6 +3192,7 @@ func _process(dt: float) -> void:
 			owner_model.position.y = _jump_h
 	_update_street_life(dt)
 	_update_job(dt)
+	_update_health(dt)
 	_update_play_ride(dt)
 	_update_wet(dt)
 	for k in agents:
@@ -3307,7 +3413,9 @@ func _update_context() -> void:
 				else:
 					ui.set_context("Kasada Öde · %d ürün · %d ₺" % [_cart_count(), _cart_total()], "shop_pay", "cart")
 			else:
-				ui.set_context("Eczacıdan İste", "shop_buy", "cart")
+				ui.set_context("Eczacıdan İste" if _shop.kind == "eczane" else "Resepsiyon · Kayıt", "shop_buy" if _shop.kind == "eczane" else "vet_desk", "cart")
+		elif _shop.kind == "veteriner" and lo.distance_to(_shop.exam_local) < 1.3:
+			ui.set_context("Muayene Ettir", "vet_exam", "plus")
 		elif _shop.kind == "market" and _basket_node == null and lo.distance_to(_shop.basket_local) < 1.3:
 			ui.set_context("Sepet Al", "shop_basket", "cart")
 		elif _shop.kind == "market" and _basket_node != null:
@@ -3326,7 +3434,7 @@ func _update_context() -> void:
 	if ParkMap.home == null:
 		for sp in world.shop_spots:
 			if o.distance_to(sp["pos"]) < 2.6 and sp.has("kind"):
-				ui.set_context("%s Gir" % ("Eczaneye" if sp["kind"] == "eczane" else "Markete"), "shop_in", "cart")
+				ui.set_context({"eczane": "Eczaneye Gir", "market": "Markete Gir", "veteriner": "Veterinere Gir"}.get(sp["kind"], "İçeri Gir"), "shop_in", "cart")
 				return
 	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
@@ -3579,7 +3687,12 @@ func _debug_shot() -> void:
 	if _args.has("shop"):
 		for sp in world.shop_spots:
 			if sp.get("kind", "") == _args["shop"]:
+				if _args.has("sick"):
+					state.pet(state.d["active"])["sick"] = "Öksürük"
 				_enter_shop(sp)
+				if _args.has("vetexam"):
+					_place_owner(_shop.w2(_shop.exam_local))
+					_open_vet()
 				if _args.has("store"):
 					_take_basket()
 					for id in ["simit", "simit", "mama", "dondurma", "su"]:

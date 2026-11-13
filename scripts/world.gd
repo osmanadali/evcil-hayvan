@@ -1049,7 +1049,9 @@ const SIGN_STYLE := {   # tur: [levha rengi, yazi rengi, harf]
 	"kargo": ["8a5a2b", "ffffff", ""], "polis": ["1f2f5a", "ffffff", ""], "muze": ["6b4a8a", "ffffff", ""],
 	"okul": ["c9962e", "2b2b2e", ""], "dukkan": ["3f6f78", "ffffff", ""], "ofis": ["5b5f66", "ffffff", ""],
 	"spor": ["3f7a4a", "ffffff", ""], "durak": ["1a4fa0", "ffffff", "D"], "metro": ["c8322b", "ffffff", "M"],
+	"veteriner": ["1e9a8a", "ffffff", "V"],
 }
+var vet_pos := Vector2.INF
 
 
 func _text(parent: Node3D, text: String, pos: Vector3, color: Color, size := 0.26) -> Label3D:
@@ -1204,7 +1206,22 @@ func _build_details() -> void:
 		if is_free(p, 0.3):
 			_sign(p, sg["name"], "1a4fa0", "ffffff", 2.8, true, 0.2)
 	# Isletmeler, duraklar, metro
-	for po in d["pois"]:
+	# Veteriner: baslangica en yakin zemin kat dukkani klinige donusur (uydurma ad)
+	var start := ParkMap.spot("baslangic") if ParkMap.has_spot("baslangic") else Vector2.ZERO
+	var vet_i := -1
+	var vd := 1e9
+	for i in d["pois"].size():
+		var q: Dictionary = d["pois"][i]
+		if q["k"] == "dukkan" and q["wall"]:
+			var dd := Vector2(q["pos"][0], q["pos"][1]).distance_to(start)
+			if dd < vd:
+				vd = dd
+				vet_i = i
+	for pi in d["pois"].size():
+		var po: Dictionary = d["pois"][pi].duplicate()
+		if pi == vet_i:
+			po["k"] = "veteriner"
+			po["name"] = "Patiler Veteriner Kliniği"
 		var p := Vector2(po["pos"][0], po["pos"][1])
 		var st: Array = SIGN_STYLE.get(po["k"], SIGN_STYLE["dukkan"])
 		var wall: bool = po["wall"]
@@ -1213,11 +1230,13 @@ func _build_details() -> void:
 			if placed:
 				continue
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
-		if SHOP_MODEL.has(po["k"]):
+		if SHOP_MODEL.has(po["k"]) or po["k"] == "veteriner":
 			# Zemin kattaki dukkan: kapisi tabelanin altinda, kaldirim tarafinda
 			var tr := _road_point(p) - p
 			var door := p + (tr.normalized() * minf(1.6, tr.length() * 0.5) if tr.length() > 0.3 else Vector2.ZERO)
 			shop_spots.append({"name": po["name"], "kind": po["k"], "pos": door})
+			if po["k"] == "veteriner":
+				vet_pos = door
 		if wall and tr_ok(p):
 			var wn := _wall_normal(p)
 			if wn != Vector2.ZERO:

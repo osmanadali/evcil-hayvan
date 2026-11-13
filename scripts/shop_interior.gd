@@ -27,6 +27,8 @@ func _ready() -> void:
 	_build_shell()
 	if kind == "eczane":
 		_build_pharmacy()
+	elif kind == "veteriner":
+		_build_vet()
 	else:
 		_build_market()
 
@@ -92,7 +94,7 @@ func _build_shell() -> void:
 	var floor_m := StandardMaterial3D.new()
 	floor_m.albedo_texture = load("res://assets/home/karo_beyaz.jpg")
 	floor_m.uv1_scale = Vector3(W / 0.6, D / 0.6, 1)
-	floor_m.albedo_color = Color("cfcac0") if kind == "market" else Color("d6dbd8")
+	floor_m.albedo_color = Color("cfcac0") if kind == "market" else (Color("c8d6d2") if kind == "veteriner" else Color("d6dbd8"))
 	floor_m.roughness = 0.25
 	Kit.box(self, Vector3(W, 0.1, D), Vector3(W * 0.5, -0.05, D * 0.5), floor_m)
 	var wall := Kit.mat("e2ddd2" if kind == "market" else "d9e6df", 0.8)
@@ -339,3 +341,66 @@ func _build_pharmacy() -> void:
 	_solid(Vector2(W - 0.5, 4.55), Vector2(0.3, 0.85))
 	Kit.box(self, Vector3(0.35, 1.6, 0.35), Vector3(0.6, 0.8, 6.2), Kit.mat("d9dcdf", 0.3))
 	_solid(Vector2(0.6, 6.2), Vector2(0.2, 0.2))
+
+
+## Veteriner: bekleme koltuklari, resepsiyon, muayene masasi, ilac dolabi, kafesler, veteriner hekim.
+var exam_local := Vector2(7.6, 3.4)       # muayene masasinin yani (oyuncu burada durur)
+var table_local := Vector2(7.6, 2.3)      # hayvanin konacagi masa
+
+
+func _build_vet() -> void:
+	var teal := Kit.mat("1e9a8a", 0.5)
+	var white := Kit.mat("f4f6f5", 0.4)
+	var steel := Kit.mat("c9ccd0", 0.25)
+	steel.metallic = 0.7
+	# Resepsiyon (giris solu) ve gorevli
+	_counter(Vector2(2.4, D - 2.4), 2.6, "f4f6f5")
+	Kit.box(self, Vector3(2.6, 0.3, 0.05), Vector3(2.4, 0.75, D - 2.04), teal)
+	_staff(Vector2(2.2, D - 3.2), 0.0, Color("1e9a8a"), true)
+	counter_local = Vector2(2.4, D - 1.4)
+	# Bekleme koltuklari (sag duvar)
+	for k in 4:
+		Kit.box(self, Vector3(0.48, 0.45, 0.48), Vector3(W - 0.45, 0.45, 4.6 + k * 0.6), teal)
+		Kit.box(self, Vector3(0.08, 0.5, 0.48), Vector3(W - 0.22, 0.85, 4.6 + k * 0.6), teal)
+	_solid(Vector2(W - 0.45, 5.5), Vector2(0.3, 1.2))
+	# Muayene alani: paslanmaz masa, lamba, ilac dolabi
+	Kit.box(self, Vector3(1.4, 0.06, 0.75), Vector3(table_local.x, 0.9, table_local.y), steel)
+	for sx in [-0.6, 0.6]:
+		Kit.cyl(self, 0.04, 0.04, 0.9, Vector3(table_local.x + sx, 0.45, table_local.y), steel, 8)
+	_solid(table_local, Vector2(0.75, 0.42))
+	Kit.cyl(self, 0.02, 0.02, 1.0, Vector3(table_local.x - 0.9, 2.6, table_local.y), steel, 6)
+	Kit.cyl(self, 0.22, 0.12, 0.18, Vector3(table_local.x - 0.6, 2.05, table_local.y), Kit.mat("e8eef0", 0.3), 16)
+	var lamp := OmniLight3D.new()
+	lamp.position = Vector3(table_local.x, 2.0, table_local.y)
+	lamp.omni_range = 3.0
+	lamp.light_energy = 0.8
+	add_child(lamp)
+	Kit.box(self, Vector3(2.4, 2.0, 0.45), Vector3(8.4, 1.0, 0.3), white)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.8, 0.9, 0.95, 0.35)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for row in 3:
+		Kit.box(self, Vector3(2.2, 0.02, 0.4), Vector3(8.4, 0.55 + row * 0.5, 0.35), steel)
+		for k in 9:
+			Kit.box(self, Vector3(0.12, 0.18, 0.1), Vector3(7.5 + k * 0.22, 0.65 + row * 0.5, 0.35), Kit.mat(["ffffff", "d9ecf7", "fde7e7", "e6f4e6"][(k + row) % 4], 0.4))
+	Kit.box(self, Vector3(2.3, 1.6, 0.02), Vector3(8.4, 1.05, 0.54), glass)
+	_solid(Vector2(8.4, 0.3), Vector2(1.2, 0.3))
+	_staff(Vector2(table_local.x + 0.2, table_local.y - 1.0), 0.0, Color("f4f6f5"), false)
+	# Kafesler (sol arka)
+	for k in 3:
+		var c := Vector3(1.0 + k * 1.1, 0.5, 0.6)
+		Kit.box(self, Vector3(1.0, 1.0, 0.9), c, Kit.mat("dfe3e5", 0.4))
+		for b in 6:
+			Kit.box(self, Vector3(0.02, 0.9, 0.02), c + Vector3(-0.4 + b * 0.16, 0, 0.46), steel)
+	_solid(Vector2(2.1, 0.6), Vector2(1.6, 0.5))
+	_sign(title, Vector3(W * 0.5, H - 0.5, 0.1), "1e9a8a", Color.WHITE)
+	_sign("Muayene", Vector3(table_local.x, 2.45, 0.6), "1e9a8a", Color.WHITE)
+	# Duvar posteri: pati
+	Kit.box(self, Vector3(1.0, 0.7, 0.02), Vector3(4.6, 1.7, 0.08), Kit.mat("fff3d6", 0.6))
+	var l := Label3D.new()
+	l.text = "AŞI TAKVİMİ\nKuduz · Karma · İç-Dış Parazit"
+	l.font_size = 30
+	l.pixel_size = 0.0035
+	l.modulate = Color("1e5a52")
+	l.position = Vector3(4.6, 1.7, 0.1)
+	add_child(l)
