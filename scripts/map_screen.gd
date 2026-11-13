@@ -57,7 +57,7 @@ func _ready() -> void:
 	const POI_STYLE := {"market": ["e0743a", "cart"], "eczane": ["d9523f", "plus"], "yemek": ["b8743a", "star"],
 		"banka": ["4a6fa5", "coin"], "akaryakit": ["6b6f75", "drop"], "metro": ["c8322b", "pin"], "durak": ["1a4fa0", "pin"]}
 	for po in ParkMap.data["pois"]:
-		if POI_STYLE.has(po["k"]) and po["k"] != "durak":
+		if POI_STYLE.has(po["k"]) and po["k"] != "durak" and po["k"] != "akaryakit":     # benzinlikler: main dinamik pin
 			var c := Vector2(po["pos"][0], po["pos"][1])
 			if ParkMap.inside_bounds(c, 2.0):
 				PINS.append([po["name"], c, c, POI_STYLE[po["k"]][0], POI_STYLE[po["k"]][1]])

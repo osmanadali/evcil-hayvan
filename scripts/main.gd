@@ -98,6 +98,7 @@ var _save_t := 0.0
 var _args := {}
 var _ready_done := false
 var weather: Weather
+var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -118,6 +119,10 @@ func _ready() -> void:
 	_setup_audio()
 	weather = Weather.new()
 	add_child(weather)
+	fuel = preload("res://scripts/fuel.gd").new()
+	fuel.m = self
+	fuel.state = state
+	add_child(fuel)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -719,7 +724,9 @@ func _input(e: InputEvent) -> void:
 				if _taxi != null:
 					_leave_taxi(false)
 				elif _ride != null:
-					if absf(_drive_speed) < 2.0:
+					if ui._context_cmd == "fuel":
+						_on_command("fuel")
+					elif absf(_drive_speed) < 2.0:
 						_exit_ride()
 				elif ui._context.visible:
 					_on_command(ui._context_cmd)
@@ -1485,6 +1492,8 @@ func _open_phone() -> void:
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
 		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
+	if not world.fuel_stations.is_empty():
+		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
@@ -1670,6 +1679,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "weather":
 		_open_weather()
+		return
+	if cmd.begins_with("fuel"):
+		fuel.command(cmd)
 		return
 	var a := _active()
 	var p: Dictionary = state.pet(a.kind)
@@ -2150,7 +2162,7 @@ func _unboard_pets(at: Vector2) -> void:
 
 
 func _exit_ride() -> void:
-	if _ride == null:
+	if _ride == null or fuel.busy():
 		return
 	var c := Vector2(_ride.position.x, _ride.position.z)
 	var side := Vector2(-cos(_ride.rotation.y), sin(_ride.rotation.y))     # aracin solu
@@ -2456,7 +2468,7 @@ func _update_drive(dt: float) -> void:
 		Car.traffic.append(_ride)
 	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	var top: float = cfg["max"]
-	var gas: float = -ui.stick.y
+	var gas: float = fuel.throttle(_ride.get_meta("kind"), -ui.stick.y, _drive_speed, dt)
 	var steer: float = ui.stick.x
 	var handbrake := Input.is_physical_key_pressed(KEY_SPACE)
 	if handbrake:
@@ -2492,6 +2504,7 @@ func _update_drive(dt: float) -> void:
 	var hide: bool = cfg["hide"]
 	var h := ParkMap.terrain_height(np) if hide else ParkMap.walk_height(np)
 	var slope := atan2(ParkMap.terrain_height(np + fwd * 1.5) - ParkMap.terrain_height(np - fwd * 1.5), 3.0)
+	fuel.drain(_ride.get_meta("kind"), np.distance_to(p))
 	_ride.position = Vector3(np.x, h, np.y)
 	_ride.rotation.y = yaw
 	var accel := (_drive_speed - _last_speed) / maxf(dt, 0.001)
@@ -2725,6 +2738,8 @@ func _open_map() -> void:
 		dyn.append(["M · " + str(g["name"]), g["pos"], "c8322b", "pin"])
 	if world.vet_pos != Vector2.INF:
 		dyn.append(["Veteriner", world.vet_pos, "1e9a8a", "plus"])
+	for fs in world.fuel_stations:
+		dyn.append([fs["name"], fs["entry"], "17694a", "drop"])
 	map_screen.dynamic = dyn
 	map_screen.open(_owner_pos())
 
@@ -3385,6 +3400,7 @@ func _process(dt: float) -> void:
 			owner_model.position.y = _jump_h
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
+	fuel.update(dt)
 	_update_job(dt)
 	_update_health(dt)
 	_update_play_ride(dt)
@@ -3647,6 +3663,10 @@ func _update_context() -> void:
 				ui.set_context("Tahterevalliye Bin" if pr["kind"] == "tahterevalli" else "Salıncağa Bin", "playride", "play")
 				return
 	if _ride != null:
+		var fc: Array = fuel.context()
+		if not fc.is_empty():
+			ui.set_context(fc[0], fc[1], "drop")
+			return
 		ui.set_context("", "")      # inmek: kamera dugmesinin yanindaki in dugmesi ya da E
 		return
 	if _taxi != null:
@@ -3954,6 +3974,11 @@ func _debug_shot() -> void:
 			_open_weather()
 			await get_tree().create_timer(0.6).timeout
 		print("HAVA ", weather.kind, " ", weather.hud_text(), " islak=", snappedf(weather.wet, 0.01), " kar=", snappedf(weather.cover, 0.01))
+	if _args.has("fuel"):
+		for fk in ["araba", "motosiklet", "scooter"]:
+			fuel.set_frac(fk, float(_args["fuel"]))
+	if _args.has("atpump"):
+		await fuel.debug_at_pump(_args["atpump"] if _args["atpump"] != "1" else "")
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout

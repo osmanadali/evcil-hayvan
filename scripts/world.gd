@@ -56,7 +56,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
+	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "fuel", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -1222,6 +1222,8 @@ func _build_details() -> void:
 		if pi == vet_i:
 			po["k"] = "veteriner"
 			po["name"] = "Patiler Veteriner Kliniği"
+		if po["k"] == "akaryakit":
+			continue          # benzinlikler _build_fuel'de (uydurma markayla) kurulur
 		var p := Vector2(po["pos"][0], po["pos"][1])
 		var st: Array = SIGN_STYLE.get(po["k"], SIGN_STYLE["dukkan"])
 		var wall: bool = po["wall"]
@@ -1359,6 +1361,21 @@ var transit := {}
 var stops: Array = []              # [{name, pos: Vector2, lines: Array}]
 var metro_gates: Array = []        # [{name, line, ref, pos: Vector2}]
 var shop_spots: Array = []         # [{name, pos}] dukkan kapilari
+var fuel_stations: Array = []      # [{name, pos, pumps: [{lane, nozzle, node, side}], lights, ...}] (gas_station.gd)
+
+
+var paved: Array = []              # [Transform2D dunya->yerel, Rect2]: cim cikmayan dosenmis alanlar (benzinlik)
+
+
+func _paved(p: Vector2) -> bool:
+	for pv in paved:
+		if (pv[1] as Rect2).has_point((pv[0] as Transform2D) * p):
+			return true
+	return false
+
+
+func _build_fuel() -> void:
+	fuel_stations = preload("res://scripts/gas_station.gd").build_all(self)
 
 
 func _build_transit() -> void:
@@ -2231,7 +2248,7 @@ func _fill_grass_cell(c: Vector2i) -> MultiMeshInstance3D:
 			mm2.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 			continue
 		var p := o + Vector2(rng.randf(), rng.randf()) * GRASS_CELL
-		var keep := _is_lawn(p) and ParkMap.water_sd(p) > 1.0 and is_free(p, 0.15)
+		var keep := _is_lawn(p) and ParkMap.water_sd(p) > 1.0 and is_free(p, 0.15) and not _paved(p)
 		var sc := rng.randf_range(0.6, 1.3) if keep else 0.0
 		var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(p.x, gy(p) + 0.01, p.y))
 		mm2.set_instance_transform(i, xf)
@@ -2282,7 +2299,7 @@ func _build_plants() -> void:
 		var n := mini(int(box.get_area() * 0.55), 70000)
 		for i in n:
 			var p := Vector2(_rng.randf_range(box.position.x, box.end.x), _rng.randf_range(box.position.y, box.end.y))
-			if not _is_lawn(p):
+			if not _is_lawn(p) or (not paved.is_empty() and _paved(p)):
 				continue
 			var r := _rng.randf()
 			if r < 0.55:
