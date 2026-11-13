@@ -2176,7 +2176,99 @@ func _grass_mesh() -> ArrayMesh:
 	return mesh
 
 
+var _grass_mat: ShaderMaterial
+
+## Kameranin cevresinde sik cim ortusu: 2 m'lik hucreler; oyuncu yaklasinca hucreler doldurulur.
+const GRASS_CELL := 4.0
+const GRASS_R := 7                  # hucre yaricapi (7 x 4 m = 28 m)
+const GRASS_PER_CELL := 700
+var _grass_cells := {}              # Vector2i -> MultiMeshInstance3D
+var _grass_free: Array = []
+var _grass_mesh_d: ArrayMesh
+var _grass_last := Vector2i(1 << 20, 0)
+
+
+func _build_grass_field() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 3:
+		var a := k * PI / 3.0
+		for sub in 2:
+			var a2 := a + sub * 0.5
+			var off := Vector3(cos(a2 * 3.0), 0, sin(a2 * 3.0)) * 0.03 * sub
+			var d := Vector3(cos(a2), 0, sin(a2)) * 0.012
+			var bend := Vector3(-sin(a2), 0, cos(a2)) * 0.035
+			st.set_normal(Vector3(-sin(a2), 0.5, cos(a2)).normalized())
+			st.add_vertex(off - d)
+			st.add_vertex(off + d)
+			st.add_vertex(off + bend + Vector3(0, 0.14 + 0.04 * sub, 0))
+	_grass_mesh_d = st.commit()
+	_grass_mat = ShaderMaterial.new()
+	_grass_mat.shader = load("res://shaders/grass_field.gdshader")
+	_grass_mesh_d.surface_set_material(0, _grass_mat)
+
+
+func _fill_grass_cell(c: Vector2i) -> MultiMeshInstance3D:
+	var mmi: MultiMeshInstance3D = _grass_free.pop_back() if not _grass_free.is_empty() else null
+	if mmi == null:
+		mmi = MultiMeshInstance3D.new()
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = _grass_mesh_d
+		mm.instance_count = GRASS_PER_CELL
+		mmi.multimesh = mm
+		add_child(mmi)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(c)
+	var o := Vector2(c) * GRASS_CELL
+	var used := 0
+	var mm2 := mmi.multimesh
+	var count := GRASS_PER_CELL if not OS.has_feature("mobile") else GRASS_PER_CELL / 3
+	for i in GRASS_PER_CELL:
+		if i >= count:
+			mm2.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+			continue
+		var p := o + Vector2(rng.randf(), rng.randf()) * GRASS_CELL
+		var keep := _is_lawn(p) and ParkMap.water_sd(p) > 1.0 and is_free(p, 0.15)
+		var sc := rng.randf_range(0.6, 1.3) if keep else 0.0
+		var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(p.x, gy(p) + 0.01, p.y))
+		mm2.set_instance_transform(i, xf)
+		mm2.set_instance_custom_data(i, Color(rng.randf(), 0, 0, 0))
+		used += int(keep)
+	mmi.visible = used > 0
+	return mmi
+
+
+func update_grass(cam_pos: Vector3, t: float) -> void:
+	if _grass_mat == null:
+		return
+	_grass_mat.set_shader_parameter("wind_t", t)
+	var cc := Vector2i(floori(cam_pos.x / GRASS_CELL), floori(cam_pos.z / GRASS_CELL))
+	if cc == _grass_last:
+		return
+	_grass_last = cc
+	for key in _grass_cells.keys():
+		if absi(key.x - cc.x) > GRASS_R or absi(key.y - cc.y) > GRASS_R:
+			var m: MultiMeshInstance3D = _grass_cells[key]
+			m.visible = false
+			_grass_free.append(m)
+			_grass_cells.erase(key)
+	var budget := 40
+	for dy in range(-GRASS_R, GRASS_R + 1):
+		for dx in range(-GRASS_R, GRASS_R + 1):
+			var key := cc + Vector2i(dx, dy)
+			if not _grass_cells.has(key) and Vector2(dx, dy).length() <= GRASS_R + 0.5:
+				_grass_cells[key] = _fill_grass_cell(key)
+				budget -= 1
+				if budget <= 0:
+					_grass_last = Vector2i(1 << 20, 0)     # sonraki karede devam et
+					return
+
+
 func _build_plants() -> void:
+	_build_grass_field()
 	var gxf: Array[Transform3D] = []
 	var gcol: Array[Color] = []
 	var gcols := ["4f8a3a", "6a9c44", "436f33", "7a9a48"]

@@ -3354,6 +3354,7 @@ func _process(dt: float) -> void:
 	_update_camera(dt)
 	# Binalar artik delinmiyor (kamera onlarin onune gelir); yalniz agaclar icin
 	world.set_focus(owner_node.position, false)
+	world.update_grass(owner_node.global_position if _mode == "play" else cam.global_position, Time.get_ticks_msec() / 1000.0)
 
 
 func _update_owner(dt: float) -> void:
