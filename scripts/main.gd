@@ -101,6 +101,7 @@ var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
+var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
@@ -130,6 +131,10 @@ func _ready() -> void:
 	street_food.m = self
 	street_food.state = state
 	add_child(street_food)
+	pet_care = preload("res://scripts/pet_care.gd").new()
+	pet_care.m = self
+	pet_care.state = state
+	add_child(pet_care)
 	needs = preload("res://scripts/player_needs.gd").new()
 	needs.m = self
 	needs.state = state
@@ -189,6 +194,7 @@ func _ready() -> void:
 	_spawn_npcs()
 	_spawn_coins()
 	street_food.build()
+	pet_care.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -770,6 +776,10 @@ func _input(e: InputEvent) -> void:
 				_on_command("come")
 			KEY_U:
 				_on_command("umbrella")
+			KEY_L:
+				_on_command("leash")
+			KEY_T:
+				_on_command("train")
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -1524,6 +1534,9 @@ func _open_phone() -> void:
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
+	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
+	if not pet_care.shelter.is_empty():
+		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
@@ -1718,6 +1731,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
+		return
+	if cmd in ["leash", "train", "shelter", "shelter_nav"] or cmd.begins_with("train:") or cmd.begins_with("trick:"):
+		pet_care.command(cmd)
 		return
 	var a := _active()
 	var p: Dictionary = state.pet(a.kind)
@@ -3436,6 +3452,7 @@ func _process(dt: float) -> void:
 			owner_model.position.y = _jump_h
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
+	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
 	traffic.update(dt)
@@ -3696,6 +3713,10 @@ func _update_context() -> void:
 		return
 	if not _play_ride.is_empty():
 		ui.set_context("İn", "playexit", "come")
+		return
+	var pc: Array = pet_care.context()
+	if not pc.is_empty():
+		ui.set_context(pc[0], pc[1], pc[2])
 		return
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
@@ -4099,6 +4120,23 @@ func _debug_shot() -> void:
 		_update_context()
 		print("BANK ", bb[0], " baglam=", ui._context_cmd)
 		needs.nap(bb)
+	if _args.has("shelter"):
+		pet_care.debug_shelter()
+		if _args["shelter"] == "panel":
+			for f in 3:
+				await get_tree().process_frame
+			pet_care.open_shelter()
+	if _args.has("leash"):
+		pet_care.debug_leash()
+	if _args.has("chase"):
+		pet_care.debug_chase()
+	if _args.has("train"):
+		state.d["foods"]["odul"] = 9
+		pet_care.tricks_of(state.d["active"])["otur"] = 3
+		pet_care.tricks_of(state.d["active"])["pati"] = 3
+		pet_care.train(_args["train"] if _args["train"] != "1" else "pati")
+		if _args.has("trick"):
+			pet_care.do_trick(_args["trick"])
 	var view: String = _args.get("view", "")
 	if view != "":
 		ui.visible = false

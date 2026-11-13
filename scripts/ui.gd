@@ -388,7 +388,7 @@ func open_radial(at: Vector2, cat: bool, two: bool) -> void:
 	_radial.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_radial)
 	var items := [["Sev", "heart", "pet"], ["Mama", "bone", "food"], ["Yumak" if cat else "Top At", "yarn" if cat else "ball", "yarn" if cat else "throw"],
-		["Otur", "sit", "sit"], ["Yat", "minus", "lie"], ["Uyu", "moon", "sleep"]]
+		["Otur", "sit", "sit"], ["Yat", "minus", "lie"], ["Uyu", "moon", "sleep"], ["Tasma", "walk", "leash"], ["Eğitim", "star", "train"]]
 	if two:
 		items.append(["Oynat", "play", "play"])
 	var vp := get_viewport().get_visible_rect().size

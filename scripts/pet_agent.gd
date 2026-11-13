@@ -21,6 +21,8 @@ var slot := Vector2(1.1, 0.5)     # sahibin yanindaki yeri (sag, arka)
 var buddy: Node3D                 # oyuncunun diger hayvani
 var play_partner: Node3D
 var idle_time := 0.0
+var external := false             # true: hareketi baska bir betik (pet_care.gd) yonetir
+var stay_far := 22.0              # STAY modunda sahibi bu kadar uzaklasirsa gelir
 
 var _t := 0.0
 var _stuck := 0.0
@@ -43,6 +45,9 @@ var _stage := -1
 func _ready() -> void:
 	model = PetModel.new()
 	model.kind = kind
+	var pd: Dictionary = state.pet(kind)
+	model.tint = Color(String(pd.get("tint", "ffffff")))
+	model.size_mul = float(pd.get("size", 1.0))
 	add_child(model)
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.5
@@ -172,6 +177,8 @@ func _free_point_near(c: Vector2, r: float) -> Vector2:
 func command(cmd: String) -> void:
 	_drop_item()
 	play_partner = null
+	external = false
+	stay_far = 22.0
 	_zzz.visible = false
 	match cmd:
 		"sit":
@@ -261,12 +268,14 @@ func _process(dt: float) -> void:
 	model.look_at_point = null
 	_apply_stage()
 	var od := pos2().distance_to(owner_pos())
+	if external:
+		return
 	match mode:
 		Mode.FOLLOW: _follow(dt, od)
 		Mode.STAY:
 			model.speed = 0.0
 			model.look_at_point = owner_node.position + Vector3(0, 1.2, 0)
-			if od > 22.0:
+			if od > stay_far:
 				command("come")
 		Mode.FETCH: _fetch(dt)
 		Mode.RETURN: _return(dt, od)

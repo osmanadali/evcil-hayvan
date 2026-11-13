@@ -56,6 +56,8 @@ var _hop_t := 1.0
 var _hop_h := 0.0
 var _hop_d := 0.4
 var _blink := 0.0
+var _paw_t := 0.0     # pati verme suresi
+var _paw_w := 0.0
 
 
 func _ready() -> void:
@@ -128,6 +130,11 @@ func hop(height := 0.35, duration := 0.45) -> void:
 	_hop_d = duration
 
 
+## Pati ver: oturur durumda sag on bacagini one kaldirir.
+func give_paw(duration := 1.8) -> void:
+	_paw_t = duration
+
+
 func is_hopping() -> bool:
 	return _hop_t < 1.0
 
@@ -162,12 +169,15 @@ func _process(dt: float) -> void:
 	var sw2 := sin(_phase + PI * (1.0 - run * 0.7)) * amp_leg
 	var lift := cos(_phase)
 	var tuck := air * 1.6
+	_paw_t = maxf(_paw_t - dt, 0.0)
+	_paw_w = move_toward(_paw_w, 1.0 if _paw_t > 0.0 and still else 0.0, dt * 4.0)
+	var pw := smoothstep(0.0, 1.0, _paw_w) * (1.0 + sin(_t * 7.0) * 0.08)
 	_turn("fl1", [[X, sw + 0.6 * sit - 1.35 * lie - tuck]])
-	_turn("fr1", [[X, sw2 + 0.6 * sit - 1.35 * lie - tuck]])
+	_turn("fr1", [[X, sw2 + 0.6 * sit - 1.35 * lie - tuck - 1.75 * pw]])
 	_turn("bl1", [[X, sw2 - 1.5 * sit - 1.35 * lie + tuck]])
 	_turn("br1", [[X, sw - 1.5 * sit - 1.35 * lie + tuck]])
 	_turn("fl2", [[X, maxf(lift, 0.0) * 0.6 * move]])
-	_turn("fr2", [[X, maxf(-lift if run < 0.5 else lift, 0.0) * 0.6 * move]])
+	_turn("fr2", [[X, maxf(-lift if run < 0.5 else lift, 0.0) * 0.6 * move + 0.7 * pw]])
 	_turn("bl2", [[X, maxf(-lift if run < 0.5 else lift, 0.0) * 0.5 * move + 1.3 * sit]])
 	_turn("br2", [[X, maxf(lift, 0.0) * 0.5 * move + 1.3 * sit]])
 
