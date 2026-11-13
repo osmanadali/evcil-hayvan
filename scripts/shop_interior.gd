@@ -14,6 +14,9 @@ var title := "Market"
 var entrance_local := Vector2(W * 0.5, D - 0.8)
 var counter_local := Vector2(2.2, D - 2.6)   # kasanin onu (oyuncu burada alisveris yapar)
 var colliders: Array = []        # [Vector2 a, Vector2 b] yerel
+## Raftaki urun noktalari: [kimlik, yerel durma noktasi (Vector2)]; oyuncu onune gelince sepete koyar
+var spots: Array = []
+var basket_local := Vector2(4.0, D - 1.2)   # giristeki sepet yigini
 var ceiling: Node3D
 var front: Node3D
 var _rng := RandomNumberGenerator.new()
@@ -244,9 +247,49 @@ func _build_market() -> void:
 	_staff(Vector2(2.0, D - 2.3), PI, Color("c8322b"), true)
 	counter_local = Vector2(2.6, D - 0.85)
 	_sign(title, Vector3(W * 0.5, H - 0.5, 0.1), "c8322b", Color.WHITE)
-	# Alisveris sepetleri
-	for k in 3:
-		Kit.box(self, Vector3(0.45, 0.25, 0.32), Vector3(4.0, 0.12 + k * 0.08, D - 0.9), Kit.mat("d0302b", 0.5))
+	# Alisveris sepetleri (yigin)
+	for k in 4:
+		Kit.box(self, Vector3(0.45, 0.22, 0.32), Vector3(4.0, 0.11 + k * 0.07, D - 0.75), Kit.mat("d0302b", 0.5))
+	_solid(Vector2(4.0, D - 0.75), Vector2(0.25, 0.18))
+	_sign("Sepet", Vector3(4.0, 1.1, D - 0.6), "d0302b", Color.WHITE)
+	# Urun noktalari ve fiyat etiketleri (durma noktasi, etiket konumu, etiketin baktigi yon)
+	for sp in [["su", Vector2(1.4, 1.2), 0.0], ["ayran", Vector2(3.0, 1.2), 0.0], ["meyve", Vector2(4.6, 1.2), 0.0],
+			["dondurma", Vector2(6.2, 1.2), 0.0], ["simit", Vector2(3.0, 3.15), PI], ["ekmek", Vector2(5.4, 3.15), PI],
+			["cikolata", Vector2(3.0, 5.0), PI], ["top", Vector2(5.4, 5.0), PI], ["sampuan", Vector2(5.4, 6.85), PI],
+			["odul", Vector2(6.35, 3.05), PI], ["mama", Vector2(7.05, 3.05), PI], ["konserve", Vector2(7.75, 3.05), PI]]:
+		spots.append([sp[0], sp[1]])
+		_tag(sp[0], sp[1], sp[2])
+
+
+## Fiyat etiketi: urunun ustunde sari levha (ad ve fiyat), durma noktasina bakar.
+func _tag(id: String, stand: Vector2, face: float) -> void:
+	var item: Array = []
+	for it in PRICES:
+		if it[0] == id:
+			item = it
+	if item.is_empty():
+		return
+	var toward := Vector2(0, 1).rotated(-face)          # face=0: etiket +Z'ye, PI: -Z'ye bakar
+	var at := stand - toward * 0.42
+	var r := Node3D.new()
+	r.position = Vector3(at.x, 1.75, at.y)
+	r.rotation.y = face
+	add_child(r)
+	Kit.box(r, Vector3(0.62, 0.26, 0.02), Vector3.ZERO, Kit.mat("f5c518", 0.5))
+	var l := Label3D.new()
+	l.text = "%s\n%d ₺" % [item[1].to_upper(), item[2]]
+	l.font_size = 40
+	l.pixel_size = 0.0028
+	l.modulate = Color("111111")
+	l.outline_size = 0
+	l.position = Vector3(0, 0, 0.015)
+	r.add_child(l)
+
+
+## Urun fiyatlari (ui.SHOP_ITEMS ile ayni): [kimlik, ad, fiyat]
+const PRICES := [["mama", "Kuru Mama", 8], ["konserve", "Konserve", 14], ["odul", "Ödül Bisküvisi", 6], ["su", "Su", 3],
+	["simit", "Simit", 5], ["ayran", "Ayran", 6], ["ekmek", "Ekmek", 4], ["cikolata", "Çikolata", 8], ["dondurma", "Dondurma", 10],
+	["meyve", "Meyve Suyu", 7], ["top", "Oyuncak Top", 12], ["sampuan", "Pati Şampuanı", 15]]
 
 
 func _build_pharmacy() -> void:

@@ -606,7 +606,9 @@ func open_quests() -> void:
 ## GTA tarzi tam ekran sayfa (duraklatma / ayarlar): solda koyu gecis, egik baslik, buyuk maddeler.
 func _open_page(title: String, subtitle := "") -> VBoxContainer:
 	close_modal()
+	_context.modulate.a = 0.0
 	_modal = Control.new()
+	_modal.tree_exiting.connect(func(): if is_instance_valid(_context): _context.modulate.a = 1.0)
 	K.full(_modal)
 	add_child(_modal)
 	var dim := ColorRect.new()
@@ -690,11 +692,107 @@ func open_pause() -> void:
 	_menu_item(body, "DEVAM ET", close_modal)
 	_menu_item(body, "GÖREVLER", func(): open_quests())
 	_menu_item(body, "DOLAP", func(): open_closet())
+	_menu_item(body, "ÇANTAM", func(): open_bag())
 	_menu_item(body, "FOTOĞRAF ÇEK", func():
 		close_modal()
 		photo.emit("enter"))
 	_menu_item(body, "AYARLAR", func(): open_settings())
 	_menu_item(body, "ANA MENÜ", func(): back_to_menu.emit())
+	_focus_first(body)
+
+
+## Dukkan urunleri: [kimlik, ad, fiyat, tur]  tur: "food" (hayvan mamasi), "bag" (cantaya), "pet:<ihtiyac>:<miktar>" (hemen etki)
+const SHOP_ITEMS := {
+	"market": [["mama", "Kuru Mama", 8, "food"], ["konserve", "Konserve", 14, "food"], ["odul", "Ödül Bisküvisi", 6, "food"],
+		["su", "Su", 3, "bag"], ["simit", "Simit", 5, "bag"], ["ayran", "Ayran", 6, "bag"], ["ekmek", "Ekmek", 4, "bag"],
+		["cikolata", "Çikolata", 8, "bag"], ["dondurma", "Dondurma", 10, "bag"], ["meyve", "Meyve Suyu", 7, "bag"],
+		["top", "Oyuncak Top", 12, "pet:fun:30"], ["sampuan", "Pati Şampuanı", 15, "pet:clean:40"]],
+	"eczane": [["vitamin", "Vitamin Macunu", 15, "pet:energy:35"], ["damla", "Pire-Kene Damlası", 20, "pet:clean:45"],
+		["kulak", "Kulak Solüsyonu", 10, "pet:clean:20"], ["sakin", "Sakinleştirici Ödül", 12, "pet:fun:25"],
+		["yara", "Yara Bandı", 4, "bag"], ["kolonya", "Kolonya", 9, "bag"], ["agri", "Ağrı Kesici", 12, "bag"]],
+}
+var _basket := {}
+signal bought(items: Dictionary, total: int)
+
+
+## Alisveris: urunlere dokunup sepete ekle, sonra ODE. GTA tarzi tam ekran sayfa.
+func open_store(kind: String, title: String) -> void:
+	var total := 0
+	var count := 0
+	for id in _basket:
+		count += int(_basket[id])
+		for it in SHOP_ITEMS[kind]:
+			if it[0] == id:
+				total += int(it[2]) * int(_basket[id])
+	var body := _open_page(title.to_upper(), "Cüzdan: %d ₺   ·   Sepet: %d ürün, %d ₺" % [state.d["coins"], count, total])
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 6)
+	body.add_child(grid)
+	for it in SHOP_ITEMS[kind]:
+		var item: Array = it
+		var n := int(_basket.get(item[0], 0))
+		var label := "%s  %d ₺%s" % [item[1].to_upper(), item[2], ("   ×%d" % n) if n > 0 else ""]
+		var b := _tile(grid, label, n > 0, func():
+			_basket[item[0]] = int(_basket.get(item[0], 0)) + 1
+			open_store(kind, title), ACCENT, Vector2(340, 50), 22)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	body.add_child(row)
+	var pay := _tile(row, "ÖDE  %d ₺" % total, true, func():
+		if total == 0:
+			toast("Sepetin boş. Ürünlere dokunarak ekle.")
+		elif state.d["coins"] < total:
+			toast("Paran yetmiyor! %d ₺ eksik." % (total - state.d["coins"]))
+		else:
+			state.d["coins"] -= total
+			for id in _basket:
+				for it2 in SHOP_ITEMS[kind]:
+					if it2[0] != id:
+						continue
+					var kind2: String = it2[3]
+					if kind2 == "food":
+						state.d["foods"][id] = int(state.d["foods"].get(id, 0)) + int(_basket[id])
+					elif kind2 == "bag":
+						var bag: Dictionary = state.d.get("bag", {})
+						bag[it2[1]] = int(bag.get(it2[1], 0)) + int(_basket[id])
+						state.d["bag"] = bag
+			bought.emit(_basket.duplicate(), total)
+			_basket.clear()
+			state.changed.emit()
+			state.save_game()
+			close_modal(), ACCENT2, Vector2(300, 58), 32)
+	pay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tile(row, "BOŞALT", false, func():
+		_basket.clear()
+		open_store(kind, title), Color.WHITE, Vector2(170, 58), 28)
+	_tile(row, "ÇIK", false, func():
+		_basket.clear()
+		close_modal(), Color.WHITE, Vector2(120, 58), 28)
+
+
+## Canta: aldiklarini kullan (ye, ic).
+func open_bag() -> void:
+	var body := _open_page("ÇANTAM")
+	var bag: Dictionary = state.d.get("bag", {})
+	var any := false
+	for name in bag.keys():
+		var n := int(bag[name])
+		if n <= 0:
+			continue
+		any = true
+		var nm: String = name
+		_menu_item(body, "%s  ×%d" % [nm.to_upper(), n], func():
+			bag[nm] = int(bag[nm]) - 1
+			if bag[nm] <= 0:
+				bag.erase(nm)
+			command.emit("use:" + nm)
+			open_bag())
+	if not any:
+		_fx_label(body, "Çantan boş. Marketten bir şeyler al.", F_BODY, 28, Color.WHITE, 6)
+	_menu_item(body, "GERİ", func(): open_pause())
 	_focus_first(body)
 
 

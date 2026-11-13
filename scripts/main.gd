@@ -167,6 +167,7 @@ func _ready() -> void:
 	ui.add_child(map_screen)
 	map_screen.place_chosen.connect(walk_to)
 	ui.command.connect(_on_command)
+	ui.bought.connect(_on_bought)
 	ui.select_pet.connect(_select_pet)
 	ui.start_game.connect(_start_game)
 	ui.continue_game.connect(_enter_play)
@@ -926,14 +927,19 @@ func _enter_shop(sp: Dictionary) -> void:
 	for k in agents:
 		agents[k].place(inside + Vector2(0.7 - 0.6 * i, 0.3))
 		i += 1
-	_cam_pitch = 0.75
+	_cam_pitch = 0.55
 	_cam_yaw = 0.0
+	_zoom = 0.6
 	ui.toast("%s · Hoş geldiniz!" % sp["name"])
 	_sfx("dukkan_zil", -6.0)
 	get_tree().create_timer(0.9).timeout.connect(func(): _sfx("hosgeldiniz", -2.0))
 
 
 func _exit_shop() -> void:
+	if _basket_node:
+		_basket_node.queue_free()
+		_basket_node = null
+	_cart.clear()
 	ParkMap.home = null
 	if _shop:
 		_shop.queue_free()
@@ -948,30 +954,135 @@ func _exit_shop() -> void:
 
 
 func _shop_buy() -> void:
-	state.count("shop")
 	_sfx("kasa", -8.0)
-	if _shop.kind == "market":
-		ui.open_shop("food")
+	ui.open_store(_shop.kind, _shop.title)
+
+
+var _cart := {}            # marketteki sepet: kimlik -> adet
+var _basket_node: Node3D
+
+
+func _item(id: String) -> Array:
+	for it in ui.SHOP_ITEMS["market"]:
+		if it[0] == id:
+			return it
+	return [id, id, 0, "bag"]
+
+
+func _cart_count() -> int:
+	var n := 0
+	for id in _cart:
+		n += int(_cart[id])
+	return n
+
+
+func _cart_total() -> int:
+	var t := 0
+	for id in _cart:
+		t += int(_item(id)[2]) * int(_cart[id])
+	return t
+
+
+## Giristen sepet al: elde tasinir, urunler icinde gorunur.
+func _take_basket() -> void:
+	_basket_node = Node3D.new()
+	var red := Kit.mat("d0302b", 0.5)
+	Kit.box(_basket_node, Vector3(0.4, 0.03, 0.28), Vector3(0, -0.24, 0), red)
+	for sx in [-1.0, 1.0]:
+		Kit.box(_basket_node, Vector3(0.03, 0.2, 0.28), Vector3(sx * 0.2, -0.14, 0), red)
+		Kit.box(_basket_node, Vector3(0.4, 0.2, 0.03), Vector3(0, -0.14, sx * 0.14), red)
+	Kit.torus(_basket_node, 0.12, 0.14, Vector3(0, 0.0, 0), Kit.mat("2a2a2a", 0.5), Vector3(0, 0, PI / 2))
+	owner_model.hand.add_child(_basket_node)
+	_basket_node.position = Vector3(0, -0.02, 0)
+	_sfx("tik", -6.0)
+	ui.toast("Sepeti aldın. Raflardan ürünleri seç, sonra kasada öde.")
+	_update_context()
+
+
+func _put_in_basket(id: String) -> void:
+	if _basket_node == null:
 		return
-	var a := _active()
-	var body: VBoxContainer = ui._open_modal("Eczane · %s için" % state.pet(a.kind)["name"], 120, 120)
-	body.add_theme_constant_override("separation", 10)
-	var items := [["Vitamin macunu", 15, "energy", 35.0], ["Pire-kene damlası", 20, "clean", 45.0],
-		["Kulak temizleme solüsyonu", 10, "clean", 20.0], ["Sakinleştirici ödül", 12, "fun", 25.0]]
-	for it in items:
-		var item: Array = it
-		UiKit.button(body, "%s  —  %d ₺" % [item[0], item[1]], "plus", func():
-			if state.spend(int(item[1])):
+	_cart[id] = int(_cart.get(id, 0)) + 1
+	var it := _item(id)
+	# Sepette gorunsun: renkli kucuk kutu
+	var n := _cart_count() - 1
+	var col: String = ["c8322b", "2f62a8", "f2c230", "3f8f4a", "ffffff", "e07b1f", "7a4a2b"][n % 7]
+	Kit.box(_basket_node, Vector3(0.11, 0.1 + (n % 3) * 0.03, 0.08), Vector3(-0.13 + (n % 4) * 0.085, -0.16 + (n / 4) * 0.06, -0.06 + (n % 2) * 0.12), Kit.mat(col, 0.5))
+	owner_model.act("pet", 0.6)
+	_sfx("tik", -4.0, 1.2)
+	ui.toast("%s sepette · Toplam %d ₺" % [it[1], _cart_total()])
+	_update_context()
+
+
+func _pay_cart() -> void:
+	var total := _cart_total()
+	if state.d["coins"] < total:
+		ui.toast("Paran yetmiyor! %d ₺ eksik. Bir şeyi rafa geri bırak." % (total - state.d["coins"]))
+		var last: String = _cart.keys()[_cart.size() - 1]
+		_cart[last] = int(_cart[last]) - 1
+		if _cart[last] <= 0:
+			_cart.erase(last)
+		return
+	state.d["coins"] -= total
+	for id in _cart:
+		var it := _item(id)
+		var k: String = it[3]
+		if k == "food":
+			state.d["foods"][id] = int(state.d["foods"].get(id, 0)) + int(_cart[id])
+		elif k == "bag":
+			var bag: Dictionary = state.d.get("bag", {})
+			bag[it[1]] = int(bag.get(it[1], 0)) + int(_cart[id])
+			state.d["bag"] = bag
+	var items := _cart.duplicate()
+	_cart.clear()
+	if _basket_node:
+		_basket_node.queue_free()
+		_basket_node = null
+	state.changed.emit()
+	state.save_game()
+	_on_bought(items, total)
+	_update_context()
+
+
+func _on_bought(items: Dictionary, total: int) -> void:
+	_sfx("kasa", -4.0)
+	state.count("shop")
+	# Hemen etki eden urunler (hayvana)
+	var kind: String = _shop.kind if _shop else "market"
+	for id in items:
+		for it in ui.SHOP_ITEMS.get(kind, []):
+			if it[0] == id and String(it[3]).begins_with("pet:"):
+				var parts: PackedStringArray = String(it[3]).split(":")
 				for k in agents:
-					state.add_need(k, item[2], item[3])
-				_pet_voice(a.kind, true)
-				ui.close_modal()
-				ui.toast("%s aldın. %s çok memnun!" % [item[0], state.pet(a.kind)["name"]])
-			else:
-				ui.toast("Paran yetmiyor."), UiKit.SOFT, UiKit.BROWN, Vector2(0, 64), 22, 26)
+					state.add_need(k, parts[1], float(parts[2]) * int(items[id]))
+				_pet_voice(_active().kind, true)
+	ui.toast("Fiş: %d ürün · %d ₺ · Teşekkürler, yine bekleriz!" % [items.values().reduce(func(a, b): return a + b, 0), total])
 
 
-## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
+## Cantadan bir sey kullan: ye / ic.
+func _use_item(name: String) -> void:
+	owner_model.act("wave", 0.8)
+	var a := _active()
+	var pn: String = state.pet(a.kind)["name"]
+	match name:
+		"Çikolata":
+			ui.toast("Çikolatayı yedin. %s de istedi ama çikolata ona zararlı, vermedin!" % pn)
+		"Dondurma":
+			ui.toast("Dondurma çok iyi geldi!")
+			for k in agents:
+				state.add_need(k, "fun", 8.0)
+		"Su":
+			ui.toast("Su içtin. %s'e de biraz verdin." % pn)
+			for k in agents:
+				state.add_need(k, "hunger", 5.0)
+		"Simit", "Ekmek":
+			ui.toast("%s yedin. %s kırıntıları kaptı!" % [name, pn])
+			_pet_voice(a.kind)
+		_:
+			ui.toast("%s kullanıldı." % name)
+
+
+## Telefon: arabani yanina cagir## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
 	var body: VBoxContainer = ui._open_modal("Telefon", 120, 120)
 	body.add_theme_constant_override("separation", 10)
@@ -1153,6 +1264,12 @@ func _jump() -> void:
 
 
 func _on_command(cmd: String) -> void:
+	if cmd.begins_with("shop_take:"):
+		_put_in_basket(cmd.substr(10))
+		return
+	if cmd.begins_with("use:"):
+		_use_item(cmd.substr(4))
+		return
 	if cmd == "jump":
 		_jump()
 		return
@@ -1190,7 +1307,14 @@ func _on_command(cmd: String) -> void:
 					_enter_shop(sp)
 					break
 		"shop_out":
-			_exit_shop()
+			if not _cart.is_empty():
+				ui.toast("Önce kasada ödemelisin! (%d ürün, %d ₺)" % [_cart_count(), _cart_total()])
+			else:
+				_exit_shop()
+		"shop_basket":
+			_take_basket()
+		"shop_pay":
+			_pay_cart()
 		"shop_buy":
 			_shop_buy()
 		"wardrobe":
@@ -2934,10 +3058,29 @@ func _update_context() -> void:
 		ui.set_context("Dışarı Çık", "home_out", "come")
 		return
 	if _shop != null and ParkMap.home == _shop:
-		if _shop.local2(o).distance_to(_shop.entrance_local) < 1.1:
+		var lo: Vector2 = _shop.local2(o)
+		if lo.distance_to(_shop.entrance_local) < 1.1:
 			ui.set_context("Dışarı Çık", "shop_out", "come")
-		elif _shop.local2(o).distance_to(_shop.counter_local) < 1.4:
-			ui.set_context("Kasa · Alışveriş", "shop_buy", "cart")
+		elif lo.distance_to(_shop.counter_local) < 1.4:
+			if _shop.kind == "market":
+				if _cart.is_empty():
+					ui.set_context("Kasa · Sepetin boş", "", "cart")
+				else:
+					ui.set_context("Kasada Öde · %d ürün · %d ₺" % [_cart_count(), _cart_total()], "shop_pay", "cart")
+			else:
+				ui.set_context("Eczacıdan İste", "shop_buy", "cart")
+		elif _shop.kind == "market" and _basket_node == null and lo.distance_to(_shop.basket_local) < 1.3:
+			ui.set_context("Sepet Al", "shop_basket", "cart")
+		elif _shop.kind == "market" and _basket_node != null:
+			var near := ""
+			for sp in _shop.spots:
+				if lo.distance_to(sp[1]) < 0.9:
+					near = sp[0]
+			if near != "":
+				var it := _item(near)
+				ui.set_context("Sepete Koy: %s · %d ₺" % [it[1], it[2]], "shop_take:" + near, "plus")
+			else:
+				ui.set_context("", "")
 		else:
 			ui.set_context("", "")
 		return
@@ -3198,6 +3341,11 @@ func _debug_shot() -> void:
 		for sp in world.shop_spots:
 			if sp.get("kind", "") == _args["shop"]:
 				_enter_shop(sp)
+				if _args.has("store"):
+					_take_basket()
+					for id in ["simit", "simit", "mama", "dondurma", "su"]:
+						_put_in_basket(id)
+					_place_owner(_shop.w2(Vector2(3.0, 3.15)))
 				break
 	if _args.has("follow"):
 		# Test: bir bisikletliyi / arabayi arkadan izle, sinyali zorla
