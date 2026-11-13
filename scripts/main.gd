@@ -278,6 +278,16 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.6, 0.68, 0.82)
 	env.ambient_light_energy = 0.8
+	# Bilgisayar (Forward+): ortam gölgesi, ekran uzayi yansima ve dolayli isik; tablette kapali
+	if RenderingServer.get_current_rendering_method() == "forward_plus":
+		env.ssao_enabled = true
+		env.ssao_radius = 1.2
+		env.ssao_intensity = 1.6
+		env.ssil_enabled = true
+		env.ssil_intensity = 0.6
+		env.ssr_enabled = true
+		env.ssr_max_steps = 48
+		env.volumetric_fog_enabled = false
 	env.glow_enabled = true
 	env.glow_intensity = 0.2
 	env.glow_bloom = 0.02
