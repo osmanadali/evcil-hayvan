@@ -106,6 +106,7 @@ var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scrip
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
+var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -157,6 +158,10 @@ func _ready() -> void:
 	bank.m = self
 	bank.state = state
 	add_child(bank)
+	neighbors = preload("res://scripts/neighbors.gd").new()
+	neighbors.m = self
+	neighbors.state = state
+	add_child(neighbors)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -210,6 +215,7 @@ func _ready() -> void:
 	street_food.build()
 	pet_care.build()
 	bank.build()
+	neighbors.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -797,6 +803,8 @@ func _input(e: InputEvent) -> void:
 				_on_command("train")
 			KEY_N:
 				radio.cycle()
+			KEY_K:
+				neighbors.open_messages()
 			KEY_TAB:
 				var pets: Array = state.owned_pets()
 				if pets.size() > 1:
@@ -1384,9 +1392,9 @@ func _job_text() -> String:
 
 
 ## Komsunun kopegini gezdir: kopek seni izler, parka goturup sahibine geri getir.
-func _start_dog_walk() -> void:
+func _start_dog_walk(who := "", dog_name := "", at := Vector2.INF) -> void:
 	var me := _owner_pos()
-	var cpos: Vector2 = world.resolve(me + Vector2(2.5, 1.0), 0.4, me)
+	var cpos: Vector2 = world.resolve(me + Vector2(2.5, 1.0), 0.4, me) if at == Vector2.INF else at
 	var client := Npc.new()
 	var cv := PersonModel.new()
 	cv.kind = "kadin" if randi() % 2 == 0 else "erkek"
@@ -1406,8 +1414,10 @@ func _start_dog_walk() -> void:
 	if tgt == Vector2.ZERO or tgt.distance_to(me) < 60.0:
 		var dd := _random_door(120.0, 260.0)
 		tgt = dd[0] if not dd.is_empty() else me + Vector2(120, 0)
-	var nm: String = DOG_NAMES[randi() % DOG_NAMES.size()]
-	var cn: String = CLIENTS[randi() % CLIENTS.size()]
+	var nm: String = DOG_NAMES[randi() % DOG_NAMES.size()] if dog_name == "" else dog_name
+	var cn: String = CLIENTS[randi() % CLIENTS.size()] if who == "" else who
+	if at != Vector2.INF:
+		client.visible = false      # komsu kendi modeliyle zaten orada
 	_job = {"type": "dog", "stage": "go", "target": tgt, "client": client, "client_pos": cpos, "dog": dog,
 		"name": nm, "client_name": cn, "t": 300.0, "pay": 40 + int(tgt.distance_to(me) / 15.0)}
 	_job["pay"] = mini(int(_job["pay"]), 60)
@@ -1521,6 +1531,8 @@ func _end_job(ok: bool, msg: String) -> void:
 			client.graph_node = ParkMap.nearest_node(job["client_pos"])
 	_nav = Vector2.INF
 	minimap.route = []
+	if job.has("neighbor"):
+		neighbors.on_job_done(job["neighbor"], ok)
 	if ok:
 		var pay: int = job["pay"] + (10 if job["t"] > 120.0 else 0)
 		state.d["coins"] += pay
@@ -1535,7 +1547,9 @@ func _end_job(ok: bool, msg: String) -> void:
 
 ## Telefon: arabani yanina cagir## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
+	var unread: int = neighbors.unread()
 	var apps: Array = [
+		["Mesajlar" + (" (%d)" % unread if unread > 0 else ""), "1fae5b", "phone", func(): neighbors.open_messages()],
 		["Harita", "2f80ff", "map", func(): _open_map()],
 		["İş Bul", "34a853", "coin", func(): _open_jobs()],
 		["Arabam", "e8453c", "play", func(): _summon_my_car()],
@@ -1752,6 +1766,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
+		return
+	if cmd.begins_with("nb_"):
+		neighbors.command(cmd)
 		return
 	if cmd == "atm" or cmd == "bank_app" or cmd == "bills_app":
 		bank.command(cmd)
@@ -3157,7 +3174,7 @@ var _voice_i := 0
 func _setup_audio() -> void:
 	for n in ["ortam", "adim1", "adim2", "adim3", "adim4", "para", "firlat", "tik", "mutlu"]:
 		_sounds[n] = load("res://assets/sfx/%s.wav" % n)
-	for n in ["hosgeldiniz", "dukkan_zil", "kasa", "su_sicrama", "araba_kapi"]:
+	for n in ["hosgeldiniz", "dukkan_zil", "kasa", "su_sicrama", "araba_kapi", "komsu_hasan", "komsu_ayse"]:
 		if ResourceLoader.exists("res://assets/sfx/%s.mp3" % n):
 			_sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	for n in ["havla1", "havla2", "havla3", "miyav1", "miyav2", "miyav3", "mirla1", "solu1"]:
@@ -3488,6 +3505,7 @@ func _process(dt: float) -> void:
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
 	bank.update(dt)
+	neighbors.update(dt)
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
@@ -3785,6 +3803,10 @@ func _update_context() -> void:
 	var bc: Array = bank.context()
 	if not bc.is_empty():
 		ui.set_context(bc[0], bc[1], bc[2])
+		return
+	var nbc: Array = neighbors.context()
+	if not nbc.is_empty():
+		ui.set_context(nbc[0], nbc[1], nbc[2])
 		return
 	var dc: Array = dealer.context()
 	if not dc.is_empty():
@@ -4104,6 +4126,12 @@ func _debug_shot() -> void:
 		await get_tree().create_timer(0.6).timeout
 	if _args.has("bills"):
 		bank.debug_bills()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("neighbors"):
+		neighbors.debug_neighbors()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("msgs"):
+		neighbors.debug_msgs()
 		await get_tree().create_timer(0.6).timeout
 	if _args.has("phone"):
 		_open_phone()
