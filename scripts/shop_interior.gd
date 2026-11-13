@@ -258,7 +258,9 @@ func _build_market() -> void:
 	for sp in [["su", Vector2(1.4, 1.2), 0.0], ["ayran", Vector2(3.0, 1.2), 0.0], ["meyve", Vector2(4.6, 1.2), 0.0],
 			["dondurma", Vector2(6.2, 1.2), 0.0], ["simit", Vector2(3.0, 3.15), PI], ["ekmek", Vector2(5.4, 3.15), PI],
 			["cikolata", Vector2(3.0, 5.0), PI], ["top", Vector2(5.4, 5.0), PI], ["sampuan", Vector2(5.4, 6.85), PI],
-			["odul", Vector2(6.35, 3.05), PI], ["mama", Vector2(7.05, 3.05), PI], ["konserve", Vector2(7.75, 3.05), PI]]:
+			["odul", Vector2(6.35, 3.05), PI], ["mama", Vector2(7.05, 3.05), PI], ["konserve", Vector2(7.75, 3.05), PI],
+			["yumurta", Vector2(4.2, 3.15), PI], ["makarna", Vector2(4.2, 5.0), PI], ["peynir", Vector2(3.0, 6.85), PI],
+			["domates", Vector2(8.0, 5.75), PI], ["biber", Vector2(9.2, 5.75), PI]]:
 		spots.append([sp[0], sp[1]])
 		_tag(sp[0], sp[1], sp[2])
 
@@ -291,7 +293,8 @@ func _tag(id: String, stand: Vector2, face: float) -> void:
 ## Urun fiyatlari (ui.SHOP_ITEMS ile ayni): [kimlik, ad, fiyat]
 const PRICES := [["mama", "Kuru Mama", 8], ["konserve", "Konserve", 14], ["odul", "Ödül Bisküvisi", 6], ["su", "Su", 3],
 	["simit", "Simit", 5], ["ayran", "Ayran", 6], ["ekmek", "Ekmek", 4], ["cikolata", "Çikolata", 8], ["dondurma", "Dondurma", 10],
-	["meyve", "Meyve Suyu", 7], ["top", "Oyuncak Top", 12], ["sampuan", "Pati Şampuanı", 15]]
+	["meyve", "Meyve Suyu", 7], ["top", "Oyuncak Top", 12], ["sampuan", "Pati Şampuanı", 15],
+	["yumurta", "Yumurta", 3], ["domates", "Domates", 4], ["biber", "Biber", 3], ["makarna", "Makarna", 9], ["peynir", "Peynir", 14]]
 
 
 func _build_pharmacy() -> void:

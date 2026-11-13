@@ -29,7 +29,7 @@ var seated := false            # taburede / sandalyede oturuyor (Sitting_Idle)
 var _lod_i := randi() % 4          # ziplarken (main ayarlar)
 var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
 const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
-	"eat": "Interact", "sit": "Sitting_Idle"}
+	"eat": "Interact", "sit": "Sitting_Idle", "cook": "Interact"}
 var tint := Color.WHITE   # tisort rengi
 var tint2 := Color.WHITE  # desen ikinci rengi
 var pattern := 0          # 0 duz, 1 cizgili, 2 kareli

@@ -107,6 +107,7 @@ var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
+var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -162,6 +163,10 @@ func _ready() -> void:
 	neighbors.m = self
 	neighbors.state = state
 	add_child(neighbors)
+	home_life = preload("res://scripts/home_life.gd").new()
+	home_life.m = self
+	home_life.state = state
+	add_child(home_life)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -1163,6 +1168,8 @@ func _on_bought(items: Dictionary, total: int) -> void:
 
 ## Cantadan bir sey kullan: ye / ic.
 func _use_item(name: String) -> void:
+	if home_life.use_item(name):
+		return
 	owner_model.act("eat", 2.4)
 	# Eldeki yiyecek/icecek: kisa sure elde gorunur
 	var it := Node3D.new()
@@ -1570,6 +1577,7 @@ func _open_phone() -> void:
 	if dealer.center != Vector2.INF:
 		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
+	apps.append(["Mobilya", "8a5a35", "home", func(): home_life.open_shop()])
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
@@ -1769,6 +1777,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("nb_"):
 		neighbors.command(cmd)
+		return
+	if cmd.begins_with("hl_"):
+		home_life.command(cmd)
 		return
 	if cmd == "atm" or cmd == "bank_app" or cmd == "bills_app":
 		bank.command(cmd)
@@ -2951,6 +2962,7 @@ func _enter_home() -> void:
 		add_child(_home)
 	_home.visible = true
 	ParkMap.home = _home
+	home_life.on_home(_home)
 	# Binanin bu kattan yukarisi gorunmesin (yukaridan bakinca daire acik gorunur)
 	world.hide_above(HOME_BUILDING, Vector2(0.944, -0.33), Vector2(14.2, 10.9), _home.global_position.y - 0.2)
 	_moving = false
@@ -3492,7 +3504,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3506,6 +3518,7 @@ func _process(dt: float) -> void:
 	_update_street_life(dt)
 	bank.update(dt)
 	neighbors.update(dt)
+	home_life.update(dt)
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
@@ -3762,6 +3775,10 @@ func _update_context() -> void:
 				return
 	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
+		return
+	var hlc: Array = home_life.context()
+	if not hlc.is_empty():
+		ui.set_context(hlc[0], hlc[1], hlc[2])
 		return
 	if _near_home_door():
 		ui.set_context("Eve Gir", "home_in", "home")
@@ -4174,6 +4191,24 @@ func _debug_shot() -> void:
 				i += 1
 		for f in 3:
 			await get_tree().process_frame
+	if _args.has("furnish"):
+		for fid in home_life.FURNITURE:
+			if not home_life.items().has(fid):
+				home_life.items().append(fid)
+		home_life._rebuild_furniture()
+		print("MOBILYA ", home_life.items())
+	if _args.has("cook"):
+		if ParkMap.home == null:
+			_enter_home()
+		var bag: Dictionary = state.d.get("bag", {})
+		for ing in ["Yumurta", "Yumurta", "Domates", "Biber"]:
+			bag[ing] = int(bag.get(ing, 0)) + 1
+		state.d["bag"] = bag
+		for f in 3:
+			await get_tree().process_frame
+		_update_context()
+		print("MUTFAK baglam=", ui._context_cmd)
+		home_life.start_cook(_args["cook"] if _args["cook"] in home_life.RECIPES else "menemen")
 	if _args.has("tired"):
 		needs.me()["energy"] = 8.0
 		needs.me()["hunger"] = 14.0
