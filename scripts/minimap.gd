@@ -50,14 +50,16 @@ func _ready() -> void:
 	_dist_label.position = Vector2(0, SIZE + 4)
 	_dist_label.size = Vector2(SIZE, 24)
 	_speed_label = Label.new()
+	_speed_label.add_theme_font_override("font", preload("res://assets/fonts/Anton-Regular.ttf"))
 	_speed_label.add_theme_font_size_override("font_size", 34)
 	_speed_label.add_theme_color_override("font_color", Color.WHITE)
 	_speed_label.add_theme_constant_override("outline_size", 8)
 	_speed_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
 	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_coin_label = Label.new()
-	_coin_label.add_theme_font_size_override("font_size", 22)
-	_coin_label.add_theme_color_override("font_color", Color("ffe08a"))
+	_coin_label.add_theme_font_override("font", preload("res://assets/fonts/Anton-Regular.ttf"))
+	_coin_label.add_theme_font_size_override("font_size", 26)
+	_coin_label.add_theme_color_override("font_color", Color("f5c518"))
 	_coin_label.add_theme_constant_override("outline_size", 7)
 	_coin_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
 	_coin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

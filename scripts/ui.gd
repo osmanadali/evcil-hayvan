@@ -56,6 +56,10 @@ var _stick_id := -2
 
 
 func _ready() -> void:
+	# Tum arayuzde okunakli varsayilan yazi tipi (dar, kalin)
+	var th := Theme.new()
+	th.default_font = F_UI
+	get_tree().root.theme = th
 	_build_hud()
 	_build_menu()
 	_build_setup()
@@ -150,7 +154,15 @@ func _build_hud() -> void:
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(right)
 	# Ust sag: saat ve menu (harita dugmesi yok: mini harita acar; para mini haritanin altinda)
-	var pill := K.box(right, GLASS, 26, 8)
+	var pill := PanelContainer.new()
+	var psb := ink_style(-0.18, 6, 5, ACCENT)
+	psb.content_margin_left = 20
+	psb.content_margin_right = 20
+	psb.content_margin_top = 6
+	psb.content_margin_bottom = 6
+	pill.add_theme_stylebox_override("panel", psb)
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right.add_child(pill)
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -158,15 +170,16 @@ func _build_hud() -> void:
 	pill.add_child(row)
 	_clock_icon = Icon.new("sun", Color("ffd36b"), 24)
 	row.add_child(_clock_icon)
-	clock_label = K.label(row, "10:00", 26, Color.WHITE)
-	clock_label.add_theme_font_override("font", load("res://assets/fonts/Anton-Regular.ttf"))
+	clock_label = K.label(row, "10:00", 28, Color.WHITE)
+	clock_label.add_theme_font_override("font", F_BODY)
+	K.outline(clock_label, 4, Color(0, 0, 0, 0.6))
 	# Hava durumu ve sicaklik (saatin yaninda, kucuk)
 	var wsep := ColorRect.new()
-	wsep.color = Color(1, 1, 1, 0.3)
+	wsep.color = ACCENT2
 	wsep.custom_minimum_size = Vector2(2, 26)
 	row.add_child(wsep)
-	weather_label = K.label(row, "", 20, Color(0.86, 0.93, 1.0))
-	weather_label.add_theme_font_override("font", load("res://assets/fonts/Anton-Regular.ttf"))
+	weather_label = K.label(row, "", 22, Color(0.9, 0.95, 1.0))
+	weather_label.add_theme_font_override("font", F_UI)
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
 	var phone_btn := K.button(right, "", "phone", func(): command.emit("phone"), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
 	_glass(phone_btn)
@@ -186,16 +199,23 @@ func _build_hud() -> void:
 	_toast.visible = false
 	# GTA tarzi bildirim: koyu, kose yumusak, solda sari serit
 	var tsb := StyleBoxFlat.new()
-	tsb.bg_color = Color(0.04, 0.04, 0.06, 0.86)
+	tsb.bg_color = INK
 	tsb.border_width_left = 8
-	tsb.border_color = Color("f5c518")
-	tsb.set_corner_radius_all(4)
+	tsb.border_width_bottom = 3
+	tsb.border_color = ACCENT
+	tsb.set_corner_radius_all(6)
+	tsb.skew = Vector2(-0.12, 0)
+	tsb.shadow_color = Color(0, 0, 0, 0.4)
+	tsb.shadow_size = 10
+	tsb.shadow_offset = Vector2(4, 6)
+	tsb.anti_aliasing = true
 	tsb.content_margin_left = 26
 	tsb.content_margin_right = 22
 	tsb.content_margin_top = 12
 	tsb.content_margin_bottom = 12
 	_toast.add_theme_stylebox_override("panel", tsb)
-	_toast_label = K.label(_toast, "", 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	_toast_label = K.label(_toast, "", 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	_toast_label.add_theme_font_override("font", F_UI)
 	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast_label.custom_minimum_size = Vector2(520, 0)
 
@@ -209,7 +229,13 @@ func _build_hud() -> void:
 	bottom.add_theme_constant_override("separation", 12)
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(bottom)
-	_context = K.button(bottom, " ", "star", func(): command.emit(_context_cmd), K.ORANGE, Color.WHITE, Vector2(320, 70), 26, 35)
+	_context = K.button(bottom, " ", "star", func(): command.emit(_context_cmd), ACCENT, Color("16171c"), Vector2(320, 70), 26, 14)
+	for st in ["normal", "hover", "pressed"]:
+		var csb := ink_style(-0.2, 8, 0, ACCENT, ACCENT if st != "pressed" else ACCENT.darkened(0.15))
+		_context.add_theme_stylebox_override(st, csb)
+	var ctl := _context.find_child("Text", true, false) as Label
+	if ctl:
+		ctl.add_theme_font_override("font", F_BODY)
 	_context.visible = false
 	# Alt ortada (mini harita sagda oldugu icin)
 	_context.reparent(hud)
@@ -226,14 +252,14 @@ func _build_hud() -> void:
 	bottom.add_child(_actions)
 
 	# Hareket cubugu (sol alt)
-	_stick_base = K.panel(hud, Color(0.05, 0.06, 0.07, 0.22), 89, 2, Color(1, 1, 1, 0.35))
+	_stick_base = K.panel(hud, Color(0.07, 0.075, 0.095, 0.35), 89, 3, Color(ACCENT, 0.55))
 	_stick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_base.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_stick_base.offset_left = 50
 	_stick_base.offset_right = 230
 	_stick_base.offset_top = -230
 	_stick_base.offset_bottom = -50
-	_stick_knob = K.panel(_stick_base, Color(1, 1, 1, 0.55), 37, 0, Color.WHITE)
+	_stick_knob = K.panel(_stick_base, Color(1, 1, 1, 0.7), 37, 3, ACCENT)
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_knob.size = Vector2(76, 76)
 	_stick_knob.position = Vector2(52, 52)
@@ -294,10 +320,7 @@ var _hint_label: Label
 func set_context(text: String, cmd: String, icon := "star") -> void:
 	if _hint == null:
 		_hint = PanelContainer.new()
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.03, 0.03, 0.05, 0.82)
-		sb.border_width_left = 6
-		sb.border_color = ACCENT
+		var sb := ink_style(-0.15, 6, 6, ACCENT)
 		sb.content_margin_left = 16
 		sb.content_margin_right = 18
 		sb.content_margin_top = 8
@@ -311,14 +334,17 @@ func set_context(text: String, cmd: String, icon := "star") -> void:
 		_hint.add_child(row)
 		var key := PanelContainer.new()
 		var ks := StyleBoxFlat.new()
-		ks.bg_color = Color.WHITE
-		ks.set_corner_radius_all(6)
-		ks.content_margin_left = 10
-		ks.content_margin_right = 10
+		ks.bg_color = ACCENT
+		ks.set_corner_radius_all(5)
+		ks.border_width_bottom = 3
+		ks.border_color = ACCENT.darkened(0.35)
+		ks.content_margin_left = 11
+		ks.content_margin_right = 11
 		key.add_theme_stylebox_override("panel", ks)
 		row.add_child(key)
 		_fx_label(key, "F", F_BODY, 24, Color("111111"))
-		_hint_label = _fx_label(row, "", F_BODY, 24, Color.WHITE)
+		_hint_label = _fx_label(row, "", F_UI, 27, Color.WHITE)
+		_hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if cmd == _context_cmd and _hint.visible == (cmd != "" or text != ""):
 		return
 	_context_cmd = cmd
@@ -418,9 +444,13 @@ func open_radial(at: Vector2, cat: bool, two: bool) -> void:
 ## Saydam koyu yuvarlak dugme gorunumu
 func _glass(b: Button) -> void:
 	var r := int(b.custom_minimum_size.y / 2.0) - 1
-	b.add_theme_stylebox_override("normal", K.style(GLASS, r, 2, Color(1, 1, 1, 0.28)))
-	b.add_theme_stylebox_override("hover", K.style(GLASS, r, 2, Color(1, 1, 1, 0.28)))
-	b.add_theme_stylebox_override("pressed", K.style(Color(1, 1, 1, 0.35), r, 2, Color.WHITE))
+	var n := K.style(Color(0.07, 0.075, 0.095, 0.72), r, 2, Color(1, 1, 1, 0.22))
+	n.shadow_color = Color(0, 0, 0, 0.3)
+	n.shadow_size = 5
+	n.shadow_offset = Vector2(2, 3)
+	b.add_theme_stylebox_override("normal", n)
+	b.add_theme_stylebox_override("hover", K.style(Color(0.07, 0.075, 0.095, 0.82), r, 3, ACCENT))
+	b.add_theme_stylebox_override("pressed", K.style(ACCENT, r, 3, Color.WHITE))
 
 
 func _on_action(cmd: String) -> void:
@@ -436,7 +466,7 @@ func _on_action(cmd: String) -> void:
 func _make_card(parent: Node, kind: String) -> Dictionary:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(270, 66)
+	b.custom_minimum_size = Vector2(280, 84)
 	b.pressed.connect(func(): select_pet.emit(kind))
 	parent.add_child(b)
 	var row := HBoxContainer.new()
@@ -444,7 +474,7 @@ func _make_card(parent: Node, kind: String) -> Dictionary:
 	row.add_theme_constant_override("separation", 12)
 	K.full(row, 8, 7, 16, 7)
 	b.add_child(row)
-	var face := K.panel(row, Color(PET_COLORS[kind]), 25, 2, Color.WHITE)
+	var face := K.panel(row, Color(PET_COLORS[kind]), 26, 3, ACCENT)
 	face.custom_minimum_size = Vector2(52, 52)
 	face.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -455,18 +485,33 @@ func _make_card(parent: Node, kind: String) -> Dictionary:
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 5)
+	col.add_theme_constant_override("separation", 2)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_child(col)
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(top)
-	var name_l := K.label(top, "", 19, Color.WHITE)
+	var name_l := K.label(top, "", 22, Color.WHITE)
+	name_l.add_theme_font_override("font", F_BODY)
+	K.outline(name_l, 4, Color(0, 0, 0, 0.5))
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_l.clip_text = true
-	var lvl := K.label(top, "", 16, Color("ffd9a0"))
-	var xp := K.bar(col, K.ORANGE, Vector2(100, 4))
+	var chip := PanelContainer.new()
+	var csb := ink_style(-0.2, 4, 0, ACCENT2, ACCENT2)
+	csb.shadow_size = 0
+	csb.content_margin_left = 8
+	csb.content_margin_right = 8
+	chip.add_theme_stylebox_override("panel", csb)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(chip)
+	var lvl := K.label(chip, "", 17, Color.WHITE)
+	lvl.add_theme_font_override("font", F_BODY)
+	var xp := K.bar(col, ACCENT, Vector2(100, 5))
+	xp.add_theme_stylebox_override("background", K.style(Color(1, 1, 1, 0.14), 2))
+	xp.add_theme_stylebox_override("fill", K.style(ACCENT, 2))
 	var bars := {}      # ihtiyaclar artik mini haritanin cevresinde
-	var mood := K.label(col, "", 14, Color(1, 1, 1, 0.8))
+	var mood := K.label(col, "", 17, Color(1, 1, 1, 0.85))
 	mood.name = "Mood"
 	return {"button": b, "name": name_l, "level": lvl, "xp": xp, "bars": bars, "mood": mood}
 
@@ -476,11 +521,11 @@ func _update_cards() -> void:
 		var c: Dictionary = _cards[kind]
 		var p: Dictionary = state.pet(kind)
 		var active: bool = state.d["active"] == kind
-		var sb := K.style(GLASS if active else Color(0.06, 0.07, 0.08, 0.28), 32, 2 if active else 0, Color(1, 1, 1, 0.45))
+		var sb := ink_style(-0.12, 8, 6 if active else 0, ACCENT, INK if active else Color(0.07, 0.075, 0.095, 0.5))
 		for s in ["normal", "hover", "pressed"]:
 			c["button"].add_theme_stylebox_override(s, sb)
 		c["name"].text = p["name"]
-		c["level"].text = "Sv %d" % state.level(kind)
+		c["level"].text = "SV %d" % state.level(kind)
 		c["xp"].value = state.level_progress(kind) * 100.0
 		# Kartta en dusuk ihtiyac yazilir ("Acikti", "Yorgun"...), hepsi iyiyse "Mutlu"
 		var low := ""
@@ -689,7 +734,7 @@ func _open_page(title: String, subtitle := "") -> VBoxContainer:
 	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(stripe)
 	if subtitle != "":
-		_fx_label(head, subtitle, F_BODY, 26, Color.WHITE, 6).position = Vector2(14, 126)
+		_fx_label(head, subtitle, F_UI, 30, Color.WHITE, 6).position = Vector2(14, 124)
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	scroll.offset_left = 40
@@ -733,10 +778,12 @@ func _open_panel(title: String, subtitle := "") -> VBoxContainer:
 	add_child(_modal)
 	_modal.tree_exiting.connect(func(): if is_instance_valid(_context): _context.modulate.a = 1.0)
 	var card := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.03, 0.03, 0.05, 0.88)
+	var sb := ink_style(0.0, 12, 0, ACCENT)
+	sb.bg_color = Color(0.07, 0.075, 0.095, 0.93)
 	sb.border_width_top = 6
 	sb.border_color = ACCENT
+	sb.shadow_size = 18
+	sb.shadow_offset = Vector2(6, 8)
 	sb.content_margin_left = 22
 	sb.content_margin_right = 22
 	sb.content_margin_top = 14
@@ -754,17 +801,21 @@ func _open_panel(title: String, subtitle := "") -> VBoxContainer:
 	card.add_child(col)
 	_fx_label(col, title, F_TITLE, 52, ACCENT, 8)
 	if subtitle != "":
-		var st := _fx_label(col, subtitle, F_BODY, 20, Color(1, 1, 1, 0.8))
+		var st := _fx_label(col, subtitle, F_UI, 23, Color(1, 1, 1, 0.85))
 		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		st.custom_minimum_size = Vector2(400, 0)
-	var sep := ColorRect.new()
-	sep.color = ACCENT2
-	sep.custom_minimum_size = Vector2(0, 3)
+	var sep := Panel.new()
+	var sepsb := StyleBoxFlat.new()
+	sepsb.bg_color = ACCENT2
+	sepsb.skew = Vector2(0.6, 0)
+	sep.add_theme_stylebox_override("panel", sepsb)
+	sep.custom_minimum_size = Vector2(0, 6)
+	sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(sep)
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 0)
 	col.add_child(body)
-	var hint := _fx_label(col, "ESC  KAPAT", F_BODY, 18, Color(1, 1, 1, 0.5))
+	var hint := _fx_label(col, "ESC  KAPAT" if not DisplayServer.is_touchscreen_available() else "DIŞARI DOKUN  ·  KAPAT", F_UI, 20, Color(1, 1, 1, 0.55))
 	hint.custom_minimum_size = Vector2(0, 30)
 	hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	return body
@@ -795,12 +846,14 @@ func open_phone(apps: Array, owner_name: String) -> void:
 	_modal.add_child(dim)
 	var phone := Panel.new()
 	var body_sb := StyleBoxFlat.new()
-	body_sb.bg_color = Color("111214")
+	body_sb.bg_color = Color("16171c")
 	body_sb.set_corner_radius_all(46)
-	body_sb.border_color = Color("3a3d42")
+	body_sb.border_color = ACCENT
 	body_sb.set_border_width_all(4)
-	body_sb.shadow_color = Color(0, 0, 0, 0.5)
-	body_sb.shadow_size = 24
+	body_sb.shadow_color = Color(0, 0, 0, 0.55)
+	body_sb.shadow_size = 28
+	body_sb.shadow_offset = Vector2(-6, 10)
+	body_sb.anti_aliasing = true
 	phone.add_theme_stylebox_override("panel", body_sb)
 	phone.size = Vector2(330, 640)
 	var vs := get_viewport().get_visible_rect().size
@@ -818,19 +871,27 @@ func open_phone(apps: Array, owner_name: String) -> void:
 	screen.size = Vector2(306, 616)
 	screen.clip_contents = true
 	phone.add_child(screen)
-	# Duvar kagidi: yumusak gecis
+	# Duvar kagidi: ana menu illustrasyonu (aksam Kecioren) + koyulastiran gecis
 	var wp := TextureRect.new()
-	var gt := GradientTexture2D.new()
-	gt.gradient = Gradient.new()
-	gt.gradient.set_color(0, Color("2b5876"))
-	gt.gradient.set_color(1, Color("4e4376"))
-	gt.fill_to = Vector2(0.4, 1)
-	wp.texture = gt
-	wp.stretch_mode = TextureRect.STRETCH_SCALE
+	wp.texture = load("res://assets/ui/menu_bg.jpg")
+	wp.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	wp.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	wp.position = Vector2.ZERO
 	wp.size = screen.size
 	wp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.add_child(wp)
+	var wd := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color(0.05, 0.04, 0.1, 0.35))
+	gt.gradient.set_color(1, Color(0.05, 0.04, 0.1, 0.8))
+	gt.fill_from = Vector2(0.5, 0)
+	gt.fill_to = Vector2(0.5, 1)
+	wd.texture = gt
+	wd.stretch_mode = TextureRect.STRETCH_SCALE
+	wd.size = screen.size
+	wd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(wd)
 	# Centik ve durum cubugu
 	var notch := Panel.new()
 	var nsb := StyleBoxFlat.new()
@@ -842,13 +903,13 @@ func open_phone(apps: Array, owner_name: String) -> void:
 	screen.add_child(notch)
 	var tl := _fx_label(screen, clock_label.text, F_BODY, 20, Color.WHITE)
 	tl.position = Vector2(26, 10)
-	var bat := _fx_label(screen, "4G  ▮▮▮  %86", F_BODY, 16, Color.WHITE)
+	var bat := _fx_label(screen, "4G  ▮▮▮  %86", F_UI, 18, Color.WHITE)
 	bat.position = Vector2(200, 13)
 	var big := _fx_label(screen, clock_label.text, F_BODY, 68, Color.WHITE)
 	big.position = Vector2(0, 52)
 	big.size = Vector2(306, 80)
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var who := _fx_label(screen, "%s  ·  %d ₺" % [owner_name, state.d["coins"]], F_BODY, 18, Color(1, 1, 1, 0.8))
+	var who := _fx_label(screen, "%s  ·  %d ₺" % [owner_name, state.d["coins"]], F_UI, 21, ACCENT)
 	who.position = Vector2(0, 136)
 	who.size = Vector2(306, 26)
 	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -870,10 +931,15 @@ func open_phone(apps: Array, owner_name: String) -> void:
 		var bs := StyleBoxFlat.new()
 		bs.bg_color = Color(app[1])
 		bs.set_corner_radius_all(20)
+		bs.border_width_bottom = 4
+		bs.border_color = Color(app[1]).darkened(0.35)
+		bs.shadow_color = Color(0, 0, 0, 0.35)
+		bs.shadow_size = 4
+		bs.shadow_offset = Vector2(0, 3)
 		var hs := bs.duplicate()
 		hs.bg_color = Color(app[1]).lightened(0.2)
-		hs.border_color = Color.WHITE
-		hs.set_border_width_all(3)
+		hs.border_color = ACCENT
+		hs.set_border_width_all(4)
 		b.add_theme_stylebox_override("normal", bs)
 		b.add_theme_stylebox_override("hover", hs)
 		b.add_theme_stylebox_override("focus", hs)
@@ -889,7 +955,7 @@ func open_phone(apps: Array, owner_name: String) -> void:
 			close_modal()
 			cb.call())
 		cell.add_child(b)
-		var nl := _fx_label(cell, app[0], F_BODY, 15, Color.WHITE)
+		var nl := _fx_label(cell, app[0], F_UI, 18, Color.WHITE)
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		nl.custom_minimum_size = Vector2(76, 0)
 		if first == null:
@@ -1171,8 +1237,102 @@ func open_closet(slot := "") -> void:
 
 const F_TITLE := preload("res://assets/fonts/Bangers-Regular.ttf")
 const F_BODY := preload("res://assets/fonts/Anton-Regular.ttf")
+const F_UI := preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")   # okunakli govde yazisi
 const ACCENT := Color("f5c518")     # sari
 const ACCENT2 := Color("ff5f8f")    # pembe
+const INK := Color(0.07, 0.075, 0.095, 0.9)     # koyu antrasit panel
+const LOAD_ART := ["res://assets/ui/load_park.jpg", "res://assets/ui/load_metro.jpg", "res://assets/ui/load_lake.jpg"]
+const TIPS := ["Dostunun açlığı ve enerjisi azaldığında marketten mama al.",
+	"Haritayı açmak için M'ye bas; bir yere dokunup yol tarifi al.",
+	"Telefonundan taksi çağırabilir, görevlere bakabilirsin.",
+	"Parkta top at: dostun eğlenir, sen de günlük görevi tamamlarsın.",
+	"Metroyla Keçiören'den şehrin öbür ucuna hızla geçebilirsin.",
+	"Akşam olunca sokak lambaları yanar; dostunu karanlıkta yalnız bırakma."]
+
+
+## Ortak koyu panel stili: hafif egik, gölgeli, istege bagli renkli sol serit.
+static func ink_style(skew := 0.0, radius := 8, accent_left := 0, accent := ACCENT, bg := INK) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.skew = Vector2(skew, 0)
+	sb.set_corner_radius_all(radius)
+	sb.border_width_left = accent_left
+	sb.border_color = accent
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(3, 4)
+	sb.anti_aliasing = true
+	return sb
+
+
+## Yukleniyor ekrani: yapay zekayla cizilmis illustrasyon, alt bantta baslik ve ipucu.
+static func build_loading(layer: CanvasLayer, title: String, sub: String, art := -1) -> void:
+	var bg := ColorRect.new()
+	bg.color = Color("17161c")
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
+	var tr := TextureRect.new()
+	var idx := art if art >= 0 else randi() % LOAD_ART.size()
+	tr.texture = load(LOAD_ART[idx])
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(tr)
+	# Alt koyu gecis
+	var grad := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.gradient = Gradient.new()
+	gt.gradient.set_color(0, Color(0.03, 0.03, 0.05, 0.0))
+	gt.gradient.set_color(1, Color(0.03, 0.03, 0.05, 0.92))
+	gt.fill_from = Vector2(0.5, 0)
+	gt.fill_to = Vector2(0.5, 1)
+	grad.texture = gt
+	grad.stretch_mode = TextureRect.STRETCH_SCALE
+	grad.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	grad.offset_top = -300
+	layer.add_child(grad)
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	box.offset_left = 60
+	box.offset_right = -60
+	box.offset_top = -230
+	box.offset_bottom = -40
+	box.alignment = BoxContainer.ALIGNMENT_END
+	box.add_theme_constant_override("separation", 2)
+	layer.add_child(box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	box.add_child(row)
+	var logo := _static_label(row, "PATİLİ GEZİNTİ", F_TITLE, 64, ACCENT, 12)
+	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var ld := _static_label(row, "YÜKLENİYOR…", F_BODY, 30, Color.WHITE, 6)
+	ld.size_flags_vertical = Control.SIZE_SHRINK_END
+	var stripe := ColorRect.new()
+	stripe.color = ACCENT2
+	stripe.custom_minimum_size = Vector2(0, 5)
+	box.add_child(stripe)
+	_static_label(box, title, F_BODY, 34, Color.WHITE, 6)
+	if sub != "":
+		_static_label(box, sub, F_UI, 24, Color(1, 1, 1, 0.85), 4)
+	var tip := _static_label(box, "İPUCU  ·  " + TIPS[randi() % TIPS.size()], F_UI, 22, ACCENT, 4)
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+
+static func _static_label(parent: Node, text: String, font: Font, size: int, color: Color, outline := 0) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", font)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	if outline > 0:
+		l.add_theme_constant_override("outline_size", outline)
+		l.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.05))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	l.add_theme_constant_override("shadow_offset_x", 3)
+	l.add_theme_constant_override("shadow_offset_y", 4)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
 
 
 func _fx_label(parent: Node, text: String, font: Font, size: int, color: Color, outline := 0) -> Label:
@@ -1233,12 +1393,26 @@ func _build_menu() -> void:
 	menu = Control.new()
 	K.full(menu)
 	add_child(menu)
+	# Arka plan: aksam Kecioren illustrasyonu, yavas kayan kamera (Ken Burns)
+	var art := TextureRect.new()
+	art.name = "Art"
+	art.texture = load("res://assets/ui/menu_bg.jpg")
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	K.full(art, -90, -50, -90, -50)
+	menu.add_child(art)
+	var pan := art.create_tween().set_loops()
+	pan.tween_property(art, "position:x", -60.0, 28.0).as_relative().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pan.parallel().tween_property(art, "scale", Vector2(1.06, 1.06), 28.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pan.tween_property(art, "position:x", 60.0, 28.0).as_relative().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pan.parallel().tween_property(art, "scale", Vector2.ONE, 28.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	# Solda koyu gecis (sehir arkada akarken yazilar okunsun)
 	var grad := TextureRect.new()
 	var gt := GradientTexture2D.new()
 	gt.gradient = Gradient.new()
-	gt.gradient.set_color(0, Color(0.02, 0.02, 0.05, 0.88))
-	gt.gradient.set_color(1, Color(0.02, 0.02, 0.05, 0.0))
+	gt.gradient.set_color(0, Color(0.04, 0.02, 0.08, 0.82))
+	gt.gradient.set_color(1, Color(0.04, 0.02, 0.08, 0.0))
 	gt.fill_from = Vector2(0, 0.5)
 	gt.fill_to = Vector2(1, 0.5)
 	grad.texture = gt
@@ -1259,6 +1433,17 @@ func _build_menu() -> void:
 	_fx_label(logo, "PATİLİ", F_TITLE, 128, ACCENT, 18).position = Vector2(76, -18)
 	_fx_label(logo, "GEZİNTİ", F_TITLE, 104, ACCENT2, 16).position = Vector2(40, 96)
 	var tag := _fx_label(logo, "KEÇİÖREN · ANKARA", F_BODY, 26, Color.WHITE, 6)
+	var tsb := Panel.new()
+	var tst := StyleBoxFlat.new()
+	tst.bg_color = ACCENT2
+	tst.skew = Vector2(0.4, 0)
+	tsb.add_theme_stylebox_override("panel", tst)
+	tsb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tsb.position = Vector2(30, 222)
+	tsb.size = Vector2(250, 38)
+	tsb.show_behind_parent = false
+	logo.add_child(tsb)
+	logo.move_child(tsb, tag.get_index())
 	tag.position = Vector2(46, 218)
 	# Menu maddeleri (eski kodla uyum icin Box/Continue adlari korunur)
 	var box := VBoxContainer.new()
