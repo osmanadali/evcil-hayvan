@@ -50,6 +50,7 @@ var _aim := false
 var _target := Vector2.ZERO
 var _moving := false
 var _dragging := false
+var _look_hold := 0.0      # fareyle bakistan sonra kamera bir sure kendiliginden ortalanmaz
 var _stuck := 0.0
 var _queue: Array[Vector2] = []
 var _touches := {}
@@ -744,12 +745,17 @@ func _unhandled_input(e: InputEvent) -> void:
 		elif _dragging:
 			_pointer_move(e.relative)
 		_touches[e.index] = e.position
+	elif e is InputEventMouseMotion and not touch and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# GTA gibi: tiklamadan, fare oynayinca kamera doner
+		_look_hold = 0.9
+		_pointer_move(e.relative * float(state.d.get("mouse_sens", 1.0)))
 	elif e is InputEventMouseButton and not touch:
+		var mp: Vector2 = get_viewport().get_visible_rect().size * 0.5 if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else e.position
 		if e.button_index == MOUSE_BUTTON_LEFT:
 			if e.pressed:
-				_pointer_down(e.position)
+				_pointer_down(mp)
 			else:
-				_pointer_up(e.position)
+				_pointer_up(mp)
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_by(0.92)
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -759,7 +765,7 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 ## Bilgisayar: WASD / oklar yurur, Shift kosar, E etkilesim, 1-2-3 sev-mama-top, Q komutlar, M harita, Esc menu,
-## C fotograf, fare tekeri yakinlastirir, sol tikla surukleyince kamera doner.
+## C fotograf, fare tekeri yakinlastirir, fare oynayinca kamera doner (imlec icin Alt).
 ## Ayrica: F etkilesim, V FPS, P telefon, G gorevler, J isler, R cagir, U semsiye, L tasma, T numara egitimi,
 ## N radyo, K mesajlar, Tab hayvan degistir, Space zipla (aracta el freni).
 func _input(e: InputEvent) -> void:
@@ -851,6 +857,31 @@ func _zoom_by(f: float) -> void:
 		_photo["dist"] = clampf(_photo["dist"] * f, 1.8, 12.0)
 	else:
 		_zoom = clampf(_zoom * f, 0.45, 2.6)
+
+
+## Bilgisayarda oyun sirasinda fare imleci gizlenip kilitlenir; fare oynadikca kamera doner (GTA gibi).
+## Menu, panel, harita, telefon acikken ya da Alt basiliyken imlec serbest kalir.
+func _mouse_look_on() -> bool:
+	if DisplayServer.is_touchscreen_available() or not _ready_done or not state.d.get("mouselook", true):
+		return false
+	if _mode != "play":
+		return false
+	if ui.is_blocking() or map_screen.visible or Input.is_key_pressed(KEY_ALT):
+		return false
+	return DisplayServer.window_is_focused()
+
+
+func _update_mouse_capture(dt: float) -> void:
+	_look_hold = maxf(0.0, _look_hold - dt)
+	if DisplayServer.get_name() == "headless":
+		return
+	var want := Input.MOUSE_MODE_CAPTURED if _mouse_look_on() else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != want:
+		Input.mouse_mode = want
+
+
+func _looking() -> bool:
+	return _dragging or _look_hold > 0.0
 
 
 ## Surukleme kamerayi cevirir; kisa dokunus yurutur, hayvani sevdirir ya da atis hedefini secer.
@@ -2338,7 +2369,7 @@ func _toggle_fps() -> void:
 ## Birinci sahis: arabada surucu koltugundan (on panel, direksiyon), iki tekerlikte surucunun gozunden.
 func _cockpit_camera() -> void:
 	var kind: String = _ride.get_meta("kind")
-	if not _dragging:
+	if not _looking():
 		_fps_yaw = lerpf(_fps_yaw, 0.0, minf(1.0, get_process_delta_time() * 1.5))
 	var look := Basis(Vector3.UP, _fps_yaw) * Basis(Vector3.RIGHT, _fps_pitch)
 	if kind == "araba":
@@ -2658,7 +2689,7 @@ func _update_drive(dt: float) -> void:
 		_rider_pet.global_transform = _ride.global_transform * Transform3D(Basis(), seat - Vector3(0, 0.62, 0))
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
-	if absf(_drive_speed) > 1.0 and not _dragging:
+	if absf(_drive_speed) > 1.0 and not _looking():
 		# Geri giderken kamera arkaya doner
 		_cam_yaw = lerp_angle(_cam_yaw, yaw + (PI if _drive_speed < -1.0 else 0.0), minf(1.0, dt * 2.2))
 	state.count("drive", absf(_drive_speed) * dt)
@@ -2806,7 +2837,7 @@ func _update_taxi(dt: float) -> void:
 	if c.get_child_count() > 0:
 		World.spin_wheels(c.get_child(0), _taxi_speed * dt)
 	owner_node.position = c.position
-	if not _dragging:
+	if not _looking():
 		_cam_yaw = lerp_angle(_cam_yaw, yaw, minf(1.0, dt * 1.6))
 
 
@@ -3174,7 +3205,7 @@ func _update_bus_ride(dt: float) -> void:
 		return
 	owner_node.position = b.position
 	owner_node.rotation.y = b.rotation.y
-	if b.speed > 1.0 and not _dragging:
+	if b.speed > 1.0 and not _looking():
 		_cam_yaw = lerp_angle(_cam_yaw, b.rotation.y, minf(1.0, dt * 1.5))
 
 
@@ -3493,6 +3524,7 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	_update_mouse_capture(dt)
 	if minimap:
 		_update_minimap(dt)
 	if _ready_done and (_mode == "play" or _mode == "metro") and not _args.has("cmd"):
@@ -4042,6 +4074,15 @@ func _debug_flow() -> void:
 ## [--view=top|wide|low] [--at=x,z] [--both] [--level=n] [--wear=id,id] [--cmd=sit] [--pet=kedi] [--frames=n]
 func _debug_shot() -> void:
 	var screen: String = _args.get("screen", "play")
+	if _args.has("mousetest"):
+		get_tree().create_timer(1.5).timeout.connect(func():
+			var y0 := _cam_yaw
+			var ev := InputEventMouseMotion.new()
+			ev.relative = Vector2(120, 0)
+			Input.parse_input_event(ev)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			print("FARE mod=", Input.mouse_mode, " yaw ", y0, " -> ", _cam_yaw))
 	var pet_kind: String = _args.get("pet", "kopek")
 	if screen != "menu" and screen != "setup":
 		state.d["started"] = true

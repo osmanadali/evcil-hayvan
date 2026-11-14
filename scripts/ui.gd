@@ -1040,10 +1040,26 @@ func open_settings() -> void:
 		_menu_item(body, "TAM EKRAN:  " + ("AÇIK" if full else "KAPALI"), func():
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
 			open_settings())
+	if not DisplayServer.is_touchscreen_available():
+		var ml: bool = state.d.get("mouselook", true)
+		_menu_item(body, "FAREYLE BAKIŞ:  " + ("SERBEST" if ml else "TIKLA-SÜRÜKLE"), func():
+			state.d["mouselook"] = not ml
+			state.save_game()
+			open_settings())
+		var sens := float(state.d.get("mouse_sens", 1.0))
+		_menu_item(body, "FARE HASSASİYETİ:  %d%%" % int(round(sens * 100.0)), func():
+			var steps := [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+			var i := 0
+			for j in steps.size():
+				if absf(steps[j] - sens) < 0.01:
+					i = j
+			state.d["mouse_sens"] = steps[(i + 1) % steps.size()]
+			state.save_game()
+			open_settings())
 	var info := _fx_label(body, "KONTROLLER", F_BODY, 30, ACCENT, 6)
 	info.custom_minimum_size = Vector2(0, 56)
 	info.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	var keys := "W A S D  yürü / sür     SHIFT  koş     BOŞLUK  zıpla, el freni\nE  etkileşim     V  araç içi kamera     M  harita\nP  telefon     G  görevler     C  fotoğraf     ESC  menü" \
+	var keys := "W A S D  yürü / sür     SHIFT  koş     BOŞLUK  zıpla, el freni\nE  etkileşim     V  araç içi kamera     M  harita\nP  telefon     G  görevler     C  fotoğraf     ESC  menü\nFARE  etrafına bak     ALT  imleci göster" \
 		if not DisplayServer.is_touchscreen_available() else "Sol alttaki çubukla yürü, ekranı sürükleyerek etrafına bak.\nHayvanına dokun: sev, besle, oyna."
 	var kl := _fx_label(body, keys, F_BODY, 22, Color(1, 1, 1, 0.85))
 	kl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
