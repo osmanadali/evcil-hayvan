@@ -784,7 +784,7 @@ func _input(e: InputEvent) -> void:
 						_on_command("fuel")
 					elif absf(_drive_speed) < 2.0:
 						_exit_ride()
-				elif ui._context.visible:
+				elif ui._context_cmd != "":
 					_on_command(ui._context_cmd)
 			KEY_1:
 				_on_command("pet")
@@ -4074,6 +4074,21 @@ func _debug_flow() -> void:
 ## [--view=top|wide|low] [--at=x,z] [--both] [--level=n] [--wear=id,id] [--cmd=sit] [--pet=kedi] [--frames=n]
 func _debug_shot() -> void:
 	var screen: String = _args.get("screen", "play")
+	if _args.has("pressf"):
+		get_tree().create_timer(float(_args.get("pressf", "3"))).timeout.connect(func():
+			for r in _rides:
+				if r.get_meta("kind", "") == "araba":
+					_place_owner(Vector2(r.global_position.x, r.global_position.z) + Vector2(2.0, 0.5).rotated(-r.rotation.y))
+					break
+			await get_tree().create_timer(1.0).timeout
+			print("F ONCE ipucu=", ui._context_cmd, " arac=", _ride)
+			var ev := InputEventKey.new()
+			ev.keycode = KEY_F
+			ev.pressed = true
+			Input.parse_input_event(ev)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			print("F SONRA arac=", _ride, " mod=", _mode))
 	if _args.has("mousetest"):
 		get_tree().create_timer(1.5).timeout.connect(func():
 			var y0 := _cam_yaw
