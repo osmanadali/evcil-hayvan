@@ -5,14 +5,18 @@ Nasıl kullanılır: her promptu ChatGPT'ye (görsel üretimi) yapıştır, beğ
 Hepsi **yatay 16:9** (mümkünse 1920x1080 veya üstü). Görsellerde **yazı, logo, gerçek marka olmasın.**
 
 Ortak stil cümlesi (her promptun sonuna eklenebilir):
-> Painterly GTA-cover-like illustration style, warm cinematic lighting, rich colors, slightly stylized realism, no text, no logos, no real brands, no watermark.
+> Fictional Turkish-style city (not a real place), no real-world landmarks or recognizable real buildings. Painterly GTA-cover-like illustration style, warm cinematic lighting, rich colors, slightly stylized realism, no text, no logos, no real brands, no watermark.
+
+Not: Şehir uydurma ama Türkiye havasında (dolmuş, simitçi, çay ocağı, otogar). Bu yüzden görseller Türkiye temalı kalabilir; sadece gerçek, tanınan yapılar olmamalı.
+**Şimdi üretilebilecekler:** load_park, load_metro, load_lake, load_otogar, load_ev ve bölüm 3.
+**Şehir tasarlanınca üretilecekler:** menu_bg (şehrin kendi silüeti), load_sahil, logo (ad kesinleşince).
 
 ---
 
 ## 1. Ana menü ve yükleme ekranları
 
 **menu_bg.png** — Ana menü arka planı
-> A wide cinematic illustration of a Turkish city neighborhood on hills at dusk, old apartment blocks with warm lit windows, a mosque dome and minaret in the distance, a tall TV tower on the skyline, a person walking a golden retriever on a sidewalk with street lamps in the foreground, purple-orange sky. Leave the left third calmer for menu text. Painterly GTA-cover-like style, no text, no logos.
+> A wide cinematic illustration of a Turkish city neighborhood on hills at dusk, old apartment blocks with warm lit windows, a mosque dome and minaret in the distance, a distinctive fictional landmark tower on the skyline (not resembling any real tower), a person walking a golden retriever on a sidewalk with street lamps in the foreground, purple-orange sky. Leave the left third calmer for menu text. Painterly GTA-cover-like style, no text, no logos.
 
 **load_park.png** — Yükleme: park
 > A sunny city park in a Turkish neighborhood: a small lake with ducks, benches, plane trees, a tea garden with small stools and tea glasses, children on a seesaw, a woman playing fetch with a beagle. Cinematic wide shot, painterly GTA-cover style, no text.
