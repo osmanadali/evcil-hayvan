@@ -88,6 +88,7 @@ func _model_from_file() -> void:
 	_wheels = _World.find_wheels(inst, k)
 	set_meta("wheels", _wheels)
 	_destination(Vector3(0, 2.95, -6.02))
+	_World.add_driver(self, Vector3(-0.78, 1.2, -5.05), randi())
 
 
 ## Model gelene kadar: EGO otobusune benzeyen sade govde.
@@ -121,6 +122,7 @@ func _model_simple() -> void:
 		lamp.emission = Color("fff1c4")
 		Kit.box(self, Vector3(0.35, 0.16, 0.04), Vector3(x, 0.85, -5.97), lamp)
 	_destination(Vector3(0, 2.95, -5.97))
+	_World.add_driver(self, Vector3(-0.78, 1.2, -5.05), randi())
 
 
 func _destination(at: Vector3) -> void:

@@ -112,6 +112,17 @@ func _process(_dt: float) -> void:
 			d += prev.distance_to(p)
 			prev = p
 		_dist_label.text = "%s · %d m" % [dest_name, int(d)] if d >= 10.0 else "%s · vardın" % dest_name
+	# Uzun hedef adi ekranin sagindan tasmasin: metin genisligine gore ekran icine kaydir
+	if _dist_label.text != "":
+		var font := _dist_label.get_theme_font("font")
+		var w := font.get_string_size(_dist_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + 16.0
+		var vw := get_viewport_rect().size.x
+		w = minf(w, vw - 20.0)
+		_dist_label.size = Vector2(maxf(w, SIZE + 40.0), 24)
+		_dist_label.clip_text = true
+		_dist_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		var cx := position.x + SIZE * 0.5
+		_dist_label.position.x = clampf(cx - _dist_label.size.x * 0.5, 10.0, vw - 10.0 - _dist_label.size.x)
 
 
 ## Dunya noktasi -> mini harita pikseli (merkez = oyuncu, ust = kameranin baktigi yon).

@@ -1890,8 +1890,64 @@ func traffic_car(i: int, paint: Color) -> Node3D:
 		var v := vehicle("res://assets/models/%s.glb" % spec[0], spec[1], spec[2])
 		if v:
 			v.set_meta("model", spec[0])
+			_seat_driver(v, i, spec[0] == "dolmus")
 			return v
-	return make_car(paint)
+	var c := make_car(paint)
+	_seat_driver(c, i, false)
+	return c
+
+
+## Aracin boyutuna gore sol on koltuga sofor oturtur (arac -Z'ye bakar, sol = -X).
+func _seat_driver(v: Node3D, i: int, van: bool) -> void:
+	var box := _merged_aabb(v, Transform3D())
+	if box.size == Vector3.ZERO:
+		return
+	var c := box.get_center()
+	var seat := Vector3(c.x - box.size.x * 0.2, box.position.y + box.size.y * (0.4 if van else 0.31),
+		c.z - box.size.z * (0.3 if van else 0.04))
+	add_driver(v, seat, i)
+
+
+static var _driver_tpls: Array = []
+
+
+## Ucuz, oturan sofor figuru (kalca noktasi 'hip'te, -Z'ye bakar). Meshler ve malzemeler tum
+## araclarda paylasilir; yalnizca 60 m icinde cizilir.
+static func add_driver(parent: Node3D, hip: Vector3, variant := 0) -> Node3D:
+	if _driver_tpls.is_empty():
+		# Sablonlar gizli bir dugumde agaca eklenir (cikista serbest kalsin)
+		var store := Node3D.new()
+		store.name = "SurucuSablon"
+		store.visible = false
+		(Engine.get_main_loop() as SceneTree).root.add_child.call_deferred(store)
+		var skin_list := ["e2b48f", "c99572", "f0c9a6"]
+		var shirts := ["2f4f8a", "f1f1ee", "6b6f75", "8a3b32", "3f6b46"]
+		var pants := Kit.mat("26292f", 0.85)
+		var hair := Kit.mat("2a1f1a", 0.8)
+		for k in 5:
+			var t := Node3D.new()
+			t.name = "Surucu"
+			var skin := Kit.mat(skin_list[k % 3], 0.7)
+			var shirt := Kit.mat(shirts[k], 0.85)
+			for sx in [-1.0, 1.0]:
+				Kit.box(t, Vector3(0.15, 0.15, 0.46), Vector3(sx * 0.1, 0.0, -0.2), pants)                 # uyluk
+				Kit.box(t, Vector3(0.12, 0.44, 0.13), Vector3(sx * 0.1, -0.2, -0.43), pants)               # baldir
+				Kit.box(t, Vector3(0.095, 0.095, 0.4), Vector3(sx * 0.19, 0.4, -0.16), shirt, Vector3(-0.45, 0, 0))   # kol
+				Kit.ball(t, 0.05, Vector3(sx * 0.17, 0.3, -0.34), skin, Vector3.ONE, 6)               # el (direksiyonda)
+			Kit.box(t, Vector3(0.38, 0.52, 0.23), Vector3(0, 0.3, 0.03), shirt, Vector3(0.12, 0, 0))       # govde
+			Kit.cyl(t, 0.05, 0.05, 0.1, Vector3(0, 0.6, 0.05), skin, 8)                                       # boyun
+			Kit.ball(t, 0.105, Vector3(0, 0.72, 0.05), skin, Vector3(0.92, 1.08, 1.0), 10)                   # bas
+			Kit.ball(t, 0.11, Vector3(0, 0.76, 0.08), hair, Vector3(0.95, 0.85, 1.0), 10)                    # sac
+			for mi: MeshInstance3D in t.find_children("*", "MeshInstance3D", true, false):
+				mi.visibility_range_end = 60.0
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			store.add_child(t)
+			_driver_tpls.append(t)
+	var d: Node3D = (_driver_tpls[absi(variant) % _driver_tpls.size()] as Node3D).duplicate()
+	d.name = "Surucu"
+	d.position = hip
+	parent.add_child(d)
+	return d
 
 
 func make_car(paint: Color) -> Node3D:
@@ -2067,6 +2123,12 @@ func _build_parks() -> void:
 				if near_water:
 					# Su kenarindaki patika: bank suyun tarafina konur ve suya bakar
 					s = 1.0 if ParkMap.water_sd(on_path + perp * 3.0) < ParkMap.water_sd(on_path - perp * 3.0) else -1.0
+				elif count % 3 != 0:
+					# Yol kenarindaki patika: bank patikanin yoldan uzak tarafina konur, oturan
+					# patikaya ve arkasindaki yola bakar (sirtini yola donmez)
+					var rp := _road_point(on_path)
+					if rp.distance_to(on_path) < 14.0:
+						s = -1.0 if (rp - on_path).dot(perp) > 0.0 else 1.0
 				var p := on_path + perp * s * 2.1
 				carry += 26.0
 				if not _is_lawn(p) or _kept_out(p, 0.5) or not is_free(p, 0.9):
@@ -2079,7 +2141,9 @@ func _build_parks() -> void:
 						continue
 					_bench(p, atan2(g.x, g.y))
 				else:
-					_bench(p, atan2(-perp.x * s, -perp.y * s))
+					# Oturma yuzu (+Z) patikaya doner
+					var to_path := (on_path - p).normalized()
+					_bench(p, atan2(to_path.x, to_path.y))
 			carry -= length
 
 	# Binalar arasinda seyrek agaclar

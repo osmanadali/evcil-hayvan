@@ -344,23 +344,23 @@ func _build_tea_garden(p: Vector2, face: Vector2) -> void:
 	# Ocak: tezgah, arka duvar, raf, tente (kendi pivotunda, en yuksek zemine gore)
 	var cz := -2.9
 	var kh := -1e9
-	for lp in [Vector2(-1.5, cz - 0.7), Vector2(1.5, cz - 0.7), Vector2(-1.5, cz + 0.5), Vector2(1.5, cz + 0.5), Vector2(0, cz)]:
+	for lp in [Vector2(-1.5, cz - 1.1), Vector2(1.5, cz - 1.1), Vector2(-1.5, cz + 0.5), Vector2(1.5, cz + 0.5), Vector2(0, cz)]:
 		kh = maxf(kh, _hl(r, lp))
 	var k := Kit.pivot(r, Vector3(0, kh, 0))
 	Kit.box(k, Vector3(2.6, 1.56, 0.78), Vector3(0, 0.18, cz), wood)
 	for i in 5:
 		Kit.box(k, Vector3(0.04, 0.8, 0.02), Vector3(-1.0 + i * 0.5, 0.5, cz + 0.4), wood2)
 	Kit.box(k, Vector3(2.7, 0.05, 0.86), Vector3(0, 0.985, cz), Kit.mat("e9e2d4", 0.3))
-	Kit.box(k, Vector3(2.9, 3.1, 0.1), Vector3(0, 0.95, cz - 0.62), Kit.mat("dccdb0", 0.9))
-	Kit.box(k, Vector3(2.92, 0.4, 0.12), Vector3(0, 0.2, cz - 0.62), green)
-	Kit.box(k, Vector3(2.0, 0.08, 1.0), Vector3(0, -0.04, cz - 0.15), Kit.mat("8f8577", 0.9))
+	Kit.box(k, Vector3(2.9, 3.1, 0.1), Vector3(0, 0.95, cz - 1.07), Kit.mat("dccdb0", 0.9))
+	Kit.box(k, Vector3(2.92, 0.4, 0.12), Vector3(0, 0.2, cz - 1.07), green)
+	Kit.box(k, Vector3(2.6, 0.08, 1.5), Vector3(0, -0.04, cz - 0.35), Kit.mat("8f8577", 0.9))
 	for sh in 2:
-		Kit.box(k, Vector3(2.0, 0.035, 0.24), Vector3(0, 1.45 + sh * 0.38, cz - 0.48), wood2)
+		Kit.box(k, Vector3(2.0, 0.035, 0.24), Vector3(0, 1.45 + sh * 0.38, cz - 0.93), wood2)
 	# Rafta dizili bardaklar
 	var glass_x: Array = []
 	for sh in 2:
 		for i in 14:
-			glass_x.append(Transform3D(Basis(), Vector3(-0.9 + i * 0.138, 1.47 + sh * 0.38 + 0.035, cz - 0.48)))
+			glass_x.append(Transform3D(Basis(), Vector3(-0.9 + i * 0.138, 1.47 + sh * 0.38 + 0.035, cz - 0.93)))
 	var gmesh := CylinderMesh.new()
 	gmesh.top_radius = 0.025
 	gmesh.bottom_radius = 0.018
@@ -381,8 +381,8 @@ func _build_tea_garden(p: Vector2, face: Vector2) -> void:
 	for sx in [-1.5, 1.5]:
 		Kit.cyl(k, 0.035, 0.035, 3.0, Vector3(sx, 0.95, cz + 0.75), Kit.mat("3a3a3a", 0.5), 8)
 	# Tabela
-	Kit.box(k, Vector3(2.6, 0.42, 0.06), Vector3(0, 2.95, cz - 0.6), green)
-	_label(k, "ÇINARALTI ÇAY OCAĞI", Vector3(0, 2.95, cz - 0.565), 0.2, Color("ffe7a8"))
+	Kit.box(k, Vector3(2.6, 0.42, 0.06), Vector3(0, 2.95, cz - 1.05), green)
+	_label(k, "ÇINARALTI ÇAY OCAĞI", Vector3(0, 2.95, cz - 1.015), 0.2, Color("ffe7a8"))
 	# Semaver (pirinc) ve iki katli caydanlik
 	var sm := Kit.pivot(k, Vector3(-0.75, 1.01, cz - 0.05))
 	Kit.cyl(sm, 0.15, 0.17, 0.08, Vector3(0, 0.04, 0), brass, 16)
@@ -487,10 +487,11 @@ func _build_tea_garden(p: Vector2, face: Vector2) -> void:
 	# Tezgah carpismasi
 	for sx in [-0.8, 0.0, 0.8]:
 		w._add_circle(_wc(r, Vector2(sx, cz - 0.1), 0.62))
-	# Caycı: tezgahin arkasinda
+	# Caycı: tezgahin arkasinda (tezgah ile arka duvar arasi), musterilere (+Z) bakar
 	var cayci := _person("erkek", "fbfbf8", "1e2228")
-	var home := Vector3(-0.2, 0, cz - 0.35)
+	var home := Vector3(-0.2, 0, cz - 0.72)
 	cayci.position = Vector3(home.x, kh, home.z)
+	cayci.rotation.y = PI
 	r.add_child(cayci)
 	# Masada oturan iki musteri (tavla oynuyorlar)
 	for i in [0, 1]:
@@ -849,7 +850,8 @@ func order_tea() -> void:
 	Kit.cyl(tray, 0.17, 0.17, 0.012, Vector3.ZERO, Kit.mat("b8b8b8", 0.25), 18)
 	tea_glass(tray, Vector3(0, 0.006, 0), true, true)
 	var cz: float = tea["home"].z
-	var way: Array = [Vector2(1.65, cz), Vector2(1.65, cz + 1.0)]
+	# Tezgahin arkasindan yana, oradan one (tezgahin icinden gecmez)
+	var way: Array = [Vector2(1.65, cz), Vector2(1.65, cz + 1.4)]
 	var path: Array = way.duplicate()
 	path.append(to_l)
 	_serve = {"phase": 0, "from": Vector2(tea["home"].x, tea["home"].z), "way": way, "path": path, "t": 0.6, "tray": tray}
@@ -977,7 +979,7 @@ func _update_serve(dt: float) -> void:
 				_serve["path"] = back
 			else:
 				cayci.speed = 0.0
-				cayci.rotation.y = 0.0
+				cayci.rotation.y = PI
 				_serve = {}
 				m._update_context()
 		return
