@@ -2128,6 +2128,13 @@ func _dress_polo(car: Node3D) -> void:
 		gm.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
 		(body as MeshInstance3D).material_override = gm
 		car.set_meta("glass", true)
+		# Kalici ic mekan: koltuklar, on panel, direksiyon, kapi dosemeleri camdan disaridan da gorunur
+		var cab := _make_cockpit()
+		cab.name = "Kabin"
+		cab.get_node("Dis").visible = false
+		cab.get_node("Ust").visible = false
+		(cab.get_node("CarPlayVP") as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
+		car.add_child(cab)
 	for spec in [[Vector3(0, 0.141, 0.504), 0.0], [Vector3(0, 0.221, -0.475), PI]]:
 		var plate := Node3D.new()
 		plate.position = spec[0]
@@ -2234,8 +2241,11 @@ func _enter_ride() -> void:
 		owner_model.riding = "araba"
 		owner_model.position = Vector3(-0.36, CAR_SEAT_Y, 0.2)
 		if _cockpit == null:
+			_cockpit = _ride.get_node_or_null("Kabin")
+		if _cockpit == null:
 			_cockpit = _make_cockpit()
 			_ride.add_child(_cockpit)
+		(_cockpit.get_node("CarPlayVP") as SubViewport).render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		_cockpit.get_node("Dis").visible = false
 		_cockpit.get_node("Ust").visible = false
 	elif cfg["hide"]:
@@ -2326,7 +2336,14 @@ func _exit_ride() -> void:
 	cam.near = 0.05
 	cam.fov = 60.0
 	if _cockpit:
-		_cockpit.queue_free()
+		if _cockpit.name == "Kabin":
+			# Polonun kalici ic mekani: kalir, yalniz birinci sahis parcalari gizlenir
+			_cockpit.visible = true
+			_cockpit.get_node("Dis").visible = false
+			_cockpit.get_node("Ust").visible = false
+			(_cockpit.get_node("CarPlayVP") as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
+		else:
+			_cockpit.queue_free()
 		_cockpit = null
 	_set_body_visible(_ride, true)
 	if RIDES[_ride.get_meta("kind")]["hide"]:
@@ -2373,6 +2390,8 @@ func _cockpit_camera() -> void:
 		_fps_yaw = lerpf(_fps_yaw, 0.0, minf(1.0, get_process_delta_time() * 1.5))
 	var look := Basis(Vector3.UP, _fps_yaw) * Basis(Vector3.RIGHT, _fps_pitch)
 	if kind == "araba":
+		if _cockpit == null:
+			_cockpit = _ride.get_node_or_null("Kabin")
 		if _cockpit == null:
 			_cockpit = _make_cockpit()
 			_ride.add_child(_cockpit)
@@ -2552,7 +2571,20 @@ func _make_cockpit() -> Node3D:
 		_seat(c, Vector3(x, 0.0, 0.0), fabric, fabric2)
 	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)
 	Kit.box(c, Vector3(1.4, 0.6, 0.12), Vector3(0, 0.82, 1.3), fabric, Vector3(0.15, 0, 0))
-	Kit.box(c, Vector3(1.5, 0.02, 1.6), Vector3(0, 0.38, 0.2), Kit.mat("232427", 1.0))
+	# Arka koltuk: koyu orta seritler, uc baslik, sirtin arkasinda bagaj rafi
+	for rx in [-0.44, 0.0, 0.44]:
+		Kit.box(c, Vector3(0.3, 0.012, 0.4), Vector3(rx, 0.575, 1.05), fabric2)
+		Kit.box(c, Vector3(0.28, 0.42, 0.012), Vector3(rx, 0.84, 1.235), fabric2, Vector3(0.15, 0, 0))
+		var rh := Kit.capsule(c, 0.055, 0.22, Vector3(rx, 1.2, 1.36), fabric, Vector3(0, 0, PI / 2))
+		rh.scale = Vector3(1.0, 1.0, 0.8)
+		for hx in [-0.06, 0.06]:
+			Kit.cyl(c, 0.007, 0.007, 0.1, Vector3(rx + hx, 1.12, 1.36), Kit.mat("b9bcc0", 0.3), 6)
+	Kit.box(c, Vector3(1.2, 0.02, 0.28), Vector3(0, 0.97, 1.5), dash)
+	# Zemin: koyu hali (tekerlek bosluklarini ortsun), on ayak boslugu duvari, arka tekerlek kemerleri
+	Kit.box(c, Vector3(1.5, 0.02, 2.5), Vector3(0, 0.38, 0.3), Kit.mat("232427", 1.0))
+	Kit.box(c, Vector3(1.5, 0.45, 0.05), Vector3(0, 0.6, -1.0), dash)
+	for sx in [-1.0, 1.0]:
+		Kit.box(c, Vector3(0.2, 0.3, 0.62), Vector3(sx * 0.6, 0.53, 1.2), soft)
 	# Kapi dosemeleri: kol dayama, gumus kapi kolu, hoparlor
 	# Tavan, direkler, ayna: yalniz birinci sahista (disaridan bakinca govdeden tasmasin)
 	var _ust := Node3D.new()
@@ -2564,6 +2596,9 @@ func _make_cockpit() -> Node3D:
 		Kit.box(c, Vector3(0.02, 0.025, 0.12), Vector3(sx * 0.745, 0.92, -0.32), silver)
 		Kit.cyl(c, 0.07, 0.07, 0.01, Vector3(sx * 0.745, 0.55, -0.35), black, 16, Vector3(0, 0, PI / 2))
 		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)
+		# Arka kapi dosemeleri
+		Kit.box(c, Vector3(0.05, 0.45, 0.62), Vector3(sx * 0.74, 0.72, 1.1), soft)
+		Kit.box(c, Vector3(0.08, 0.04, 0.4), Vector3(sx * 0.7, 0.8, 1.05), dash)
 		Kit.box(_ust, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), head, Vector3(-0.55, 0, 0))
 		Kit.box(_ust, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), head)
 		Kit.box(_ust, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), head)
@@ -4370,6 +4405,15 @@ func _debug_shot() -> void:
 			cam.position = Vector3(p0.x, fy + 1.6, p0.y)
 			cam.look_at(Vector3(p1.x, fy + 1.0, p1.y))
 			cam.fov = 75.0
+		elif view == "carside":
+			# Park halindeki Polonun yan camindan ice bakis: --view=carside [--ang=radyan] [--dist=m]
+			for r in _rides:
+				if r.get_meta("kind") == "araba":
+					_mode = "debug"
+					var ca := float(_args.get("ang", "0"))
+					var side: Vector3 = r.global_basis * Vector3(cos(ca), 0, sin(ca))
+					cam.global_position = r.global_position + side * float(_args.get("dist", "2.6")) + Vector3(0, 1.55, 0)
+					cam.look_at(r.global_position + Vector3(0, 0.75, 0))
 		elif view == "low":
 			_mode = "debug"
 			var a := float(_args.get("ang", "0.5"))
