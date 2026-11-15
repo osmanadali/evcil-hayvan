@@ -17,6 +17,7 @@ const CELL := 16.0
 var toys: Array[Node3D] = []
 var bowl_pos := Vector2.ZERO
 var pool_pos := Vector2(1e6, 1e6)
+var seats: Array = []          # [{pos, yaw, h, kind, busy}] sandalye / tabure (banklar benches'ten gelir)
 var benches: Array = []        # [Vector2 konum, float yaw] (oyuncu bankta kestirebilir)
 var play_rides: Array = []     # [{kind: "tahterevalli"/"salincak", pos: Vector2, pivot: Node3D}]
 var kennel_pos := Vector2(1e6, 1e6)
@@ -766,7 +767,34 @@ func _umbrella_table(p: Vector2, hex: String, stools := 3) -> void:
 	for j in stools:
 		var a := j * TAU / stools + p.x
 		Kit.cyl(t, 0.22, 0.2, 0.45, Vector3(cos(a) * 1.0, 0.22, sin(a) * 1.0), Kit.mat("9a6b43"), 10)
+		var sp := p + Vector2(cos(a), sin(a)) * 1.0
+		seats.append({"pos": sp, "yaw": atan2(cos(a), sin(a)), "h": gy(sp) + 0.47, "kind": "tabure", "busy": false})
 	_add_circle(Vector3(p.x, p.y, 0.75))
+
+
+## Kafe / lokanta terasi: masa ve iki sandalye (oturulabilir).
+func _terrace(p: Vector2, out_dir: Vector2) -> void:
+	var perp := Vector2(-out_dir.y, out_dir.x)
+	for j in 2:
+		var q := p + out_dir * 2.3 + perp * (float(j) * 2.8 - 1.4)
+		if not is_free(q, 1.2) or _inside_building(q):
+			continue
+		var t := _root(q)
+		Kit.cyl(t, 0.42, 0.42, 0.05, Vector3(0, 0.74, 0), Kit.mat("e8e1d2"), 14)
+		Kit.cyl(t, 0.04, 0.05, 0.72, Vector3(0, 0.37, 0), Kit.mat("55585e"), 6)
+		_add_circle(Vector3(q.x, q.y, 0.45))
+		for sgn in [-1.0, 1.0]:
+			var cp: Vector2 = q + out_dir * sgn * 0.8
+			var face: Vector2 = -out_dir * sgn
+			var yaw := atan2(-face.x, -face.y)
+			var c := _root(cp, yaw)
+			var wood := Kit.mat("8a5a36", 0.7)
+			Kit.box(c, Vector3(0.44, 0.05, 0.44), Vector3(0, 0.45, 0), wood)
+			Kit.box(c, Vector3(0.44, 0.45, 0.04), Vector3(0, 0.7, 0.2), wood)
+			for lx in [-0.18, 0.18]:
+				for lz in [-0.18, 0.18]:
+					Kit.box(c, Vector3(0.04, 0.45, 0.04), Vector3(lx, 0.22, lz), wood)
+			seats.append({"pos": cp, "yaw": yaw, "h": gy(cp) + 0.47, "kind": "sandalye", "busy": false})
 
 
 func _toy(node: Node3D, p: Vector2, y: float) -> void:
@@ -1234,6 +1262,10 @@ func _build_details() -> void:
 			if placed:
 				continue
 		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
+		if po["k"] == "yemek":
+			var rp := _road_point(p)
+			if rp.distance_to(p) > 1.0:
+				_terrace(p, (rp - p).normalized())
 		if SHOP_MODEL.has(po["k"]) or po["k"] == "veteriner":
 			# Zemin kattaki dukkan: kapisi tabelanin altinda, kaldirim tarafinda
 			var tr := _road_point(p) - p
