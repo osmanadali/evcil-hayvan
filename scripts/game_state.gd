@@ -57,6 +57,7 @@ const QUESTS := [
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],
 	["furniture", "Evine bir mobilya al", 1, 20],
 	["friend", "Bir arkadaşınla buluş (Sosyal / Mesajlar)", 1, 30],
+	["patigram", "Patigram'da bir fotoğraf paylaş", 1, 20],
 ]
 
 
