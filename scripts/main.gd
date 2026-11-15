@@ -640,8 +640,9 @@ func _spawn_npcs() -> void:
 		rd.tint = Color(["2f62a8", "e07b1f", "3f8f4a", "c8322b"][i % 4])
 		bike.add_child(rd)
 		rd.riding = "bisiklet"
-		rd.ride_lean = 0.6
-		rd.position = Vector3(0, 0.97 + 0.09 - rd.hips_height(), 0.2)
+		rd.ride_lean = float(RIDES["bisiklet"]["lean"])
+		rd.ride_crank = RIDES["bisiklet"]["crank"]
+		rd.position = Vector3(0, 0.97 + 0.09 - rd.hips_height(), RIDES["bisiklet"]["seat"].z)
 		cy.rider = rd
 		_cyclists.append(cy)
 		Car.traffic.append(cy)
@@ -1555,24 +1556,69 @@ func _update_job(dt: float) -> void:
 		_end_job(false, "Süre doldu! İş iptal oldu.")
 
 
-## Kuryede motorun arkasinda turuncu teslimat cantasi.
+## Kurye paketi: yayayken elde tasinan canta, iki tekerde arka tasiyicida, arabada arka koltukta.
 func _courier_box(on: bool) -> void:
 	if _job.has("box") and is_instance_valid(_job["box"]):
 		_job["box"].queue_free()
 		_job.erase("box")
+	_job.erase("box_where")
 	if not on:
 		return
-	var holder: Node3D = _ride if _ride != null and not RIDES[_ride.get_meta("kind")]["hide"] else owner_node
 	var b := Node3D.new()
-	holder.add_child(b)
-	if holder == owner_node:
-		b.position = Vector3(0, 1.25, 0.22)
-		Kit.box(b, Vector3(0.36, 0.4, 0.22), Vector3.ZERO, Kit.mat("e8622c", 0.6))
-	else:
-		b.position = Vector3(0, 1.15, 0.55)
-		Kit.box(b, Vector3(0.42, 0.42, 0.42), Vector3.ZERO, Kit.mat("e8622c", 0.6))
-	Kit.box(b, Vector3(0.2, 0.08, 0.005), Vector3(0, 0.05, 0.23 if holder != owner_node else 0.115), Kit.mat("ffffff", 0.5))
+	add_child(b)
+	Kit.box(b, Vector3(0.38, 0.36, 0.3), Vector3.ZERO, Kit.mat("e8622c", 0.6))
+	Kit.box(b, Vector3(0.2, 0.08, 0.005), Vector3(0, 0.03, 0.152), Kit.mat("ffffff", 0.5))
+	Kit.box(b, Vector3(0.2, 0.08, 0.005), Vector3(0, 0.03, -0.152), Kit.mat("ffffff", 0.5))
+	# Tutma sapi
+	Kit.box(b, Vector3(0.03, 0.12, 0.03), Vector3(-0.09, 0.24, 0), Kit.mat("2a2a2a", 0.8))
+	Kit.box(b, Vector3(0.03, 0.12, 0.03), Vector3(0.09, 0.24, 0), Kit.mat("2a2a2a", 0.8))
+	Kit.box(b, Vector3(0.21, 0.03, 0.03), Vector3(0, 0.3, 0), Kit.mat("2a2a2a", 0.8))
 	_job["box"] = b
+	_courier_box_place()
+
+
+## Paketi o anki duruma gore dogru yere tasir (her karede kontrol edilir, degisince yeniden baglanir).
+func _courier_box_place() -> void:
+	if not _job.has("box") or not is_instance_valid(_job["box"]):
+		return
+	var b: Node3D = _job["box"]
+	var where := "el"
+	if _ride != null:
+		where = "araba" if RIDES[_ride.get_meta("kind")]["hide"] else "arac"
+	elif _taxi != null or _bus_ride != null:
+		where = "gizli"
+	if _job.get("box_where", "") == where and b.get_parent() != self:
+		return
+	_job["box_where"] = where
+	var parent: Node3D = owner_model.hand
+	var xf := Transform3D(Basis(), Vector3(0, -0.34, 0))
+	b.visible = where != "gizli"
+	match where:
+		"araba":
+			parent = _ride
+			xf = Transform3D(Basis(), Vector3(0.3, 0.86, 1.0))      # arka koltuk
+		"arac":
+			parent = _ride
+			xf = Transform3D(Basis(), Vector3(0, 1.12, 0.62))       # arka tasiyici
+		"el":
+			# El kemigi donse de canta asagi sarksin: dunya yonunde tutulur (asagida her karede)
+			pass
+	if b.get_parent() != parent:
+		b.get_parent().remove_child(b)
+		parent.add_child(b)
+	b.transform = xf
+	b.scale = Vector3.ONE / parent.global_transform.basis.get_scale().x if where == "el" else Vector3.ONE
+
+
+func _courier_box_tick() -> void:
+	if not _job.has("box") or not is_instance_valid(_job["box"]):
+		return
+	_courier_box_place()
+	if _job.get("box_where", "") == "el":
+		var b: Node3D = _job["box"]
+		var hp: Vector3 = owner_model.hand.global_position
+		var s: float = b.global_transform.basis.get_scale().x
+		b.global_transform = Transform3D(Basis(Vector3.UP, owner_node.rotation.y).scaled(Vector3.ONE * s), hp + Vector3(0, -0.34, 0))
 
 
 func _end_job(ok: bool, msg: String) -> void:
@@ -2028,11 +2074,13 @@ var _ride: Node3D                    # su an surulen arac
 var _drive_speed := 0.0
 var _last_speed := 0.0
 var _steer := 0.0
+var _slip := 0.0        # el freninde kayma acisi: gidis yonu - burun yonu
 var _fps := false          # surerken birinci sahis kamera
 var _fps_pitch := 0.0
 var _jump_h := 0.0
 var _blink_t := 0.0
 var _cam_dist_s := 6.0
+var _cam_block_t := 0.0
 const CAR_SEAT_Y := 0.02      # surus pozunda karakterin arac icindeki yuksekligi
 var _cyclists: Array = []
 var _in_water := false
@@ -2072,15 +2120,18 @@ var _taxi_fare := 0
 const RIDES := {
 	"araba": {"max": 15.0, "acc": 3.4, "brake": 9.0, "steer": 1.6, "lock": 0.55, "base": 2.6, "r": 1.15, "hide": true,
 		"seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
+	# seat: sele ust yuzeyi (arac merkezine gore); grip: gidon tutacagi (x = yarim aciklik); foot: basamakta
+	# ayak bilegi; crank: bisiklet orta gobegi (x = pedal yarim acikligi). Hepsi modelden olculdu
+	# (tools/pose_test.gd --ride=... --measure). lean: en az one egilme (eller yetisene kadar artar).
 	"scooter": {"max": 11.0, "acc": 2.2, "brake": 7.0, "steer": 1.2, "lock": 0.45, "base": 1.3, "r": 0.5, "hide": false,
-		"seat": Vector3(0, 0.8, 0.26), "lean": 0.5, "engine": 1.6, "ad": "Scooter'a Bin",
-		"grip": Vector3(0.25, 1.0, -0.36), "pet": Vector3(0, 0.84, 0.66)},
+		"seat": Vector3(0, 0.95, 0.4), "lean": 0.06, "engine": 1.6, "ad": "Scooter'a Bin",
+		"grip": Vector3(0.36, 1.25, -0.07), "foot": Vector3(0.13, 0.5, -0.02), "pet": Vector3(0, 0.84, 0.66)},
 	"motosiklet": {"max": 16.0, "acc": 2.8, "brake": 8.0, "steer": 1.0, "lock": 0.4, "base": 1.45, "r": 0.55, "hide": false,
-		"seat": Vector3(0, 0.8, 0.3), "lean": 0.78, "engine": 1.35, "ad": "Motosiklete Bin",
-		"grip": Vector3(0.40, 0.99, -0.35), "pet": Vector3(0, 0.9, 0.72)},
+		"seat": Vector3(0, 0.8, 0.3), "lean": 0.25, "engine": 1.35, "ad": "Motosiklete Bin",
+		"grip": Vector3(0.40, 1.01, -0.36), "foot": Vector3(0.24, 0.37, 0.18), "pet": Vector3(0, 0.9, 0.72)},
 	"bisiklet": {"max": 6.5, "acc": 1.5, "brake": 6.0, "steer": 1.3, "lock": 0.5, "base": 1.1, "r": 0.45, "hide": false,
-		"seat": Vector3(0, 0.97, 0.2), "lean": 0.6, "engine": 0.0, "ad": "Bisiklete Bin",
-		"grip": Vector3(0.3, 1.02, -0.36), "pet": Vector3(0, 0.82, 0.58)},
+		"seat": Vector3(0, 0.97, 0.27), "lean": 0.3, "engine": 0.0, "ad": "Bisiklete Bin",
+		"grip": Vector3(0.33, 1.04, -0.3), "crank": Vector3(0.15, 0.31, 0.13), "pet": Vector3(0, 0.82, 0.58)},
 }
 
 
@@ -2257,6 +2308,7 @@ func _take_traffic_car(c: Node3D) -> void:
 
 
 func _enter_ride() -> void:
+	_slip = 0.0
 	var r := _nearest_rideable()
 	if r == null:
 		return
@@ -2294,6 +2346,8 @@ func _enter_ride() -> void:
 	else:
 		owner_model.riding = _ride.get_meta("kind")
 		owner_model.ride_lean = float(cfg.get("lean", -1.0))
+		owner_model.ride_feet = cfg.get("foot", Vector3.ZERO)
+		owner_model.ride_crank = cfg.get("crank", Vector3.ZERO)
 		# seat: sele ust yuzeyinin yuksekligi ve arac merkezine gore konumu; kalca kemigi selenin 9 cm ustunde
 		var seat: Vector3 = cfg["seat"]
 		owner_model.position = Vector3(0, seat.y + 0.09 - owner_model.hips_height(), seat.z)
@@ -2403,6 +2457,30 @@ func _exit_ride() -> void:
 	_cam_blend = 0.6
 	if _engine:
 		_engine.stop()
+
+
+## Durus denetimi (--posedbg): eller / tutacaklar, kalca / sele, bas yuksekligi, omurga acisi.
+func _pose_debug() -> void:
+	var sk: Skeleton3D = owner_model.find_children("*", "Skeleton3D", true, false)[0]
+	var base := owner_node.global_transform.affine_inverse()
+	var P := func(b: String) -> Vector3:
+		return base * (sk.global_transform * sk.get_bone_global_pose(sk.find_bone(b)).origin)
+	var hips: Vector3 = P.call("Hips")
+	var neck: Vector3 = P.call("Neck")
+	var head: Vector3 = P.call("Head")
+	var sp := neck - hips
+	print("POZ anim=", owner_model.anim.current if owner_model.anim else "yok", " binis=", owner_model.riding,
+		" (yerel: +x sag, -z on)")
+	print("POZ kalca=%s boyun=%s bas=%s omurga_one=%.0f° omurga_yana=%.0f° bas_one=%.0f° bas_yana=%.0f°" % [hips, neck, head,
+		rad_to_deg(atan2(-sp.z, sp.y)), rad_to_deg(atan2(sp.x, sp.y)),
+		rad_to_deg(atan2(-(head - neck).z, (head - neck).y)), rad_to_deg(atan2((head - neck).x, (head - neck).y))])
+	for side in ["Left", "Right"]:
+		print("POZ %s omuz=%s dirsek=%s bilek=%s parmak=%s ayak=%s diz=%s" % [side, P.call(side + "Arm"), P.call(side + "ForeArm"),
+			P.call(side + "Hand"), P.call(side + "HandMiddle1"), P.call(side + "Foot"), P.call(side + "Leg")])
+	if owner_model.grips.size() == 2:
+		print("POZ tutacak sol=%s sag=%s" % [base * (owner_model.grips[0] as Vector3), base * (owner_model.grips[1] as Vector3)])
+	if _ride != null:
+		print("POZ sele=", RIDES[_ride.get_meta("kind")]["seat"])
 
 
 func _toggle_fps() -> void:
@@ -2695,7 +2773,10 @@ func _update_drive(dt: float) -> void:
 	var gas: float = fuel.throttle(_ride.get_meta("kind"), -ui.stick.y, _drive_speed, dt)
 	var steer: float = ui.stick.x
 	var handbrake := Input.is_action_pressed("jump")
-	if handbrake:
+	var drifting: bool = handbrake and bool(cfg["hide"]) and absf(_drive_speed) > 4.0
+	if drifting:
+		_drive_speed = move_toward(_drive_speed, 0.0, 3.2 * dt)      # arka tekerler kilitli: kayarak yavaslar
+	elif handbrake:
 		_drive_speed = move_toward(_drive_speed, 0.0, 11.0 * dt)
 	elif gas > 0.12:
 		if _drive_speed < -0.2:
@@ -2715,11 +2796,17 @@ func _update_drive(dt: float) -> void:
 	_steer = move_toward(_steer, steer, dt * float(cfg["steer"]) * (1.0 if absf(steer) > 0.05 else 1.6))
 	var lock: float = float(cfg["lock"]) * lerpf(1.0, 0.35, clampf(absf(_drive_speed) / top, 0.0, 1.0))
 	var yaw_rate := _drive_speed * tan(_steer * lock) / float(cfg["base"])
-	if handbrake and cfg["hide"] and absf(_drive_speed) > 3.0:
-		yaw_rate *= 1.7      # el freniyle kayarak donus
+	if drifting:
+		# El freni: arka kayar, burun hizla doner ama araba eski yonunde kaymaya devam eder (yan verme)
+		yaw_rate = _drive_speed * tan(_steer * float(cfg["lock"]) * 0.8) / float(cfg["base"]) * 1.6
+		_slip = clampf(_slip + yaw_rate * dt * 0.8, -1.2, 1.2)
+	else:
+		# Tekerler tutunur: kayma acisi kapanir, kayarken hiz kaybeder
+		_drive_speed *= maxf(0.0, 1.0 - absf(_slip) * 0.9 * dt)
+		_slip = move_toward(_slip, 0.0, dt * (1.6 + absf(_slip) * 2.0))
 	var yaw := _ride.rotation.y - yaw_rate * dt
 	var p := Vector2(_ride.position.x, _ride.position.z)
-	var fwd := Vector2(-sin(yaw), -cos(yaw))
+	var fwd := Vector2(-sin(yaw + _slip), -cos(yaw + _slip))     # gidis yonu (kayarken burundan farkli)
 	var want := p + fwd * _drive_speed * dt
 	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
 	np = _push_from_vehicles(np, float(cfg["r"]) + 0.2, _ride)
@@ -3699,6 +3786,7 @@ func _process(dt: float) -> void:
 	street_food.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
+	_courier_box_tick()
 	_update_health(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
@@ -4087,10 +4175,18 @@ func _update_camera_raw(dt: float) -> void:
 				for i in range(1, steps + 1):
 					var q := from + dirv * dist * float(i) / steps
 					var q2 := Vector2(q.x, q.z)
-					if world._inside_building(q2):
-						dist = maxf(dist * float(i - 1) / steps - 0.4, 1.4)
+					if world.inside_building_poly(q2):
+						# Aracta kamera cok dibe girmez
+						dist = maxf(dist * float(i - 1) / steps - 0.4, 3.4 if _ride != null else 1.4)
 						break
-			_cam_dist_s = lerpf(_cam_dist_s, dist, minf(1.0, get_process_delta_time() * (12.0 if dist < _cam_dist_s else 2.5)))
+			# Kisa sureli engelde (donuste kose, dar sokak) kamera hemen yaklasmaz: 0.25 sn surerse yaklasir
+			var dtc := get_process_delta_time()
+			if dist < _cam_dist_s - 0.05:
+				_cam_block_t += dtc
+			else:
+				_cam_block_t = 0.0
+			if dist >= _cam_dist_s or _cam_block_t > 0.25:
+				_cam_dist_s = lerpf(_cam_dist_s, dist, minf(1.0, dtc * ((5.0 if _ride != null else 10.0) if dist < _cam_dist_s else 2.5)))
 			var pos := _focus + Vector3(0, 1.3, 0) + dirv * _cam_dist_s
 			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
 			cam.position = pos
@@ -4723,6 +4819,22 @@ func _debug_shot() -> void:
 		cam.look_at(ct)
 		await get_tree().process_frame
 		await get_tree().process_frame
+	if _args.has("posedbg"):
+		_pose_debug()
+	if _args.has("angs") and DisplayServer.get_name() != "headless":
+		# Karakterin onune gore acilardan (derece; 0 = onden, 90 = solundan, 180 = arkadan) ardisik goruntuler:
+		# --angs=0,90,180 [--dist=m] [--ch=bakis yuksekligi] -> cikti_0.png, cikti_90.png ...
+		_mode = "debug"
+		ui.visible = false
+		for s in (_args["angs"] as String).split(","):
+			var yawd := owner_node.global_rotation.y + PI + deg_to_rad(float(s))
+			var ct2 := owner_node.global_position + Vector3(0, float(_args.get("ch", "0.95")), 0)
+			var cd2 := float(_args.get("dist", "3.0"))
+			cam.global_position = ct2 + Vector3(sin(yawd) * cd2, 0.35, cos(yawd) * cd2)
+			cam.look_at(ct2)
+			for f in 3:
+				await get_tree().process_frame
+			get_viewport().get_texture().get_image().save_png((_args["shot"] as String).replace(".png", "_%s.png" % s))
 	var report := {"coins": state.d["coins"], "foods": state.d["foods"], "quests": state.d["quests"], "places": state.d["places"],
 		"owner": _owner_pos()}
 	for k in agents:

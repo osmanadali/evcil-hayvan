@@ -1806,9 +1806,41 @@ func _build_cars() -> void:
 			var s := 8.0
 			while s < length - 8.0:
 				for side in [-1.0, 1.0]:
-					if _rng.randf() < 0.3:
-						var p: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6)) + perp * side * (w * 0.5 - 1.0)
+					if _rng.randf() < 0.42:
+						# Yolun DISINDA, yol ile binalar arasindaki bosluga park edilir (serit acik kalsin).
+						# Yer derinse burnu binaya donuk (dik park), darsa kaldirima paralel; yer yoksa park yok.
+						var along: Vector2 = a + dir * (s + _rng.randf_range(-0.6, 0.6))
+						var out: Vector2 = perp * side
+						var edge := w * 0.5
+						var deep := true
+						for dd in [0.8, 2.0, 3.4, 4.8, 5.6]:
+							for ww in [-1.1, 0.0, 1.1]:
+								if inside_building_poly(along + out * (edge + dd) + dir * ww):
+									deep = false
+						var facing: Vector2
+						var p: Vector2
+						if deep:
+							p = along + out * (edge + 0.7 + 2.1)
+							facing = out
+						else:
+							var ok := true
+							for ww in [-2.3, -1.0, 0.0, 1.0, 2.3]:
+								for dd in [0.4, 1.3, 2.3]:
+									if inside_building_poly(along + out * (edge + dd) + dir * ww):
+										ok = false
+							if not ok:
+								continue
+							p = along + out * (edge + 1.25)
+							facing = dir if side > 0.0 else -dir
 						if not ParkMap.inside_bounds(p, 4.0) or ParkMap.water_sd(p) < 3.0:
+							continue
+						# Baska bir yolun ustune denk gelmesin
+						var on_road := false
+						for q in [p, p + facing * 2.0, p - facing * 2.0]:
+							var rp := _road_point(q)
+							if rp != Vector2.INF and rp.distance_to(q) < 2.2 and rp.distance_to(along) > 1.0:
+								on_road = true
+						if on_road:
 							continue
 						# Otobus duragi ve metro girisi onune park edilmez
 						var blocked := false
@@ -1820,14 +1852,15 @@ func _build_cars() -> void:
 								blocked = true
 						if blocked:
 							continue
-						var slope := atan2(gy(p + dir * 2.0) - gy(p - dir * 2.0), 4.0)
-						var facing := dir if side > 0.0 else -dir
-						var basis := Basis(Vector3.UP, atan2(-facing.x, -facing.y)) * Basis(Vector3.RIGHT, slope * (1.0 if side > 0.0 else -1.0))
+						var slope := atan2(gy(p + facing * 2.0) - gy(p - facing * 2.0), 4.0)
+						var basis := Basis(Vector3.UP, atan2(-facing.x, -facing.y)) * Basis(Vector3.RIGHT, slope)
 						xf.append(Transform3D(basis, at(p)) * car_base)
 						col.append(Color(paints[_rng.randi() % paints.size()]))
-						_add_circle(Vector3(p.x + dir.x * 1.0, p.y + dir.y * 1.0, 0.95))
-						_add_circle(Vector3(p.x - dir.x * 1.0, p.y - dir.y * 1.0, 0.95))
+						_add_circle(Vector3(p.x + facing.x * 1.0, p.y + facing.y * 1.0, 0.95))
+						_add_circle(Vector3(p.x - facing.x * 1.0, p.y - facing.y * 1.0, 0.95))
 				s += 5.6
+	if OS.get_cmdline_user_args().has("--parkdbg"):
+		print("PARK araba sayisi=", xf.size())
 	_multimesh(car_mesh, xf, col, true, 64.0, 110.0)
 
 
