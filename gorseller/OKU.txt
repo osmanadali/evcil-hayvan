@@ -1,0 +1,1 @@
+Uretilen gorseller buraya yuklenir (dosya adlari docs/gorsel-promptlari.md icindeki gibi).
