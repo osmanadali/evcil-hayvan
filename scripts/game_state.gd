@@ -38,6 +38,8 @@ const QUESTS := [
 	["dealer", "Otokent Galeri'den araç satın al", 1, 50],
 	["bill", "Bir faturanı öde", 1, 20],
 	["atm", "ATM'den para çek ya da yatır", 1, 10],
+	["goal", "Halı sahada gol at", 1, 25],
+	["basket", "Basket sahasında 3 basket at", 3, 25],
 	["neighbor", "Bir komşuna yardım et", 1, 25],
 	["cook", "Evde yemek pişir", 1, 25],
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],

@@ -57,7 +57,7 @@ func _ready() -> void:
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
 	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "pitches", "kerbs", "streets", "details", "fuel", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
+	for step in ["ground", "water", "buildings", "spots", "sports", "pitches", "kerbs", "streets", "details", "fuel", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
 		var t := Time.get_ticks_msec()
 		call("_build_" + step)
 		if OS.has_environment("SURE"):
@@ -1366,6 +1366,12 @@ func _paved(p: Vector2) -> bool:
 		if (pv[1] as Rect2).has_point((pv[0] as Transform2D) * p):
 			return true
 	return false
+
+
+var sports_site := {}             # {c: Vector2, ang: float} hali saha + basket alani (sports.gd)
+
+func _build_sports() -> void:
+	sports_site = preload("res://scripts/sports.gd").pick_site(self)
 
 
 func _build_fuel() -> void:
