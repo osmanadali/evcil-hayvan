@@ -9,12 +9,13 @@ const SPLAT_CENTER := Vector2.ZERO
 
 static var loaded := false
 static var zone := ""                    # "" = Subayevleri, "gar" = Gar-Maltepe (assets/gar/)
-const ZONE_TITLES := {"": "Subayevleri", "gar": "Gar ve Maltepe"}
+const ZONE_TITLES := {"": "Subayevleri", "gar": "Gar ve Maltepe", "kizilay": "Kızılay"}
+const ZONE_DIR := {"kizilay": "gar"}     # Kızılay, Gar haritasının boş arazisinde kurulan meydandır
 
 
 ## Bolgeye ozel dosyanin yolu.
 static func asset(name: String) -> String:
-	return "res://assets/%s%s" % ["" if zone == "" else zone + "/", name]
+	return "res://assets/%s%s" % ["" if zone == "" else str(ZONE_DIR.get(zone, zone)) + "/", name]
 
 
 ## Bolge degisince her seyi bosalt (sonra load_data yeniden okur).
