@@ -27,8 +27,11 @@ const RECIPES := {
 	"f_kefal": ["Kefal Tava", {"Kefal": 1}, {}, 40, true, "a8a89a"],
 	"f_gumus": ["Çıtır Gümüş", {"Gümüş": 3}, {}, 30, true, "d8d2b0"],
 	"f_yayin": ["Yayın Buğulama", {"Yayın": 1}, {"Domates": 1, "Biber": 1}, 75, true, "8a8a70"],
+	"kofte": ["Izgara Köfte", {"Kıyma": 1}, {"Ekmek": 1}, 55, false, "7a3f24"],
+	"patates": ["Fırında Patates", {"Patates": 2}, {"Biber": 1}, 40, true, "e0b04a"],
+	"salata": ["Çoban Salata", {"Domates": 1, "Salatalık": 1}, {"Biber": 1}, 22, false, "d94a3a"],
 }
-const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir", "Sazan", "Levrek", "Alabalık", "Kefal", "Gümüş", "Yayın"]
+const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir", "Sazan", "Levrek", "Alabalık", "Kefal", "Gümüş", "Yayın", "Kıyma", "Patates", "Salatalık"]
 
 ## Mobilya: kimlik -> [ad, fiyat, yer aciklamasi, yerel konum]
 const FURNITURE := {

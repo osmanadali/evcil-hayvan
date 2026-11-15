@@ -53,6 +53,13 @@ var tint2 := Color.WHITE  # desen ikinci rengi
 var pattern := 0          # 0 duz, 1 cizgili, 2 kareli
 var pants := Color(0, 0, 0, 0)   # a = 0: kot pantolon oldugu gibi
 var hand: Node3D          # elde tasinan esya icin
+# Sac (berber): 0 dogal, 1 kisa kesim, 2 asker tirasi, 3 topuz, 4 kel; renk a = 0 ise otomatik
+const HAIR_STYLES := ["Doğal", "Kısa Kesim", "Asker Tıraşı", "Topuz", "Kel"]
+var hair_style := 0
+var hair_color := Color(0, 0, 0, 0)
+var _hair_meshes: Array = []
+var _hair_mats: Array = []
+var _hair_extra: Node3D
 
 var _skel: Skeleton3D
 var _bones := {}
@@ -76,6 +83,8 @@ func _ready() -> void:
 		_bones[_skel.get_bone_name(i)] = i
 	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		_dress(mi)
+	if hair_style != 0 or hair_color.a > 0.0:
+		_apply_hair()
 	# Dinlenme durusunda kollar acik, dirsekler bukuk, bacaklar ayrik: hepsini duzelt
 	for side in ["Left", "Right"]:
 		var sx := 1.0 if side == "Left" else -1.0
@@ -129,6 +138,8 @@ func _dress(mi: MeshInstance3D) -> void:
 			# Sac rengi tisort rengine bagli degissin (herkes ayni olmasin)
 			var k := fposmod(tint.r * 3.0 + tint.g * 5.0 + tint.b * 7.0, 1.0)
 			bm.albedo_color = Color(0.45, 0.33, 0.25).lerp(Color(1.0, 0.92, 0.8), k)
+			_hair_meshes.append(mi)
+			_hair_mats.append(bm)
 		elif part.begins_with("kas") or part.begins_with("kirpik"):
 			bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -170,6 +181,65 @@ func set_outfit(shirt: Color, shirt2: Color, pat: int, pant: Color) -> void:
 			m.set_shader_parameter("shirt2", tint2)
 			m.set_shader_parameter("pattern", pattern)
 			m.set_shader_parameter("pants", pants)
+
+
+## Berber: sac modeli ve rengi. Kisa kesimler sac agini gizler, basa oturan bir sac kepi ekler.
+func set_hair(style: int, col: Color) -> void:
+	hair_style = style
+	hair_color = col
+	if _skel != null:
+		_apply_hair()
+
+
+func _apply_hair() -> void:
+	for bm: BaseMaterial3D in _hair_mats:
+		if hair_color.a > 0.0:
+			bm.albedo_color = hair_color
+	if is_instance_valid(_hair_extra):
+		_hair_extra.queue_free()
+	_hair_extra = null
+	for mi: MeshInstance3D in _hair_meshes:
+		mi.visible = hair_style == 0 or hair_style == 3
+	if hair_style == 0 or hair_style == 4 or _hair_meshes.is_empty() or not _bones.has("Head"):
+		return
+	var hm: MeshInstance3D = _hair_meshes[0]
+	var rel := _skel.global_transform.affine_inverse() * hm.global_transform
+	var box: AABB = rel * hm.get_aabb()
+	var att := BoneAttachment3D.new()
+	att.bone_name = "Head"
+	_skel.add_child(att)
+	_hair_extra = att
+	var inv := _skel.get_bone_global_rest(_bones["Head"]).affine_inverse()
+	var col: Color = hair_color if hair_color.a > 0.0 else (_hair_mats[0] as BaseMaterial3D).albedo_color
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = col
+	mat.roughness = 0.85
+	_keep.append(mat)
+	var hx := minf(box.size.x * 0.5, 0.11)
+	var top := box.end.y
+	var front := box.end.z
+	var cx := box.get_center().x
+	var parts: Array = []      # [merkez, yaricaplar]
+	match hair_style:
+		1:
+			parts.append([Vector3(cx, top - hx * 0.62, front - hx * 1.12), Vector3(hx * 0.9, hx * 0.64, hx * 1.0)])
+		2:
+			mat.albedo_color = col.darkened(0.25)
+			parts.append([Vector3(cx, top - hx * 0.72, front - hx * 1.14), Vector3(hx * 0.86, hx * 0.6, hx * 0.96)])
+		3:
+			parts.append([Vector3(cx, top - hx * 0.3, front - hx * 2.15), Vector3(hx * 0.42, hx * 0.42, hx * 0.42)])
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 20
+	sm.rings = 10
+	for pt in parts:
+		var mi := MeshInstance3D.new()
+		mi.mesh = sm
+		mi.material_override = mat
+		var r: Vector3 = pt[1]
+		mi.transform = inv * Transform3D(Basis.from_scale(r), pt[0])
+		att.add_child(mi)
 
 
 func act(what: String, duration := 0.9) -> void:
