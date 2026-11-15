@@ -108,6 +108,7 @@ var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_car
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
+var patigram: Node        # sosyal medya uygulamasi (scripts/patigram.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
@@ -165,6 +166,10 @@ func _ready() -> void:
 	dealer.m = self
 	dealer.state = state
 	add_child(dealer)
+	patigram = preload("res://scripts/patigram.gd").new()
+	patigram.m = self
+	patigram.state = state
+	add_child(patigram)
 	bank = preload("res://scripts/bank.gd").new()
 	bank.m = self
 	bank.state = state
@@ -1676,6 +1681,7 @@ func _open_phone() -> void:
 		["Dolmuş", "e07b1f", "star", func(): _call_taxi("dolmus")],
 		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
 		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
+		["Patigram", "d6336c", "heart", func(): patigram.phone_app()],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
 		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
@@ -3796,6 +3802,7 @@ func _process(dt: float) -> void:
 	fuel.update(dt)
 	street_food.update(dt)
 	traffic.update(dt)
+	patigram.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
 	_update_health(dt)
@@ -4286,6 +4293,7 @@ func _take_photo() -> void:
 	if pics != "" and DirAccess.make_dir_recursive_absolute(pics + "/PatiliGezinti") == OK:
 		img.save_png(pics + "/PatiliGezinti/" + file)
 	state.count("photo")
+	patigram.add_post(file)
 	ui.toast("Fotoğraf kaydedildi")
 
 
@@ -4512,6 +4520,11 @@ func _debug_shot() -> void:
 		ui.close_modal()
 	if _args.has("keys"):
 		ui.open_keys()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("patigram"):
+		patigram.add_post("yok.png")
+		patigram._d()["posts"][0]["likes"] = 40
+		patigram.phone_app()
 		await get_tree().create_timer(0.6).timeout
 	if _args.has("phone"):
 		_open_phone()
