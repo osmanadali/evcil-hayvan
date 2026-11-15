@@ -36,6 +36,8 @@ var anim: Node                 # hazir animasyonlar (yoksa kodla poz)
 var use_anims := true
 var airborne := false
 var seated := false            # taburede / sandalyede oturuyor (Sitting_Idle)
+var sit_exit := false          # oturmaktan kalkiyor (Sitting_Exit)
+var _seat_t := 0.0             # oturali beri gecen sure (Sitting_Enter gecisi)
 var _lod_i := randi() % 4          # ziplarken (main ayarlar)
 var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
 const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
@@ -465,7 +467,14 @@ func _anim_pose() -> void:
 	if airborne:
 		anim.play("Jump" if anim.current == "Jump" or anim.current == "Jump_Start" and anim.player.current_animation_position > 0.25 else "Jump_Start", 0.08, 1.4)
 	elif seated:
-		anim.play("Sitting_Idle", 0.35)
+		_seat_t += 0.05
+		var pl: AnimationPlayer = anim.player
+		if sit_exit and pl.has_animation("Sitting_Exit"):
+			anim.play("Sitting_Exit", 0.12)
+		elif _seat_t < 0.9 and pl.has_animation("Sitting_Enter"):
+			anim.play("Sitting_Enter", 0.15)
+		else:
+			anim.play("Sitting_Idle", 0.35)
 	elif _act_t < 1.0 and (_act == "eat" or _act == "sip"):
 		anim.play("Idle", 0.2)
 	elif _act_t < 1.0 and _act == "kick":
@@ -473,6 +482,7 @@ func _anim_pose() -> void:
 	elif _act_t < 1.0 and ACT_CLIPS.has(_act):
 		anim.play(ACT_CLIPS[_act], 0.15, 1.3)
 	elif speed < 0.15:
+		_seat_t = 0.0
 		anim.play("Idle", 0.3)
 	elif speed < 2.3:
 		anim.play("Walk", 0.25, clampf(speed / 1.35, 0.5, 1.6))

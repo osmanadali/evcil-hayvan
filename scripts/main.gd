@@ -101,6 +101,7 @@ var _args := {}
 var _ready_done := false
 var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
+var seating: Node         # her yerde oturma: bank, sandalye, tabure (scripts/seating.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
@@ -150,6 +151,9 @@ func _ready() -> void:
 	pet_care.m = self
 	pet_care.state = state
 	add_child(pet_care)
+	seating = preload("res://scripts/seating.gd").new()
+	seating.m = self
+	add_child(seating)
 	needs = preload("res://scripts/player_needs.gd").new()
 	needs.m = self
 	needs.state = state
@@ -228,6 +232,7 @@ func _ready() -> void:
 	_spawn_npcs()
 	_spawn_coins()
 	street_food.build()
+	seating.build()
 	pet_care.build()
 	bank.build()
 	neighbors.build()
@@ -1886,6 +1891,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "sleep" or cmd == "nap":
 		needs.command(cmd)
+		return
+	if cmd == "seat_sit":
+		seating.command(cmd)
 		return
 	if cmd == "dealer":
 		dealer.open_panel()
@@ -3816,7 +3824,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not seating.busy() and not needs.busy() and not home_life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3835,6 +3843,7 @@ func _process(dt: float) -> void:
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
+	seating.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4126,6 +4135,10 @@ func _update_context() -> void:
 	var bt: Array = boat.context()
 	if not bt.is_empty():
 		ui.set_context(bt[0], bt[1], bt[2])
+		return
+	var sc: Array = seating.context()
+	if not sc.is_empty():
+		ui.set_context(sc[0], sc[1], sc[2])
 		return
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
@@ -4625,6 +4638,8 @@ func _debug_shot() -> void:
 		_update_context()
 		print("UYKU baglam=", ui._context_cmd, " saat=", clock)
 		needs.sleep()
+	if _args.has("sit"):
+		seating.debug_sit()
 	if _args.has("nap") and not world.benches.is_empty():
 		var bb: Array = world.benches[0]
 		var bo := _owner_pos()

@@ -148,11 +148,6 @@ func context() -> Array:
 		return ["", "", ""]
 	if _near_bed():
 		return ["Yatak · Uyu / Kaydet", "htl_homebed", "moon"]
-	if ParkMap_home() == null and m._ride == null and not m.street_food.is_seated():
-		var b := _bench_at(m._owner_pos())
-		if not b.is_empty():
-			_bench_near = b
-			return ["Bankta Kestir", "nap", "sit"]
 	return []
 
 
@@ -293,6 +288,9 @@ func nap(b: Array) -> void:
 	var yaw: float = float(b[1]) + PI      # bankin onune bak
 	var fwd := Vector2(-sin(yaw), -cos(yaw))
 	var seat := bp + fwd * 0.2
+	var cs: Dictionary = m.seating.release()
+	if not cs.is_empty():
+		seat = cs["pos"]
 	var stand_p: Vector2 = bp + fwd * 0.95
 	_sit_at(seat, yaw, preload("res://scripts/park_map.gd").walk_height(bp) + 0.48)
 	var side := Vector2(cos(yaw), -sin(yaw))
