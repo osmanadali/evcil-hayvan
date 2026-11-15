@@ -2194,7 +2194,9 @@ var _jump_h := 0.0
 var _blink_t := 0.0
 var _cam_dist_s := 6.0
 var _cam_block_t := 0.0
+const WHEEL_R := 0.185      # direksiyon simidinin yaricapi (tutma noktalari)
 const CAR_SEAT_Y := 0.02      # surus pozunda karakterin arac icindeki yuksekligi
+const CAR_SEAT := Vector3(-0.36, CAR_SEAT_Y, -0.02)   # surucunun arac icindeki yeri (kalca minderin ustunde, eller simide yetisir)
 var _cyclists: Array = []
 var _in_water := false
 var _play_ride: Dictionary = {}
@@ -2441,11 +2443,14 @@ func _enter_ride() -> void:
 	_board_pets(not cfg["hide"] or glass, cfg.get("pet", Vector3(0.36, 1.18, 0.12)) if not glass else Vector3(0.36, 1.18, 0.12))
 	if cfg["hide"]:
 		_sfx("araba_kapi", -6.0)
-	if cfg["hide"] and glass:
-		# Surucu koltugunda oturan karakter + ic mekan (camdan gorunur)
-		owner_model.visible = true
+	if cfg["hide"]:
+		# Surucu koltugunda oturan karakter (camli arabada disaridan, her arabada iceriden bakista gorunur)
+		owner_model.visible = glass
 		owner_model.riding = "araba"
-		owner_model.position = Vector3(-0.36, CAR_SEAT_Y, 0.2)
+		owner_model.grips = []
+		owner_model.position = CAR_SEAT
+	if cfg["hide"] and glass:
+		# Ic mekan (camdan gorunur)
 		if _cockpit == null:
 			_cockpit = _ride.get_node_or_null("Kabin")
 		if _cockpit == null:
@@ -2455,7 +2460,7 @@ func _enter_ride() -> void:
 		_cockpit.get_node("Dis").visible = false
 		_cockpit.get_node("Ust").visible = false
 	elif cfg["hide"]:
-		owner_model.visible = false
+		pass
 	else:
 		owner_model.riding = _ride.get_meta("kind")
 		owner_model.ride_lean = float(cfg.get("lean", -1.0))
@@ -2563,8 +2568,10 @@ func _exit_ride() -> void:
 	owner_node.position = Vector3(out.x, ParkMap.walk_height(out), out.y)
 	owner_node.rotation = Vector3(0, owner_node.rotation.y, 0)
 	owner_model.visible = true
+	owner_model.set_head_hidden(false)
 	owner_model.riding = ""
 	owner_model.grips = []
+	owner_model.grip_palms = []
 	owner_model.position = Vector3.ZERO
 	_unboard_pets(out)
 	_cam_blend = 0.6
@@ -2592,8 +2599,35 @@ func _pose_debug() -> void:
 			P.call(side + "Hand"), P.call(side + "HandMiddle1"), P.call(side + "Foot"), P.call(side + "Leg")])
 	if owner_model.grips.size() == 2:
 		print("POZ tutacak sol=%s sag=%s" % [base * (owner_model.grips[0] as Vector3), base * (owner_model.grips[1] as Vector3)])
+	print("POZ kamera=", base * cam.global_position, " model=", owner_model.position, " gorunur=", owner_model.visible)
 	if _ride != null:
 		print("POZ sele=", RIDES[_ride.get_meta("kind")]["seat"])
+
+
+## Araba: direksiyon simidinde saat 9 ve 3 tutma noktalari (simitle birlikte doner; kollar caprazlanmasin
+## diye aci sinirlanir). Ic mekan yoksa (camsiz araba, disaridan bakis) eller klipteki gibi kalir.
+func _wheel_grips() -> void:
+	if _cockpit == null or not is_instance_valid(_cockpit) or not owner_model.visible:
+		owner_model.grips = []
+		return
+	var wheel: Node3D = _cockpit.get_node("Direksiyon")
+	var xf := wheel.global_transform
+	var rot := Basis()
+	var r := 0.175
+	var nrm := xf.basis.y
+	if wheel.has_meta("model"):
+		rot = Basis(Vector3.BACK, clampf(-_steer * 2.6, -0.9, 0.9))
+		r = WHEEL_R
+		nrm = xf.basis.z
+	# Saat 9 ve 3'un biraz ustu (simidin yatay kollarinin hemen ustunden kavrar)
+	var pl: Vector3 = rot * Basis(Vector3.BACK, -0.22) * Vector3.LEFT
+	var pr: Vector3 = rot * Basis(Vector3.BACK, 0.22) * Vector3.RIGHT
+	if not wheel.has_meta("model"):
+		pl = Vector3.LEFT
+		pr = Vector3.RIGHT
+	owner_model.grips = [xf * (pl * r), xf * (pr * r)]
+	owner_model.grip_palms = [xf.basis * -pl, xf.basis * -pr]
+	owner_model.grip_fwd = -nrm.normalized()
 
 
 func _toggle_fps() -> void:
@@ -2609,8 +2643,10 @@ func _toggle_fps() -> void:
 			_cockpit.visible = _ride.has_meta("glass")
 			_cockpit.get_node("Dis").visible = false
 			_cockpit.get_node("Ust").visible = false
-		if _ride.has_meta("glass"):
-			owner_model.visible = true
+		owner_model.set_head_hidden(false)
+		if RIDES[_ride.get_meta("kind")]["hide"]:
+			owner_model.visible = _ride.has_meta("glass")
+			owner_model.position = CAR_SEAT
 		cam.near = 0.05
 		cam.fov = 60.0
 
@@ -2630,7 +2666,10 @@ func _cockpit_camera() -> void:
 		_cockpit.visible = true
 		_cockpit.get_node("Dis").visible = true
 		_cockpit.get_node("Ust").visible = true
-		owner_model.visible = false
+		# Surucunun govdesi ve kollari gorunur (eller direksiyonda); yalniz bas gizlenir
+		owner_model.visible = true
+		owner_model.set_head_hidden(true)
+		owner_model.position = CAR_SEAT
 		if _rider_pet:
 			_rider_pet.visible = true
 		_set_body_visible(_ride, false)
@@ -2656,7 +2695,7 @@ func _cockpit_camera() -> void:
 		cpn.radio_color = radio.color()
 		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
 			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
-		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.3))
+		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.26))
 		cam.near = 0.05
 		cam.fov = 72.0
 	else:
@@ -2773,7 +2812,7 @@ func _make_cockpit() -> Node3D:
 	# Direksiyon: kendi modelimiz (Tripo, kolon ve kollariyla) varsa o; yoksa cizilen uc kollu simit
 	var wheel := Node3D.new()
 	wheel.name = "Direksiyon"
-	wheel.position = Vector3(-0.36, 0.9, -0.4)
+	wheel.position = Vector3(-0.36, 0.9, -0.32)
 	c.add_child(wheel)
 	if ResourceLoader.exists("res://assets/models/polo_ic.glb"):
 		var wm: Node3D = load("res://assets/models/polo_ic.glb").instantiate()
@@ -2942,6 +2981,7 @@ func _update_drive(dt: float) -> void:
 	if _ride.has_meta("blinkers"):
 		Car.blink(_ride.get_meta("blinkers"), turn, _blink_t)
 	if hide:
+		_wheel_grips()
 		# Araba: virajda govde hafif disa yatar
 		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.04, minf(1.0, dt * 3.0))
 	else:
