@@ -9,3 +9,7 @@
 - İstediğin durakta kapı açılınca kendin inersin; inmezsen tren devam eder. Anonslar ve durak ekranı.
 - Genel ilke: oyun serbest olacak; ışınlanma/otomatik sahne yerine oyuncu her şeyi kendi yapar
   (otobüs, dolmuş, taksi, otel, dükkân için de aynı ilke).
+- Hat her yerde yeraltında değil: bazı bölümlerde yer hizasında (açık hat), bazı bölümlerde viyadük/köprü üstünde gider;
+  tren şehirde dışarıdan görünür (yoldan, tepeden bakınca geçen tren), içerideyken pencereden şehir/deniz manzarası.
+  Yerüstü ve köprü istasyonları (merdiven/yürüyen merdivenle çıkılan yükseltilmiş peron) da olur.
+  Özgün şehir tasarımında hat güzergâhı buna göre çizilir (yamaç -> viyadük, ova -> yer hizası, merkez -> tünel).
