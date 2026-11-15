@@ -847,7 +847,7 @@ func _input(e: InputEvent) -> void:
 		if map_screen.visible:
 			map_screen.visible = false
 		elif ui.is_blocking():
-			ui.close_modal()
+			ui.back()        # telefonda: once ana ekrana, sonra kapat
 		elif _mode == "play":
 			ui.open_pause()
 
@@ -1673,13 +1673,13 @@ func _open_phone() -> void:
 	var unread: int = neighbors.unread()
 	var apps: Array = [
 		["Mesajlar" + (" (%d)" % unread if unread > 0 else ""), "1fae5b", "phone", func(): neighbors.open_messages()],
-		["Harita", "2f80ff", "map", func(): _open_map()],
+		["Harita", "2f80ff", "map", func(): _phone_map()],
 		["İş Bul", "34a853", "coin", func(): _open_jobs()],
 		["Arabam", "e8453c", "play", func(): _summon_my_car()],
 		["Taksi", "f2c230", "star", func(): _call_taxi("taksi")],
 		["Dolmuş", "e07b1f", "star", func(): _call_taxi("dolmus")],
 		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
-		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
+		["Kamera", "555b66", "camera", func(): _on_photo("enter"), true],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
 		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
@@ -1703,10 +1703,99 @@ func _open_phone() -> void:
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
-		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
+		apps.append(["Veteriner", "1e9a8a", "plus", func(): _phone_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
-		apps.append(["Evim", "f29f4b", "home", func(): _set_nav(HOME_DOOR, "Evim")])
+		apps.append(["Evim", "f29f4b", "home", func(): _phone_nav(HOME_DOOR, "Evim")])
 	ui.open_phone(apps, state.pet(state.d["active"])["name"] + " ile")
+
+
+func _phone_nav(p: Vector2, label: String) -> void:
+	_set_nav(p, label)
+	ui.toast("Yol tarifi hazır: %s · %d m. Mini haritadaki çizgiyi izle." % [label, int(_owner_pos().distance_to(p))])
+
+
+## Telefondaki harita uygulamasi: ekranin icinde kucuk harita + tam ekran dugmesi.
+func _phone_map() -> void:
+	var me := _owner_pos()
+	var sub := "%s · Konumun ve çevren" % ParkMap.ZONE_TITLES.get(ParkMap.zone, "Keçiören")
+	if _nav != Vector2.INF:
+		sub = "Rota: %s · %d m" % [minimap.dest_name, int(me.distance_to(_nav))]
+	var body: VBoxContainer = ui.phone_page("Harita", sub)
+	var tex: Texture2D = load(ParkMap.asset("park_map.png"))
+	var route: Array = minimap.route.duplicate()
+	var nav := _nav
+	var mapc := Control.new()
+	mapc.custom_minimum_size = Vector2(332, 320)
+	mapc.clip_contents = true
+	mapc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(mapc)
+	mapc.draw.connect(func():
+		var sz: Vector2 = mapc.size
+		const SPAN := 460.0                       # ekranda gorunen genislik (m)
+		var k: float = sz.x / SPAN
+		mapc.draw_rect(Rect2(Vector2.ZERO, sz), Color("dfe6d8"))
+		if tex != null:
+			var ts: Vector2 = tex.get_size()
+			var f: Vector2 = (me - ParkMap.SPLAT_CENTER) / ParkMap.SPLAT_EXTENT + Vector2(0.5, 0.5)
+			var half: Vector2 = Vector2(SPAN, SPAN * sz.y / sz.x) / ParkMap.SPLAT_EXTENT * 0.5
+			mapc.draw_texture_rect_region(tex, Rect2(Vector2.ZERO, sz), Rect2((f - half) * ts, half * 2.0 * ts))
+		if route.size() > 1:
+			var pts := PackedVector2Array()
+			for w in route:
+				pts.append(sz * 0.5 + ((w as Vector2) - me) * k)
+			mapc.draw_polyline(pts, Color("2f80ff"), 5.0, true)
+		if nav != Vector2.INF:
+			var d: Vector2 = sz * 0.5 + (nav - me) * k
+			d = d.clamp(Vector2(10, 10), sz - Vector2(10, 10))
+			mapc.draw_circle(d, 9.0, Color.WHITE)
+			mapc.draw_circle(d, 6.5, Color("e8453c"))
+		mapc.draw_circle(sz * 0.5, 11.0, Color.WHITE)
+		mapc.draw_circle(sz * 0.5, 8.0, Color("2f80ff")))
+	ui.phone_item(body, "Tam Ekran Harita", func():
+		ui.close_modal()
+		_open_map())
+	if _nav != Vector2.INF:
+		ui.phone_item(body, "Rotayı İptal Et", func():
+			_cancel_nav()
+			_phone_map())
+	if ParkMap.zone == "":
+		ui.phone_item(body, "Eve Yol Tarifi", func():
+			_set_nav(HOME_DOOR, "Evim")
+			_phone_map())
+	if world.vet_pos != Vector2.INF:
+		ui.phone_item(body, "Veterinere Yol Tarifi", func():
+			_set_nav(world.vet_pos, "Veteriner")
+			_phone_map())
+	ui._focus_first(body)
+
+
+## Test: bir kontrole gercek fare tiklamasi gonder.
+func _debug_click(c: Control) -> void:
+	var pos: Vector2 = c.get_global_rect().get_center()
+	var mm := InputEventMouseMotion.new()
+	mm.position = pos
+	mm.global_position = pos
+	Input.parse_input_event(mm)
+	await get_tree().process_frame
+	for down in [true, false]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = MOUSE_BUTTON_LEFT
+		mb.pressed = down
+		mb.position = pos
+		mb.global_position = pos
+		Input.parse_input_event(mb)
+		await get_tree().process_frame
+		await get_tree().process_frame
+
+
+func _find_button(n: Node, prefix: String) -> Button:
+	if n is Button and (n as Button).text.begins_with(prefix) and (n as Button).is_visible_in_tree():
+		return n
+	for ch in n.get_children():
+		var r := _find_button(ch, prefix)
+		if r != null:
+			return r
+	return null
 
 
 ## Oyuncuya en yakin yol kenari: [konum, yon acisi, dugum]
@@ -4553,6 +4642,33 @@ func _debug_shot() -> void:
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("phoneapp"):     # --phoneapp=Harita [--phoneitem=Tam] : simgeye (ve maddeye) fareyle tikla
+		if _args.has("phonebills"):      # test: faturalari hemen kes
+			bank._d()["bill_next"] = bank._now()
+			bank.update(0.0)
+			print("PHONEAPP borc=", bank.unpaid().size(), " nakit=", bank.cash(), " hesap=", bank.balance())
+		_open_phone()
+		await get_tree().create_timer(0.7).timeout
+		var pb: Button = ui.phone_app_button(str(_args["phoneapp"]))
+		print("PHONEAPP dugme=", pb != null)
+		if pb != null:
+			pb.grab_focus()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			await _debug_click(pb)
+			await get_tree().create_timer(0.5).timeout
+			print("PHONEAPP uygulama=", ui.phone_in_app(), " telefon=", ui.phone_open())
+			var steps: Array = str(_args.get("phoneitem", "")).split(",", false)
+			for st in steps:
+				var ib: Button = _find_button(ui, str(st))
+				print("PHONEITEM ", st, " bulundu=", ib != null)
+				if ib != null:
+					ib.grab_focus()
+					await get_tree().process_frame
+					await get_tree().process_frame
+					await _debug_click(ib)
+					await get_tree().create_timer(0.8).timeout
+			print("PHONEAPP son: telefon=", ui.phone_open(), " harita=", map_screen.visible, " borc=", bank.unpaid().size())
 	if _args.has("bigmaproute"):
 		var bi := 0
 		for i in map_screen.PINS.size():

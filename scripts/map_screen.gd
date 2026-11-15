@@ -34,6 +34,7 @@ var _zoom := 1.0
 var _zoom_min := 0.6
 var _touches := {}
 var _moved := 0.0
+var _pressed := false
 var _selected := -1
 var _me_world := Vector2.ZERO
 var _static_pins := 0           # PINS'in sabit kismi; sonrakiler her acilista yenilenir
@@ -87,6 +88,7 @@ func _ready() -> void:
 	var screen := K.panel(phone, Color("f4f1ea"), 50)
 	K.full(screen, 14, 14, 14, 14)
 	screen.clip_contents = true
+	screen.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW   # yuvarlak koselerden tasma olmasin
 
 	# Harita
 	_view = Control.new()
@@ -279,6 +281,8 @@ func _ready() -> void:
 
 func open(player_pos: Vector2) -> void:
 	visible = true
+	_pressed = false
+	_touches.clear()
 	_me_world = player_pos
 	_me.position = _to_px(player_pos)
 	_rebuild_dynamic()
@@ -358,7 +362,9 @@ func _on_view_input(e: InputEvent) -> void:
 		elif e.button_index == MOUSE_BUTTON_LEFT and not touch:
 			if e.pressed:
 				_moved = 0.0
-			elif _moved < 14.0:
+				_pressed = true
+			elif _pressed and _moved < 14.0:      # basisi baska yerde baslayan tiklama (telefon dugmesi) sayilmaz
+				_pressed = false
 				_tap(e.position)
 	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_LEFT and not touch:
 		_canvas.position += e.relative

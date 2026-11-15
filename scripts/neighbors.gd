@@ -746,7 +746,7 @@ func open_thread(k: String) -> void:
 		bubble.add_theme_stylebox_override("panel", sb)
 		var l: Label = ui._fx_label(bubble, "%s  %s" % [it["t"], it.get("c", "")], ui.F_BODY, 19, Color.WHITE)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(330, 0)
+		l.custom_minimum_size = Vector2(250 if ui._in_phone(body) else 330, 0)
 		if it["me"]:
 			var sp := Control.new()
 			sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
