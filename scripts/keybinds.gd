@@ -27,6 +27,7 @@ const ACTIONS := [
 	["train", "NUMARA EĞİTİMİ", [KEY_T]],
 	["radio", "RADYO", [KEY_N]],
 	["messages", "MESAJLAR", [KEY_K]],
+	["snowball", "KARTOPU", [KEY_Y]],
 ]
 const RESERVED := [KEY_ESCAPE, KEY_ALT]
 
