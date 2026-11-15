@@ -51,6 +51,8 @@ var _skel: Skeleton3D
 var _bones := {}
 var _phase := 0.0
 var _t := 0.0
+var _lod_i := randi() % 12
+var _lod_dt := 0.0
 var _w := {"sit": 0.0, "lie": 0.0, "sleep": 0.0, "eat": 0.0}
 var _hop_t := 1.0
 var _hop_h := 0.0
@@ -140,6 +142,18 @@ func is_hopping() -> bool:
 
 
 func _process(dt: float) -> void:
+	# Uzaktaki hayvanlar daha seyrek canlandirilir, cok uzaktakiler cizilmez (performans)
+	_lod_dt += dt
+	_lod_i += 1
+	var lod_cam := get_viewport().get_camera_3d()
+	if lod_cam != null and force_speed < 0.0:
+		var far := lod_cam.global_position.distance_squared_to(global_position)
+		if _skel != null:
+			_skel.visible = far < 140.0 * 140.0
+		if far > 30.0 * 30.0 and _lod_i % (2 if far < 60.0 * 60.0 else (4 if far < 140.0 * 140.0 else 12)) != 0:
+			return
+	dt = _lod_dt
+	_lod_dt = 0.0
 	_t += dt
 	if force_speed >= 0.0:
 		speed = force_speed

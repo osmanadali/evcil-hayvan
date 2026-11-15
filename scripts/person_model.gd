@@ -211,6 +211,7 @@ func _process(dt: float) -> void:
 		var cam := get_viewport().get_camera_3d()
 		var far := cam.global_position.distance_to(global_position) if cam else 0.0
 		anim.player.active = far < 120.0
+		_skel.visible = far < 170.0        # cok uzaktaki insanlar cizilmez (performans)
 		_lod_i += 1
 		if far > 120.0 or (far > 35.0 and _lod_i % (2 if far < 70.0 else 4) != 0):
 			return

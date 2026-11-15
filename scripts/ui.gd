@@ -11,6 +11,7 @@ signal closet_toggled(open: bool)
 signal worn_changed
 signal adopted(kind: String)
 signal back_to_menu
+signal gfx_changed
 
 const Keybinds = preload("res://scripts/keybinds.gd")
 const K = preload("res://scripts/ui_kit.gd")
@@ -1149,6 +1150,13 @@ func open_settings() -> void:
 	_menu_item(body, snd, func():
 		state.d["sound"] = not state.d["sound"]
 		state.save_game()
+		open_settings())
+	var gq := clampi(int(state.d.get("gfx", 1)), 0, 2)
+	_menu_item(body, "GRAFİK KALİTESİ:  " + ["DÜŞÜK", "ORTA", "YÜKSEK"][gq], func():
+		state.d["gfx"] = (gq + 1) % 3
+		state.save_game()
+		gfx_changed.emit()
+		toast(["Düşük: en akıcı; gölge ve çim sade.", "Orta: dengeli görüntü ve akıcılık.", "Yüksek: yansımalar, dolaylı ışık ve en sık çim."][(gq + 1) % 3])
 		open_settings())
 	if not DisplayServer.is_touchscreen_available():
 		var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
