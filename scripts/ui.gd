@@ -117,6 +117,10 @@ func _process(dt: float) -> void:
 
 
 func toast(text: String) -> void:
+	if _phone_launching:
+		if not _phone_toasts.has(text):
+			_phone_toasts.append(text)
+		return
 	if _toast_queue.size() < 4 and (_toast_queue.is_empty() or _toast_queue[-1] != text):
 		_toast_queue.append(text)
 
@@ -591,6 +595,8 @@ func _update_cards() -> void:
 # ---------------------------------------------------------------- pencereler
 
 func close_modal() -> void:
+	_phone = null
+	_phone_layer = null
 	if _modal:
 		_modal.queue_free()
 		_modal = null
@@ -605,6 +611,8 @@ func close_modal() -> void:
 
 ## Ortasinda baslikli pencere acar; icerik VBox'ini dondurur.
 func _open_modal(title: String, top := 150.0, bottom := 150.0) -> VBoxContainer:
+	if _phone_ctx():
+		return phone_page(title)
 	close_modal()
 	_modal = Control.new()
 	K.full(_modal)
@@ -724,6 +732,9 @@ func _price_button(row: Node, price: int, cb: Callable) -> void:
 
 
 func open_quests() -> void:
+	if _phone_ctx():
+		_phone_quests()
+		return
 	var body := _open_modal("Görevler")
 	K.label(body, "Bugünün görevleri", 24, K.MUTED)
 	for q in state.daily_quests():
@@ -746,6 +757,8 @@ func open_quests() -> void:
 
 ## GTA tarzi tam ekran sayfa (duraklatma / ayarlar): solda koyu gecis, egik baslik, buyuk maddeler.
 func _open_page(title: String, subtitle := "") -> VBoxContainer:
+	if _phone_ctx():
+		return phone_page(title, subtitle)
 	close_modal()
 	_context.modulate.a = 0.0
 	_modal = Control.new()
@@ -820,6 +833,8 @@ func _open_page(title: String, subtitle := "") -> VBoxContainer:
 
 ## Kucuk yan panel (dukkan, veteriner): oyun gorunur kalir, sagda koyu kart.
 func _open_panel(title: String, subtitle := "") -> VBoxContainer:
+	if _phone_ctx():
+		return phone_page(title, subtitle)
 	close_modal()
 	_context.modulate.a = 0.0
 	_modal = Control.new()
@@ -874,12 +889,66 @@ func _open_panel(title: String, subtitle := "") -> VBoxContainer:
 ## Paneldeki kucuk madde.
 func _panel_item(parent: Node, text: String, cb: Callable) -> Button:
 	var b := _menu_item(parent, text, cb)
+	if _in_phone(parent):
+		return b
 	b.custom_minimum_size = Vector2(400, 46)
 	b.add_theme_font_size_override("font_size", 28)
 	return b
 
 
-## Telefon: sag altta gercek bir telefon, uygulama simgeleri. apps: [[ad, renk, simge, Callable]]
+## ---------------------------------------------------------------- telefon
+## Gercek bir akilli telefon: govde + yuvarlak koseli KIRPILMIS ekran, durum cubugu, kaydirilabilir
+## ana ekran (4 sutun) ve ekranin ICINDE acilan uygulamalar. apps: [[ad, renk, simge, Callable, (kapat)]]
+const PH_W := 380.0
+const PH_H := 780.0
+const PH_SW := 360.0           # ekran
+const PH_SH := 760.0
+var _phone: Control            # govde (olcekli kok)
+var _phone_screen: Control
+var _phone_home: Control
+var _phone_host: Control       # uygulama katmani buraya eklenir
+var _phone_layer: Control      # acik uygulama (yoksa null)
+var _phone_buttons := {}       # ad -> Button (ana ekran)
+var _phone_last: Button
+var _phone_launching := false
+var _phone_made := false
+var _phone_toasts: Array[String] = []
+var _phone_app_name := ""
+var _phone_clock: Label
+
+
+func phone_open() -> bool:
+	return _phone != null and is_instance_valid(_phone) and _modal != null
+
+
+func phone_in_app() -> bool:
+	return phone_open() and _phone_layer != null and is_instance_valid(_phone_layer)
+
+
+## Panel / sayfa cagrilari telefonun icine mi cizilecek?
+func _phone_ctx() -> bool:
+	return phone_open() and (_phone_launching or phone_in_app())
+
+
+func _in_phone(n: Node) -> bool:
+	return n != null and n.has_meta("phone")
+
+
+func phone_app_button(app: String) -> Button:
+	for k in _phone_buttons:
+		if String(k).begins_with(app):
+			return _phone_buttons[k]
+	return null
+
+
+## Esc / geri: uygulamadaysa ana ekrana, degilse pencereyi kapat.
+func back() -> void:
+	if phone_in_app():
+		phone_home()
+	else:
+		close_modal()
+
+
 func open_phone(apps: Array, owner_name: String) -> void:
 	close_modal()
 	_context.modulate.a = 0.0
@@ -894,47 +963,62 @@ func open_phone(apps: Array, owner_name: String) -> void:
 		if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed:
 			close_modal())
 	_modal.add_child(dim)
-	var phone := Panel.new()
-	var body_sb := StyleBoxFlat.new()
-	body_sb.bg_color = Color("16171c")
-	body_sb.set_corner_radius_all(46)
-	body_sb.border_color = ACCENT
-	body_sb.set_border_width_all(4)
-	body_sb.shadow_color = Color(0, 0, 0, 0.55)
-	body_sb.shadow_size = 28
-	body_sb.shadow_offset = Vector2(-6, 10)
-	body_sb.anti_aliasing = true
-	phone.add_theme_stylebox_override("panel", body_sb)
-	phone.size = Vector2(330, 640)
 	var vs := get_viewport().get_visible_rect().size
-	var sc := minf(1.0, (vs.y - 50.0) / 640.0)
-	phone.scale = Vector2.ONE * sc
-	phone.position = Vector2(vs.x - 330.0 * sc - 40.0, vs.y)
-	_modal.add_child(phone)
+	var sc := vs.y * 0.8 / PH_H
+	_phone = Control.new()
+	_phone.size = Vector2(PH_W, PH_H)
+	_phone.scale = Vector2.ONE * sc
+	_phone.position = Vector2(vs.x - PH_W * sc - 44.0, vs.y)
+	_modal.add_child(_phone)
+	# Yan tuslar (ses, guc)
+	for sb_def in [[-4.0, 150.0, 34.0], [-4.0, 200.0, 58.0], [-4.0, 268.0, 58.0], [PH_W - 4.0, 220.0, 86.0]]:
+		var side := Panel.new()
+		var ssb := StyleBoxFlat.new()
+		ssb.bg_color = Color("3a3c44")
+		ssb.set_corner_radius_all(3)
+		side.add_theme_stylebox_override("panel", ssb)
+		side.position = Vector2(sb_def[0], sb_def[1])
+		side.size = Vector2(8, sb_def[2])
+		side.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_phone.add_child(side)
+	var bezel := Panel.new()
+	var body_sb := StyleBoxFlat.new()
+	body_sb.bg_color = Color("0b0c10")
+	body_sb.set_corner_radius_all(56)
+	body_sb.border_color = Color("5a5d68")
+	body_sb.set_border_width_all(3)
+	body_sb.shadow_color = Color(0, 0, 0, 0.55)
+	body_sb.shadow_size = 30
+	body_sb.shadow_offset = Vector2(-6, 12)
+	body_sb.anti_aliasing = true
+	bezel.add_theme_stylebox_override("panel", body_sb)
+	bezel.size = Vector2(PH_W, PH_H)
+	_phone.add_child(bezel)
+	# Ekran: yuvarlak koseli maske; cocuklar bu seklin disina cizilemez
 	var screen := Panel.new()
 	var scr_sb := StyleBoxFlat.new()
-	var grad := Gradient.new()
-	scr_sb.bg_color = Color("1d3b5a")
-	scr_sb.set_corner_radius_all(36)
+	scr_sb.bg_color = Color("16263c")
+	scr_sb.set_corner_radius_all(46)
+	scr_sb.anti_aliasing = true
 	screen.add_theme_stylebox_override("panel", scr_sb)
-	screen.position = Vector2(12, 12)
-	screen.size = Vector2(306, 616)
+	screen.position = Vector2((PH_W - PH_SW) * 0.5, (PH_H - PH_SH) * 0.5)
+	screen.size = Vector2(PH_SW, PH_SH)
 	screen.clip_contents = true
-	phone.add_child(screen)
-	# Duvar kagidi: ana menu illustrasyonu (aksam Kecioren) + koyulastiran gecis
+	screen.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	_phone.add_child(screen)
+	_phone_screen = screen
 	var wp := TextureRect.new()
 	wp.texture = load("res://assets/ui/menu_bg.jpg")
 	wp.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	wp.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	wp.position = Vector2.ZERO
 	wp.size = screen.size
 	wp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.add_child(wp)
 	var wd := TextureRect.new()
 	var gt := GradientTexture2D.new()
 	gt.gradient = Gradient.new()
-	gt.gradient.set_color(0, Color(0.05, 0.04, 0.1, 0.35))
-	gt.gradient.set_color(1, Color(0.05, 0.04, 0.1, 0.8))
+	gt.gradient.set_color(0, Color(0.05, 0.04, 0.1, 0.4))
+	gt.gradient.set_color(1, Color(0.05, 0.04, 0.1, 0.82))
 	gt.fill_from = Vector2(0.5, 0)
 	gt.fill_to = Vector2(0.5, 1)
 	wd.texture = gt
@@ -942,84 +1026,365 @@ func open_phone(apps: Array, owner_name: String) -> void:
 	wd.size = screen.size
 	wd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.add_child(wd)
-	# Centik ve durum cubugu
+	# ---- Ana ekran
+	_phone_home = Control.new()
+	_phone_home.size = screen.size
+	_phone_home.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(_phone_home)
+	_phone_clock = _fx_label(_phone_home, clock_label.text, F_BODY, 58, Color.WHITE)
+	_phone_clock.position = Vector2(0, 46)
+	_phone_clock.size = Vector2(PH_SW, 70)
+	_phone_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var who := _fx_label(_phone_home, "%s  ·  %d ₺" % [owner_name, state.d["coins"]], F_UI, 20, ACCENT)
+	who.position = Vector2(0, 116)
+	who.size = Vector2(PH_SW, 26)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(12, 154)
+	scroll.size = Vector2(PH_SW - 24, PH_SH - 154 - 56)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	scroll.follow_focus = true
+	_phone_home.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 12)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(grid)
+	_phone_buttons = {}
+	_phone_layer = null
+	_phone_last = null
+	var first: Button = null
+	for a in apps:
+		var app: Array = a
+		var cell := VBoxContainer.new()
+		cell.custom_minimum_size = Vector2(79, 0)
+		cell.add_theme_constant_override("separation", 3)
+		grid.add_child(cell)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(60, 60)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		b.focus_mode = Control.FOCUS_ALL
+		var bs := StyleBoxFlat.new()
+		bs.bg_color = Color(app[1])
+		bs.set_corner_radius_all(17)
+		bs.border_width_bottom = 3
+		bs.border_color = Color(app[1]).darkened(0.35)
+		bs.anti_aliasing = true
+		var hs: StyleBoxFlat = bs.duplicate()
+		hs.bg_color = Color(app[1]).lightened(0.2)
+		hs.border_color = ACCENT
+		hs.set_border_width_all(3)
+		b.add_theme_stylebox_override("normal", bs)
+		b.add_theme_stylebox_override("hover", hs)
+		b.add_theme_stylebox_override("focus", hs)
+		b.add_theme_stylebox_override("pressed", hs)
+		var ic := Icon.new(app[2], Color.WHITE, 32)
+		ic.position = Vector2(14, 14)
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(ic)
+		b.pressed.connect(_phone_launch.bind(app, b))
+		b.mouse_entered.connect(func(): if not phone_in_app(): b.grab_focus())
+		cell.add_child(b)
+		var nl := _fx_label(cell, app[0], F_UI, 15, Color.WHITE)
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nl.custom_minimum_size = Vector2(79, 0)
+		nl.clip_text = true
+		_phone_buttons[app[0]] = b
+		if first == null:
+			first = b
+	_phone_last = first
+	# Sayfa noktalari
+	var pages: int = maxi(1, ceili(apps.size() / 24.0))
+	var dots := HBoxContainer.new()
+	dots.add_theme_constant_override("separation", 7)
+	dots.alignment = BoxContainer.ALIGNMENT_CENTER
+	dots.position = Vector2(0, PH_SH - 46)
+	dots.size = Vector2(PH_SW, 10)
+	dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_phone_home.add_child(dots)
+	var dot_nodes: Array[Panel] = []
+	for i in pages:
+		var d := Panel.new()
+		var dsb := StyleBoxFlat.new()
+		dsb.bg_color = Color.WHITE
+		dsb.set_corner_radius_all(4)
+		d.add_theme_stylebox_override("panel", dsb)
+		d.custom_minimum_size = Vector2(8, 8)
+		d.modulate.a = 1.0 if i == 0 else 0.35
+		d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dots.add_child(d)
+		dot_nodes.append(d)
+	scroll.get_v_scroll_bar().value_changed.connect(func(v: float):
+		var mx: float = maxf(scroll.get_v_scroll_bar().max_value - scroll.size.y, 1.0)
+		var cur: int = clampi(int(round(v / mx * (pages - 1))), 0, pages - 1)
+		for i in dot_nodes.size():
+			dot_nodes[i].modulate.a = 1.0 if i == cur else 0.35)
+	# ---- Uygulama katmani
+	_phone_host = Control.new()
+	_phone_host.size = screen.size
+	_phone_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(_phone_host)
+	# ---- Durum cubugu + dinamik ada (her zaman ustte)
+	var tl := _fx_label(screen, clock_label.text, F_UI, 18, Color.WHITE)
+	tl.position = Vector2(34, 13)
+	var net := _fx_label(screen, "4G", F_UI, 17, Color.WHITE)
+	net.position = Vector2(PH_SW - 96, 14)
+	for i in 4:
+		var sig := ColorRect.new()
+		sig.color = Color.WHITE
+		sig.size = Vector2(3, 4 + i * 3)
+		sig.position = Vector2(PH_SW - 122 + i * 5, 30 - sig.size.y)
+		sig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		screen.add_child(sig)
+	var bat := Panel.new()
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(0, 0, 0, 0)
+	bsb.set_border_width_all(2)
+	bsb.border_color = Color.WHITE
+	bsb.set_corner_radius_all(4)
+	bat.add_theme_stylebox_override("panel", bsb)
+	bat.position = Vector2(PH_SW - 68, 17)
+	bat.size = Vector2(30, 14)
+	bat.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(bat)
+	var fill := ColorRect.new()
+	fill.color = Color("5fe07a")
+	fill.position = Vector2(3, 3)
+	fill.size = Vector2(20, 8)
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bat.add_child(fill)
 	var notch := Panel.new()
 	var nsb := StyleBoxFlat.new()
 	nsb.bg_color = Color("050505")
 	nsb.set_corner_radius_all(14)
 	notch.add_theme_stylebox_override("panel", nsb)
-	notch.position = Vector2(108, 10)
-	notch.size = Vector2(90, 26)
+	notch.position = Vector2(PH_SW * 0.5 - 52, 10)
+	notch.size = Vector2(104, 28)
+	notch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.add_child(notch)
-	var tl := _fx_label(screen, clock_label.text, F_BODY, 20, Color.WHITE)
-	tl.position = Vector2(26, 10)
-	var bat := _fx_label(screen, "4G  ▮▮▮  %86", F_UI, 18, Color.WHITE)
-	bat.position = Vector2(200, 13)
-	var big := _fx_label(screen, clock_label.text, F_BODY, 68, Color.WHITE)
-	big.position = Vector2(0, 52)
-	big.size = Vector2(306, 80)
-	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var who := _fx_label(screen, "%s  ·  %d ₺" % [owner_name, state.d["coins"]], F_UI, 21, ACCENT)
-	who.position = Vector2(0, 136)
-	who.size = Vector2(306, 26)
-	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 10)
-	grid.position = Vector2(22, 184)
-	screen.add_child(grid)
-	var first: Button = null
-	for a in apps:
-		var app: Array = a
-		var cell := VBoxContainer.new()
-		cell.add_theme_constant_override("separation", 4)
-		grid.add_child(cell)
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(76, 76)
-		b.focus_mode = Control.FOCUS_ALL
-		var bs := StyleBoxFlat.new()
-		bs.bg_color = Color(app[1])
-		bs.set_corner_radius_all(20)
-		bs.border_width_bottom = 4
-		bs.border_color = Color(app[1]).darkened(0.35)
-		bs.shadow_color = Color(0, 0, 0, 0.35)
-		bs.shadow_size = 4
-		bs.shadow_offset = Vector2(0, 3)
-		var hs := bs.duplicate()
-		hs.bg_color = Color(app[1]).lightened(0.2)
-		hs.border_color = ACCENT
-		hs.set_border_width_all(4)
-		b.add_theme_stylebox_override("normal", bs)
-		b.add_theme_stylebox_override("hover", hs)
-		b.add_theme_stylebox_override("focus", hs)
-		b.add_theme_stylebox_override("pressed", hs)
-		var ic := Icon.new(app[2], Color.WHITE, 40)
-		ic.position = Vector2(18, 18)
-		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(ic)
-		var cb: Callable = app[3]
-		b.pressed.connect(func():
-			if K.on_click.is_valid():
-				K.on_click.call()
-			close_modal()
-			cb.call())
-		cell.add_child(b)
-		var nl := _fx_label(cell, app[0], F_UI, 18, Color.WHITE)
-		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		nl.custom_minimum_size = Vector2(76, 0)
-		if first == null:
-			first = b
-	# Ana ekran cubugu
-	var home := ColorRect.new()
-	home.color = Color(1, 1, 1, 0.7)
-	home.position = Vector2(103, 596)
-	home.size = Vector2(100, 5)
-	screen.add_child(home)
-	var tw := create_tween()
-	tw.tween_property(phone, "position:y", vs.y - 640.0 * sc - 25.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var lens := Panel.new()
+	var lsb := StyleBoxFlat.new()
+	lsb.bg_color = Color("1b2a4a")
+	lsb.set_corner_radius_all(6)
+	lens.add_theme_stylebox_override("panel", lsb)
+	lens.position = Vector2(78, 8)
+	lens.size = Vector2(12, 12)
+	lens.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	notch.add_child(lens)
+	# Ana ekran cubugu: dokununca ana ekrana doner
+	var hb := Button.new()
+	hb.flat = true
+	hb.focus_mode = Control.FOCUS_NONE
+	hb.position = Vector2(PH_SW * 0.5 - 80, PH_SH - 30)
+	hb.size = Vector2(160, 28)
+	hb.pressed.connect(func(): back())
+	screen.add_child(hb)
+	var bar := Panel.new()
+	var hsb := StyleBoxFlat.new()
+	hsb.bg_color = Color(1, 1, 1, 0.8)
+	hsb.set_corner_radius_all(3)
+	bar.add_theme_stylebox_override("panel", hsb)
+	bar.position = Vector2(22, 12)
+	bar.size = Vector2(116, 5)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(bar)
+	var tw := _phone.create_tween()
+	tw.tween_property(_phone, "position:y", (vs.y - PH_H * sc) * 0.5, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if first:
 		first.call_deferred("grab_focus")
+
+
+## Ana ekrandaki simgeye basildi: uygulamayi telefonun icinde ac.
+func _phone_launch(app: Array, b: Button) -> void:
+	if K.on_click.is_valid():
+		K.on_click.call()
+	var cb: Callable = app[3]
+	if app.size() > 4 and app[4]:        # telefon kapanip oyuna donen uygulama (kamera)
+		close_modal()
+		cb.call()
+		return
+	_phone_last = b
+	_phone_app_name = String(app[0]).get_slice(" (", 0)
+	_phone_launching = true
+	_phone_made = false
+	_phone_toasts = []
+	cb.call()
+	_phone_launching = false
+	if not phone_open():
+		for t in _phone_toasts:
+			toast(t)
+		return
+	if _phone_made:
+		for t in _phone_toasts:
+			toast(t)
+	elif _phone_toasts.is_empty():
+		close_modal()
+	else:
+		# Eylem uygulamasi (taksi, arabam ...): durum karti
+		var body := phone_page(_phone_app_name)
+		var card := PanelContainer.new()
+		var csb := StyleBoxFlat.new()
+		csb.bg_color = Color(1, 1, 1, 0.08)
+		csb.set_corner_radius_all(16)
+		csb.set_content_margin_all(14)
+		csb.border_width_left = 4
+		csb.border_color = ACCENT
+		card.add_theme_stylebox_override("panel", csb)
+		body.add_child(card)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 8)
+		card.add_child(col)
+		for t in _phone_toasts:
+			var l := _fx_label(col, t, F_UI, 21, Color.WHITE)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.custom_minimum_size = Vector2(280, 0)
+		phone_item(body, "Tamam", func(): close_modal())
+		phone_item(body, "Ana Ekran", func(): phone_home())
+		_focus_first(body)
+
+
+func phone_home() -> void:
+	if not phone_open():
+		return
+	if _phone_layer != null and is_instance_valid(_phone_layer):
+		_phone_layer.queue_free()
+	_phone_layer = null
+	_phone_home.visible = true
+	if _phone_last != null and is_instance_valid(_phone_last):
+		_phone_last.call_deferred("grab_focus")
+
+
+## Telefonun icinde bir uygulama sayfasi acar; icerik VBox'ini dondurur. Telefon kapaliysa yan panel.
+func phone_page(title: String, subtitle := "") -> VBoxContainer:
+	if not phone_open():
+		return _open_panel(title, subtitle)
+	var fresh: bool = not phone_in_app()
+	if not fresh:
+		_phone_layer.queue_free()
+	_phone_made = true
+	_phone_home.visible = false
+	var layer := Panel.new()
+	var lsb := StyleBoxFlat.new()
+	lsb.bg_color = Color("12141b")
+	layer.add_theme_stylebox_override("panel", lsb)
+	layer.size = Vector2(PH_SW, PH_SH)
+	_phone_host.add_child(layer)
+	_phone_layer = layer
+	var col := VBoxContainer.new()
+	col.position = Vector2(14, 44)
+	col.size = Vector2(PH_SW - 28, PH_SH - 44 - 34)
+	col.add_theme_constant_override("separation", 6)
+	layer.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	col.add_child(head)
+	var bk := Button.new()
+	bk.custom_minimum_size = Vector2(40, 40)
+	bk.focus_mode = Control.FOCUS_NONE
+	var bks := StyleBoxFlat.new()
+	bks.bg_color = Color(1, 1, 1, 0.1)
+	bks.set_corner_radius_all(20)
+	var bkh: StyleBoxFlat = bks.duplicate()
+	bkh.bg_color = ACCENT
+	bk.add_theme_stylebox_override("normal", bks)
+	bk.add_theme_stylebox_override("hover", bkh)
+	bk.add_theme_stylebox_override("pressed", bkh)
+	bk.draw.connect(func():
+		bk.draw_polyline(PackedVector2Array([Vector2(23, 11), Vector2(15, 20), Vector2(23, 29)]), Color.WHITE, 3.0, true))
+	bk.pressed.connect(func(): phone_home())
+	head.add_child(bk)
+	var tlab := _fx_label(head, title, F_TITLE, 30, ACCENT, 4)
+	tlab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tlab.clip_text = true
+	tlab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if subtitle != "":
+		var st := _fx_label(col, subtitle, F_UI, 17, Color(1, 1, 1, 0.82))
+		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		st.custom_minimum_size = Vector2(PH_SW - 28, 0)
+	var sep := ColorRect.new()
+	sep.color = ACCENT2
+	sep.custom_minimum_size = Vector2(0, 3)
+	sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(sep)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	scroll.follow_focus = true
+	col.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 6)
+	body.set_meta("phone", true)
+	scroll.add_child(body)
+	if fresh:
+		layer.pivot_offset = layer.size * 0.5
+		layer.scale = Vector2(0.55, 0.55)
+		layer.modulate.a = 0.0
+		var tw := layer.create_tween().set_parallel(true)
+		tw.tween_property(layer, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.tween_property(layer, "modulate:a", 1.0, 0.14)
+	return body
+
+
+## Telefon sayfasindaki madde.
+func phone_item(body: Node, text: String, cb: Callable) -> Button:
+	return _menu_item(body, text, cb)
+
+
+func _phone_style(b: Button) -> void:
+	b.custom_minimum_size = Vector2(0, 46)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_font_override("font", F_UI)
+	b.add_theme_font_size_override("font_size", 20)
+	b.add_theme_constant_override("outline_size", 0)
+	b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.35))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(1, 1, 1, 0.08)
+	normal.set_corner_radius_all(12)
+	normal.content_margin_left = 14
+	normal.content_margin_right = 10
+	normal.content_margin_top = 8
+	normal.content_margin_bottom = 8
+	var hi: StyleBoxFlat = normal.duplicate()
+	hi.bg_color = ACCENT
+	var dis: StyleBoxFlat = normal.duplicate()
+	dis.bg_color = Color(1, 1, 1, 0.03)
+	b.add_theme_stylebox_override("normal", normal)
+	b.add_theme_stylebox_override("hover", hi)
+	b.add_theme_stylebox_override("focus", hi)
+	b.add_theme_stylebox_override("pressed", hi)
+	b.add_theme_stylebox_override("disabled", dis)
+	# Ustte geri oku var: "Kapat" maddesi gereksiz
+	if b.text.strip_edges().to_upper() == "KAPAT":
+		b.visible = false
+
+
+## Telefon icin sade gorev listesi.
+func _phone_quests() -> void:
+	var body := phone_page("Görevler", "Bugünün görevleri  ·  Keşif: %d / %d yer" % [state.d["places"].size(), state.places.size()])
+	for q in state.daily_quests():
+		var done: bool = state.d["quest_done"].has(q[0])
+		var prog: float = minf(state.quest_progress(q[0]), q[2])
+		var card := PanelContainer.new()
+		var csb := StyleBoxFlat.new()
+		csb.bg_color = Color(0.2, 0.6, 0.3, 0.3) if done else Color(1, 1, 1, 0.08)
+		csb.set_corner_radius_all(12)
+		csb.set_content_margin_all(10)
+		card.add_theme_stylebox_override("panel", csb)
+		body.add_child(card)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 3)
+		card.add_child(col)
+		var l := _fx_label(col, ("✓ " if done else "") + String(q[1]), F_UI, 19, Color.WHITE)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(290, 0)
+		_fx_label(col, "%d / %d   ·   Ödül: %d ₺" % [int(prog), q[2], q[3]], F_UI, 16, ACCENT)
+		var pb := K.bar(col, K.GREEN, Vector2(0, 8))
+		pb.value = prog / q[2] * 100.0
 
 
 func _focus_first(body: Node) -> void:
@@ -1138,8 +1503,10 @@ func open_bag() -> void:
 			command.emit("use:" + nm)
 			open_bag())
 	if not any:
-		_fx_label(body, "Çantan boş. Marketten bir şeyler al.", F_BODY, 28, Color.WHITE, 6)
-	_menu_item(body, "GERİ", func(): open_pause())
+		var el := _fx_label(body, "Çantan boş. Marketten bir şeyler al.", F_UI if _in_phone(body) else F_BODY, 20 if _in_phone(body) else 28, Color.WHITE, 0 if _in_phone(body) else 6)
+		el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if not _in_phone(body):
+		_menu_item(body, "GERİ", func(): open_pause())
 	_focus_first(body)
 
 
@@ -1500,6 +1867,8 @@ func _menu_item(parent: Node, text: String, cb: Callable) -> Button:
 		if K.on_click.is_valid():
 			K.on_click.call())
 	b.mouse_entered.connect(func(): b.grab_focus())
+	if _in_phone(parent):
+		_phone_style(b)
 	parent.add_child(b)
 	return b
 

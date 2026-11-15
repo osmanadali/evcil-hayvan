@@ -22,6 +22,7 @@ const Car = preload("res://scripts/car.gd")
 const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
+const CarCabin = preload("res://scripts/car_cabin.gd")
 
 const WALK_SPEED := 5.0
 const CAM_DIST := 7.2
@@ -113,6 +114,7 @@ var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
+var life: Node           # arac hayati: binme / inme hareketi, yan ayak, hayvan koltugu, gostergeler (scripts/vehicle_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
 var _umbrella: Node3D
@@ -177,6 +179,9 @@ func _ready() -> void:
 	sports.m = self
 	sports.state = state
 	add_child(sports)
+	life = preload("res://scripts/vehicle_life.gd").new()
+	life.m = self
+	add_child(life)
 	home_life = preload("res://scripts/home_life.gd").new()
 	home_life.m = self
 	home_life.state = state
@@ -904,7 +909,7 @@ func _input(e: InputEvent) -> void:
 		if map_screen.visible:
 			map_screen.visible = false
 		elif ui.is_blocking():
-			ui.close_modal()
+			ui.back()        # telefonda: once ana ekrana, sonra kapat
 		elif _mode == "play":
 			ui.open_pause()
 
@@ -1730,13 +1735,13 @@ func _open_phone() -> void:
 	var unread: int = neighbors.unread()
 	var apps: Array = [
 		["Mesajlar" + (" (%d)" % unread if unread > 0 else ""), "1fae5b", "phone", func(): neighbors.open_messages()],
-		["Harita", "2f80ff", "map", func(): _open_map()],
+		["Harita", "2f80ff", "map", func(): _phone_map()],
 		["İş Bul", "34a853", "coin", func(): _open_jobs()],
 		["Arabam", "e8453c", "play", func(): _summon_my_car()],
 		["Taksi", "f2c230", "star", func(): _call_taxi("taksi")],
 		["Dolmuş", "e07b1f", "star", func(): _call_taxi("dolmus")],
 		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
-		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
+		["Kamera", "555b66", "camera", func(): _on_photo("enter"), true],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
 		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
@@ -1760,10 +1765,99 @@ func _open_phone() -> void:
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
-		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
+		apps.append(["Veteriner", "1e9a8a", "plus", func(): _phone_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
-		apps.append(["Evim", "f29f4b", "home", func(): _set_nav(HOME_DOOR, "Evim")])
+		apps.append(["Evim", "f29f4b", "home", func(): _phone_nav(HOME_DOOR, "Evim")])
 	ui.open_phone(apps, state.pet(state.d["active"])["name"] + " ile")
+
+
+func _phone_nav(p: Vector2, label: String) -> void:
+	_set_nav(p, label)
+	ui.toast("Yol tarifi hazır: %s · %d m. Mini haritadaki çizgiyi izle." % [label, int(_owner_pos().distance_to(p))])
+
+
+## Telefondaki harita uygulamasi: ekranin icinde kucuk harita + tam ekran dugmesi.
+func _phone_map() -> void:
+	var me := _owner_pos()
+	var sub := "%s · Konumun ve çevren" % ParkMap.ZONE_TITLES.get(ParkMap.zone, "Keçiören")
+	if _nav != Vector2.INF:
+		sub = "Rota: %s · %d m" % [minimap.dest_name, int(me.distance_to(_nav))]
+	var body: VBoxContainer = ui.phone_page("Harita", sub)
+	var tex: Texture2D = load(ParkMap.asset("park_map.png"))
+	var route: Array = minimap.route.duplicate()
+	var nav := _nav
+	var mapc := Control.new()
+	mapc.custom_minimum_size = Vector2(332, 320)
+	mapc.clip_contents = true
+	mapc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(mapc)
+	mapc.draw.connect(func():
+		var sz: Vector2 = mapc.size
+		const SPAN := 460.0                       # ekranda gorunen genislik (m)
+		var k: float = sz.x / SPAN
+		mapc.draw_rect(Rect2(Vector2.ZERO, sz), Color("dfe6d8"))
+		if tex != null:
+			var ts: Vector2 = tex.get_size()
+			var f: Vector2 = (me - ParkMap.SPLAT_CENTER) / ParkMap.SPLAT_EXTENT + Vector2(0.5, 0.5)
+			var half: Vector2 = Vector2(SPAN, SPAN * sz.y / sz.x) / ParkMap.SPLAT_EXTENT * 0.5
+			mapc.draw_texture_rect_region(tex, Rect2(Vector2.ZERO, sz), Rect2((f - half) * ts, half * 2.0 * ts))
+		if route.size() > 1:
+			var pts := PackedVector2Array()
+			for w in route:
+				pts.append(sz * 0.5 + ((w as Vector2) - me) * k)
+			mapc.draw_polyline(pts, Color("2f80ff"), 5.0, true)
+		if nav != Vector2.INF:
+			var d: Vector2 = sz * 0.5 + (nav - me) * k
+			d = d.clamp(Vector2(10, 10), sz - Vector2(10, 10))
+			mapc.draw_circle(d, 9.0, Color.WHITE)
+			mapc.draw_circle(d, 6.5, Color("e8453c"))
+		mapc.draw_circle(sz * 0.5, 11.0, Color.WHITE)
+		mapc.draw_circle(sz * 0.5, 8.0, Color("2f80ff")))
+	ui.phone_item(body, "Tam Ekran Harita", func():
+		ui.close_modal()
+		_open_map())
+	if _nav != Vector2.INF:
+		ui.phone_item(body, "Rotayı İptal Et", func():
+			_cancel_nav()
+			_phone_map())
+	if ParkMap.zone == "":
+		ui.phone_item(body, "Eve Yol Tarifi", func():
+			_set_nav(HOME_DOOR, "Evim")
+			_phone_map())
+	if world.vet_pos != Vector2.INF:
+		ui.phone_item(body, "Veterinere Yol Tarifi", func():
+			_set_nav(world.vet_pos, "Veteriner")
+			_phone_map())
+	ui._focus_first(body)
+
+
+## Test: bir kontrole gercek fare tiklamasi gonder.
+func _debug_click(c: Control) -> void:
+	var pos: Vector2 = c.get_global_rect().get_center()
+	var mm := InputEventMouseMotion.new()
+	mm.position = pos
+	mm.global_position = pos
+	Input.parse_input_event(mm)
+	await get_tree().process_frame
+	for down in [true, false]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = MOUSE_BUTTON_LEFT
+		mb.pressed = down
+		mb.position = pos
+		mb.global_position = pos
+		Input.parse_input_event(mb)
+		await get_tree().process_frame
+		await get_tree().process_frame
+
+
+func _find_button(n: Node, prefix: String) -> Button:
+	if n is Button and (n as Button).text.begins_with(prefix) and (n as Button).is_visible_in_tree():
+		return n
+	for ch in n.get_children():
+		var r := _find_button(ch, prefix)
+		if r != null:
+			return r
+	return null
 
 
 ## Oyuncuya en yakin yol kenari: [konum, yon acisi, dugum]
@@ -1922,7 +2016,7 @@ func _update_play_ride(dt: float) -> void:
 
 ## Ziplama: gorsel olarak yukari; konum yerde kalir (engeller ayni).
 func _jump() -> void:
-	if _jump_h > 0.0 or _ride != null or _bus_ride != null:
+	if _jump_h > 0.0 or _ride != null or _bus_ride != null or life.busy():
 		return
 	_jump_v = 5.6
 	_jump_h = 0.001
@@ -1930,6 +2024,10 @@ func _jump() -> void:
 
 
 func _on_command(cmd: String) -> void:
+	if life.busy():
+		return
+	if cmd in ["sit", "lie", "come"] and life.pet_command(cmd):
+		return
 	if cmd.begins_with("shop_take:"):
 		_put_in_basket(cmd.substr(10))
 		return
@@ -2298,6 +2396,11 @@ func _dress_polo(car: Node3D) -> void:
 		var gm := ShaderMaterial.new()
 		gm.shader = load("res://shaders/car_body.gdshader")
 		gm.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
+		# Ikinci gecis: govdenin ic yuzu (direkler, tavan) iceriden ve camlardan gorunur
+		var inner := ShaderMaterial.new()
+		inner.shader = load("res://shaders/car_body_inner.gdshader")
+		inner.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
+		gm.next_pass = inner
 		(body as MeshInstance3D).material_override = gm
 		car.set_meta("glass", true)
 		# Kalici ic mekan: koltuklar, on panel, direksiyon, kapi dosemeleri camdan disaridan da gorunur
@@ -2391,12 +2494,19 @@ func _take_traffic_car(c: Node3D) -> void:
 
 
 func _enter_ride() -> void:
-	_slip = 0.0
+	if life.busy() or _ride != null:
+		return
 	var r := _nearest_rideable()
 	if r == null:
 		return
 	if not r in _rides:
 		_take_traffic_car(r)
+	life.mount(r)      # kapiya yurur / bacagini asirir; sonunda _enter_ride_now cagrilir
+
+
+## Binis durumuna gecer (hareket vehicle_life.gd'de oynatilir; quiet: kapi sesi orada calinir).
+func _enter_ride_now(r: Node3D, quiet := false) -> void:
+	_slip = 0.0
 	_ride = r
 	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
 	_drive_speed = 0.0
@@ -2409,7 +2519,7 @@ func _enter_ride() -> void:
 	var glass := _ride.has_meta("glass")
 	# Saydam camli arabada hayvan on yolcu koltugunda gorunur
 	_board_pets(not cfg["hide"] or glass, cfg.get("pet", Vector3(0.36, 1.18, 0.12)) if not glass else Vector3(0.36, 1.18, 0.12))
-	if cfg["hide"]:
+	if cfg["hide"] and not quiet:
 		_sfx("araba_kapi", -6.0)
 	if cfg["hide"]:
 		# Surucu koltugunda oturan karakter (camli arabada disaridan, her arabada iceriden bakista gorunur)
@@ -2423,6 +2533,7 @@ func _enter_ride() -> void:
 			_cockpit = _ride.get_node_or_null("Kabin")
 		if _cockpit == null:
 			_cockpit = _make_cockpit()
+			CarCabin.add_fake_shell(_cockpit, _ride.has_meta("glass"))
 			_ride.add_child(_cockpit)
 		(_cockpit.get_node("CarPlayVP") as SubViewport).render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		_cockpit.get_node("Dis").visible = false
@@ -2484,6 +2595,7 @@ func _board_pets(rear_seat: bool, seat: Vector3) -> void:
 
 
 func _unboard_pets(at: Vector2) -> void:
+	life.pets_out()
 	var i := 0
 	for k in agents:
 		var a: Node3D = agents[k]
@@ -2497,7 +2609,12 @@ func _unboard_pets(at: Vector2) -> void:
 
 
 func _exit_ride() -> void:
-	if _ride == null or fuel.busy():
+	life.dismount()      # kapiyi acar / yan ayagi indirir; sonunda _exit_ride_now cagrilir
+
+
+## Inis durumuna gecer. at: inilecek nokta (verilmezse aracin bos olan yani).
+func _exit_ride_now(at := Vector2.INF, quiet := false) -> void:
+	if _ride == null:
 		return
 	var c := Vector2(_ride.position.x, _ride.position.z)
 	var side := Vector2(-cos(_ride.rotation.y), sin(_ride.rotation.y))     # aracin solu
@@ -2507,6 +2624,8 @@ func _exit_ride() -> void:
 		if world.is_free(cand, 0.4):
 			out = cand
 			break
+	if at != Vector2.INF:
+		out = at
 	ui._actions.visible = true
 	if _cam_btn:
 		_cam_btn.visible = false
@@ -2527,7 +2646,7 @@ func _exit_ride() -> void:
 			_cockpit.queue_free()
 		_cockpit = null
 	_set_body_visible(_ride, true)
-	if RIDES[_ride.get_meta("kind")]["hide"]:
+	if RIDES[_ride.get_meta("kind")]["hide"] and not quiet:
 		_sfx("araba_kapi", -6.0, 1.05)
 	_ride.rotation.z = 0.0
 	_ride.rotation.x = 0.0
@@ -2630,6 +2749,7 @@ func _cockpit_camera() -> void:
 			_cockpit = _ride.get_node_or_null("Kabin")
 		if _cockpit == null:
 			_cockpit = _make_cockpit()
+			CarCabin.add_fake_shell(_cockpit, _ride.has_meta("glass"))
 			_ride.add_child(_cockpit)
 		_cockpit.visible = true
 		_cockpit.get_node("Dis").visible = true
@@ -2640,17 +2760,14 @@ func _cockpit_camera() -> void:
 		owner_model.position = CAR_SEAT
 		if _rider_pet:
 			_rider_pet.visible = true
-		_set_body_visible(_ride, false)
+		# Polo: gercek govde iceriden gorunur (kaput, direkler, tavan); digerlerinde govde gizlenir
+		_set_body_visible(_ride, _ride.has_meta("glass"))
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
 		if wheel.has_meta("model"):
 			(wheel.get_node("Simit") as Node3D).rotation.z = -_steer * 2.6
 		else:
 			wheel.basis = Basis(Vector3.RIGHT, -1.1) * Basis(Vector3.UP, _steer * 2.6)
-		(_cockpit.get_node("Hiz") as Label3D).text = "%d" % int(absf(_drive_speed) * 3.6)
-		var kmh := absf(_drive_speed) * 3.6
-		(_cockpit.get_node("Ibre1") as Node3D).rotation.z = 2.1 - clampf(kmh / 200.0, 0.0, 1.0) * 4.2
-		(_cockpit.get_node("Ibre0") as Node3D).rotation.z = 2.1 - clampf(0.12 + kmh / 120.0 * 0.5 + absf(ui.stick.y) * 0.2, 0.0, 1.0) * 4.2
 		var cpn = _cockpit.get_node("CarPlayVP/CP")
 		cpn.player = _owner_pos()
 		cpn.heading = _ride.rotation.y
@@ -2697,192 +2814,7 @@ func _set_body_visible(v: Node3D, on: bool) -> void:
 ## havalandirmalar, gumus serit, orta konsolda CarPlay ekrani, klima dugmeleri, otomatik vites kolu,
 ## uc kollu direksiyon, gri kumas koltuklar, kapi dosemeleri.
 func _make_cockpit() -> Node3D:
-	var c := Node3D.new()
-	var dash := Kit.mat("2b2d31", 0.8)
-	var soft := Kit.mat("3a3c40", 0.9)
-	var silver := Kit.mat("b9bcc0", 0.3)
-	silver.metallic = 0.6
-	var black := Kit.mat("141517", 0.4)
-	var fabric := Kit.mat("55585e", 1.0)
-	var fabric2 := Kit.mat("3d4045", 1.0)
-	var head := Kit.mat("cdc8bd", 0.95)
-	# On panel govdesi ve ust yuzey
-	Kit.box(c, Vector3(1.56, 0.38, 0.5), Vector3(0, 0.72, -0.8), dash)
-	Kit.box(c, Vector3(1.56, 0.06, 0.6), Vector3(0, 0.94, -0.88), soft, Vector3(0.2, 0, 0))
-	# Gumus serit (panel boyunca)
-	Kit.box(c, Vector3(1.5, 0.035, 0.02), Vector3(0, 0.84, -0.545), silver)
-	# Gosterge kapagi ve iki yuvarlak kadran + ortada kucuk ekran
-	Kit.box(c, Vector3(0.46, 0.13, 0.24), Vector3(-0.36, 1.0, -0.64), dash, Vector3(-0.3, 0, 0))
-	var face := Kit.mat("0d0f12", 0.4)
-	var ring := Kit.mat("c9ccd0", 0.3)
-	for gx in [-0.47, -0.25]:
-		Kit.cyl(c, 0.068, 0.068, 0.01, Vector3(gx, 0.935, -0.565), face, 24, Vector3(PI / 2 - 0.3, 0, 0))
-		Kit.torus(c, 0.064, 0.072, Vector3(gx, 0.935, -0.56), ring, Vector3(PI / 2 - 0.3, 0, 0))
-		var needle := Kit.box(c, Vector3(0.006, 0.05, 0.004), Vector3(gx, 0.95, -0.556), Kit.glow("ff5a1f", 1.5), Vector3(-0.3, 0, 0.7))
-		needle.name = "Ibre%d" % (0 if gx < -0.3 else 1)
-	Kit.box(c, Vector3(0.07, 0.07, 0.005), Vector3(-0.36, 0.935, -0.562), Kit.glow("1d3a52", 0.6), Vector3(-0.3, 0, 0))
-	var speed := Label3D.new()
-	speed.name = "Hiz"
-	speed.font_size = 40
-	speed.pixel_size = 0.0011
-	speed.modulate = Color("e8f4ff")
-	speed.position = Vector3(-0.36, 0.936, -0.558)
-	speed.rotation.x = -0.3
-	speed.text = "0"
-	c.add_child(speed)
-	# Yan havalandirmalar (yuvarlak) ve orta havalandirmalar (dikdortgen)
-	for vx in [-0.68, 0.68]:
-		Kit.torus(c, 0.045, 0.06, Vector3(vx, 0.86, -0.548), silver, Vector3(PI / 2, 0, 0))
-		Kit.cyl(c, 0.045, 0.045, 0.01, Vector3(vx, 0.86, -0.552), black, 16, Vector3(PI / 2, 0, 0))
-	for vx in [-0.02, 0.18]:
-		Kit.box(c, Vector3(0.16, 0.06, 0.02), Vector3(vx, 1.0, -0.6), black, Vector3(-0.25, 0, 0))
-		Kit.box(c, Vector3(0.17, 0.008, 0.022), Vector3(vx, 1.033, -0.6), silver, Vector3(-0.25, 0, 0))
-	# Orta konsol: CarPlay ekrani (SubViewport), altinda klima paneli
-	var vp := SubViewport.new()
-	vp.name = "CarPlayVP"
-	vp.size = Vector2i(640, 300)
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	var cp := CarPlay.new()
-	cp.name = "CP"
-	vp.add_child(cp)
-	c.add_child(vp)
-	var scr := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(0.27, 0.13)
-	scr.mesh = q
-	var sm := StandardMaterial3D.new()
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sm.albedo_texture = vp.get_texture()
-	scr.material_override = sm
-	scr.position = Vector3(0.08, 0.9, -0.528)
-	scr.rotation.x = -0.18
-	c.add_child(scr)
-	Kit.box(c, Vector3(0.31, 0.17, 0.02), Vector3(0.08, 0.9, -0.54), black, Vector3(-0.18, 0, 0))
-	Kit.box(c, Vector3(0.32, 0.18, 0.012), Vector3(0.08, 0.9, -0.546), silver, Vector3(-0.18, 0, 0))
-	Kit.box(c, Vector3(0.3, 0.1, 0.03), Vector3(0.08, 0.74, -0.54), black)
-	for kx in [-0.02, 0.08, 0.18]:
-		Kit.cyl(c, 0.022, 0.022, 0.025, Vector3(kx, 0.74, -0.52), silver, 14, Vector3(PI / 2, 0, 0))
-	# Orta tunel, otomatik vites kolu (P R N D), el freni
-	Kit.box(c, Vector3(0.24, 0.3, 0.75), Vector3(0.0, 0.43, -0.2), dash)
-	Kit.box(c, Vector3(0.16, 0.012, 0.22), Vector3(0.0, 0.585, -0.2), black)
-	Kit.cyl(c, 0.014, 0.018, 0.13, Vector3(0.0, 0.65, -0.2), black, 8)
-	Kit.capsule(c, 0.028, 0.1, Vector3(0.0, 0.73, -0.2), Kit.mat("26282b", 0.5))
-	Kit.box(c, Vector3(0.012, 0.012, 0.12), Vector3(0.0, 0.745, -0.2), silver)
-	var prnd := Label3D.new()
-	prnd.text = "P R N D S"
-	prnd.font_size = 24
-	prnd.pixel_size = 0.0012
-	prnd.modulate = Color("d0d4d8")
-	prnd.position = Vector3(0.05, 0.593, -0.2)
-	prnd.rotation = Vector3(-PI / 2, PI / 2, 0)
-	c.add_child(prnd)
-	Kit.box(c, Vector3(0.04, 0.04, 0.24), Vector3(0.0, 0.62, 0.12), black, Vector3(-0.2, 0, 0))
-	# Direksiyon: kendi modelimiz (Tripo, kolon ve kollariyla) varsa o; yoksa cizilen uc kollu simit
-	var wheel := Node3D.new()
-	wheel.name = "Direksiyon"
-	wheel.position = Vector3(-0.36, 0.9, -0.32)
-	c.add_child(wheel)
-	if ResourceLoader.exists("res://assets/models/polo_ic.glb"):
-		var wm: Node3D = load("res://assets/models/polo_ic.glb").instantiate()
-		var k := 0.42                                   # simit capi ~37 cm
-		# Modelde simidin dusunu capraz: normali ve "yukari" yonu geometriden hesaplandi
-		var n := Vector3(-0.659, 0.403, 0.635).normalized()
-		var up := (Vector3.UP - n * n.dot(Vector3.UP)).normalized()
-		var model_frame := Basis(up.cross(n).normalized(), up, n)      # x, y, z sutunlari
-		var rb := model_frame.inverse()                                 # model -> yerel (z = sururucuye)
-		var spin := Node3D.new()
-		spin.name = "Simit"
-		wheel.add_child(spin)
-		wm.transform = Transform3D(rb.scaled(Vector3.ONE * k), rb * (-Vector3(0.047, 0.566, 0.029)) * k)
-		spin.add_child(wm)
-		wheel.set_meta("model", true)
-		wheel.rotation.x = -0.35
-	else:
-		wheel.rotation.x = -1.1
-		Kit.cyl(c, 0.03, 0.035, 0.3, Vector3(-0.36, 0.86, -0.54), dash, 8, Vector3(-1.1 + PI / 2, 0, 0))
-		Kit.torus(wheel, 0.16, 0.19, Vector3.ZERO, Kit.mat("1d1e21", 0.7), Vector3.ZERO)
-		Kit.box(wheel, Vector3(0.3, 0.02, 0.045), Vector3(0, 0, -0.01), soft)
-		Kit.box(wheel, Vector3(0.05, 0.02, 0.15), Vector3(0, 0, 0.08), soft)
-		Kit.box(wheel, Vector3(0.16, 0.022, 0.012), Vector3(0, 0.005, 0.03), silver)
-		Kit.cyl(wheel, 0.065, 0.07, 0.04, Vector3(0, 0.01, 0), Kit.mat("26282b", 0.6), 16)
-	# Koltuklar (gri kumas, ortasi koyu seritli) ve basliklar
-	for x in [-0.36, 0.36]:
-		_seat(c, Vector3(x, 0.0, 0.0), fabric, fabric2)
-	Kit.box(c, Vector3(1.4, 0.14, 0.5), Vector3(0, 0.5, 1.05), fabric)
-	Kit.box(c, Vector3(1.4, 0.6, 0.12), Vector3(0, 0.82, 1.3), fabric, Vector3(0.15, 0, 0))
-	# Arka koltuk: koyu orta seritler, uc baslik, sirtin arkasinda bagaj rafi
-	for rx in [-0.44, 0.0, 0.44]:
-		Kit.box(c, Vector3(0.3, 0.012, 0.4), Vector3(rx, 0.575, 1.05), fabric2)
-		Kit.box(c, Vector3(0.28, 0.42, 0.012), Vector3(rx, 0.84, 1.235), fabric2, Vector3(0.15, 0, 0))
-		var rh := Kit.capsule(c, 0.055, 0.22, Vector3(rx, 1.2, 1.36), fabric, Vector3(0, 0, PI / 2))
-		rh.scale = Vector3(1.0, 1.0, 0.8)
-		for hx in [-0.06, 0.06]:
-			Kit.cyl(c, 0.007, 0.007, 0.1, Vector3(rx + hx, 1.12, 1.36), Kit.mat("b9bcc0", 0.3), 6)
-	Kit.box(c, Vector3(1.2, 0.02, 0.28), Vector3(0, 0.97, 1.5), dash)
-	# Zemin: koyu hali (tekerlek bosluklarini ortsun), on ayak boslugu duvari, arka tekerlek kemerleri
-	Kit.box(c, Vector3(1.5, 0.02, 2.5), Vector3(0, 0.38, 0.3), Kit.mat("232427", 1.0))
-	Kit.box(c, Vector3(1.5, 0.45, 0.05), Vector3(0, 0.6, -1.0), dash)
-	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.2, 0.3, 0.62), Vector3(sx * 0.6, 0.53, 1.2), soft)
-	# Kapi dosemeleri: kol dayama, gumus kapi kolu, hoparlor
-	# Tavan, direkler, ayna: yalniz birinci sahista (disaridan bakinca govdeden tasmasin)
-	var _ust := Node3D.new()
-	_ust.name = "Ust"
-	c.add_child(_ust)
-	for sx in [-1.0, 1.0]:
-		Kit.box(c, Vector3(0.06, 0.5, 1.5), Vector3(sx * 0.78, 0.72, 0.0), soft)
-		Kit.box(c, Vector3(0.1, 0.05, 0.5), Vector3(sx * 0.72, 0.8, 0.05), dash)
-		Kit.box(c, Vector3(0.02, 0.025, 0.12), Vector3(sx * 0.745, 0.92, -0.32), silver)
-		Kit.cyl(c, 0.07, 0.07, 0.01, Vector3(sx * 0.745, 0.55, -0.35), black, 16, Vector3(0, 0, PI / 2))
-		Kit.box(c, Vector3(0.05, 0.04, 1.3), Vector3(sx * 0.77, 0.97, 0.0), dash)
-		# Arka kapi dosemeleri
-		Kit.box(c, Vector3(0.05, 0.45, 0.62), Vector3(sx * 0.74, 0.72, 1.1), soft)
-		Kit.box(c, Vector3(0.08, 0.04, 0.4), Vector3(sx * 0.7, 0.8, 1.05), dash)
-		Kit.box(_ust, Vector3(0.07, 0.62, 0.08), Vector3(sx * 0.72, 1.22, -0.62), head, Vector3(-0.55, 0, 0))
-		Kit.box(_ust, Vector3(0.07, 0.55, 0.12), Vector3(sx * 0.74, 1.2, 0.62), head)
-		Kit.box(_ust, Vector3(0.04, 0.04, 1.3), Vector3(sx * 0.76, 1.45, 0.0), head)
-		Kit.box(_ust, Vector3(0.38, 0.02, 0.18), Vector3(sx * 0.36, 1.42, -0.42), head, Vector3(0.15, 0, 0))
-	Kit.box(_ust, Vector3(1.5, 0.03, 1.5), Vector3(0, 1.48, 0.15), head)
-	Kit.box(_ust, Vector3(0.24, 0.07, 0.02), Vector3(0.0, 1.38, -0.5), black)
-	var il := OmniLight3D.new()
-	il.position = Vector3(0, 1.3, 0.0)
-	il.omni_range = 1.8
-	il.light_energy = 0.45
-	il.light_color = Color("fff1dc")
-	c.add_child(il)
-	# Dis: kaput ve yan aynalar (govde iceriden gizlenince yerine)
-	var dis := Node3D.new()
-	dis.name = "Dis"
-	c.add_child(dis)
-	var paint := Kit.mat("eeeeec" if ResourceLoader.exists("res://assets/models/polo.glb") else "b8322c", 0.3)
-	Kit.box(dis, Vector3(1.5, 0.08, 1.2), Vector3(0, 0.92, -1.55), paint, Vector3(0.12, 0, 0))
-	for sx in [-1.0, 1.0]:
-		Kit.box(dis, Vector3(0.18, 0.12, 0.06), Vector3(sx * 0.92, 1.1, -0.55), black)
-	return c
-
-
-## Yuvarlak hatli on koltuk: minder + sirt (yumusak kenarli), yan destekler, baslik.
-func _seat(parent: Node3D, at: Vector3, fabric: Material, center: Material) -> void:
-	var s := Node3D.new()
-	s.position = at
-	parent.add_child(s)
-	var cushion := Kit.capsule(s, 0.07, 0.5, Vector3(0, 0.47, 0.22), fabric, Vector3(PI / 2, 0, 0))
-	cushion.scale = Vector3(3.4, 1.0, 1.0)
-	Kit.box(s, Vector3(0.26, 0.05, 0.42), Vector3(0, 0.53, 0.22), center)
-	var back := Node3D.new()
-	back.position = Vector3(0, 0.52, 0.47)
-	back.rotation.x = 0.16
-	s.add_child(back)
-	var bk := Kit.capsule(back, 0.07, 0.62, Vector3(0, 0.33, 0), fabric)
-	bk.scale = Vector3(3.4, 1.0, 1.0)
-	Kit.box(back, Vector3(0.24, 0.5, 0.05), Vector3(0, 0.33, -0.06), center)
-	for sx in [-1.0, 1.0]:
-		Kit.capsule(back, 0.05, 0.55, Vector3(sx * 0.22, 0.32, -0.05), fabric)
-		Kit.capsule(s, 0.05, 0.42, Vector3(sx * 0.22, 0.52, 0.2), fabric, Vector3(PI / 2, 0, 0))
-	var head := Kit.capsule(back, 0.06, 0.24, Vector3(0, 0.8, 0.0), fabric, Vector3(0, 0, PI / 2))
-	head.scale = Vector3(1.0, 1.0, 0.8)
-	for hx in [-0.07, 0.07]:
-		Kit.cyl(back, 0.008, 0.008, 0.12, Vector3(hx, 0.7, 0.0), Kit.mat("b9bcc0", 0.3), 6)
+	return CarCabin.build()
 
 
 func _update_drive(dt: float) -> void:
@@ -2968,9 +2900,6 @@ func _update_drive(dt: float) -> void:
 				else:
 					gr = _ride.global_transform * Vector3(0.95, 1.42, 0.2)
 			owner_model.grips = [gl, gr]
-	if _rider_pet:
-		var seat: Vector3 = _rider_pet.get_meta("seat")
-		_rider_pet.global_transform = _ride.global_transform * Transform3D(Basis(), seat - Vector3(0, 0.62, 0))
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
 	if absf(_drive_speed) > 1.0 and not _looking():
@@ -3912,7 +3841,7 @@ func _process(dt: float) -> void:
 	_pet_cd -= dt
 	if _perf_on:
 		pt = _pm("on (fare/harita/gun/hava)", pt)
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy() and not life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3939,6 +3868,7 @@ func _process(dt: float) -> void:
 	_update_health(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
+	life.update(dt)
 	boat.update(dt)
 	radio.update(dt)
 	hotel.update(dt)
@@ -4315,7 +4245,7 @@ func _update_thrown(dt: float) -> void:
 
 
 func _update_context() -> void:
-	if _mode != "play" or needs.busy():
+	if _mode != "play" or needs.busy() or life.busy():
 		ui.set_context("", "")
 		return
 	var o := _owner_pos()
@@ -4473,6 +4403,8 @@ func _update_context() -> void:
 
 
 func _update_camera(dt: float) -> void:
+	if life.cam_override(cam):
+		return
 	_update_camera_raw(dt)
 	# Kamera gecisleri (arac, ic gorunum, ev) isinlanmadan yumusak
 	if _cam_blend > 0.0:
@@ -4670,6 +4602,7 @@ func _debug_flow() -> void:
 ## Ekran goruntusu: -- --shot=dosya.png [--screen=menu|setup|play|shop|acc|pets|quests|closet|map|photo|pause]
 ## [--view=top|wide|low] [--at=x,z] [--both] [--level=n] [--wear=id,id] [--cmd=sit] [--pet=kedi] [--frames=n]
 func _debug_shot() -> void:
+	life.instant = not _args.has("mount")      # testlerde aninda bin / in (yalniz --mount hareketi oynatir)
 	var screen: String = _args.get("screen", "play")
 	if _args.has("pressf"):
 		get_tree().create_timer(float(_args.get("pressf", "3"))).timeout.connect(func():
@@ -4834,6 +4767,33 @@ func _debug_shot() -> void:
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("phoneapp"):     # --phoneapp=Harita [--phoneitem=Tam] : simgeye (ve maddeye) fareyle tikla
+		if _args.has("phonebills"):      # test: faturalari hemen kes
+			bank._d()["bill_next"] = bank._now()
+			bank.update(0.0)
+			print("PHONEAPP borc=", bank.unpaid().size(), " nakit=", bank.cash(), " hesap=", bank.balance())
+		_open_phone()
+		await get_tree().create_timer(0.7).timeout
+		var pb: Button = ui.phone_app_button(str(_args["phoneapp"]))
+		print("PHONEAPP dugme=", pb != null)
+		if pb != null:
+			pb.grab_focus()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			await _debug_click(pb)
+			await get_tree().create_timer(0.5).timeout
+			print("PHONEAPP uygulama=", ui.phone_in_app(), " telefon=", ui.phone_open())
+			var steps: Array = str(_args.get("phoneitem", "")).split(",", false)
+			for st in steps:
+				var ib: Button = _find_button(ui, str(st))
+				print("PHONEITEM ", st, " bulundu=", ib != null)
+				if ib != null:
+					ib.grab_focus()
+					await get_tree().process_frame
+					await get_tree().process_frame
+					await _debug_click(ib)
+					await get_tree().create_timer(0.8).timeout
+			print("PHONEAPP son: telefon=", ui.phone_open(), " harita=", map_screen.visible, " borc=", bank.unpaid().size())
 	if _args.has("bigmaproute"):
 		var bi := 0
 		for i in map_screen.PINS.size():
@@ -5143,6 +5103,10 @@ func _debug_shot() -> void:
 		traffic.debug_parkfine()
 	if _args.has("perf"):
 		await _perf_run()
+	if _args.has("mount") or _args.has("petseat") or _args.has("vcam"):
+		await life.debug(_args)
+	if _args.has("vtour"):
+		await life.debug_tour(_args)
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("police"):

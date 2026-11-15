@@ -17,6 +17,7 @@ var needs := {}               # ihtiyac -> 0..100 (aktif hayvan)
 var coins := 0
 var markers: Array = []
 var speed_kmh := -1.0         # araçtayken hiz gostergesi
+var gauge_h := 0.0            # > 0: hiz kadrani (vehicle_life.gd) haritanin ustunde, yazilar onun ustune cikar
 var _speed_label: Label       # [konum, renk, tur: ev / arac / otobus]
 const NEED_ARCS := [        # [ihtiyac, renk, baslangic, bitis (derece; 0 = sag, saat yonu), simge]
 	["hunger", "f29f4b", 100.0, 172.0, "bone"], ["energy", "e9b93a", 188.0, 260.0, "bolt"],
@@ -95,11 +96,11 @@ func _process(_dt: float) -> void:
 	_ring.visible = visible
 	_ring.queue_redraw()
 	# Para ve rota yazisi dairenin ustunde (harita ekranin sag alt kosesinde)
-	var top_y := -20.0 - (66.0 if speed_kmh >= 0.0 else 0.0)
+	var top_y := -20.0 - (gauge_h if gauge_h > 0.0 else (66.0 if speed_kmh >= 0.0 else 0.0))
 	_coin_label.position = position + Vector2(-20, top_y - 34.0)
 	_coin_label.size = Vector2(SIZE + 40, 28)
 	_coin_label.visible = visible
-	_speed_label.visible = visible and speed_kmh >= 0.0
+	_speed_label.visible = visible and speed_kmh >= 0.0 and gauge_h <= 0.0
 	_speed_label.position = position + Vector2(-20, -66)
 	_speed_label.size = Vector2(SIZE + 40, 44)
 	_speed_label.text = "%d km/s" % int(speed_kmh)
