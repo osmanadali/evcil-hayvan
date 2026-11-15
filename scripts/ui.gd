@@ -12,6 +12,7 @@ signal worn_changed
 signal adopted(kind: String)
 signal back_to_menu
 
+const Keybinds = preload("res://scripts/keybinds.gd")
 const K = preload("res://scripts/ui_kit.gd")
 const Icon = preload("res://scripts/icon.gd")
 const Accessories = preload("res://scripts/accessories.gd")
@@ -242,6 +243,7 @@ func _build_hud() -> void:
 
 ## Hareket cubugu: dokunmayi (ya da fareyi) dogrudan izler, boylece ikinci parmak kamerayi cevirebilir.
 func _input(e: InputEvent) -> void:
+	_capture_key(e)
 	if not hud.visible or is_blocking():
 		stick = Vector2.ZERO
 		_stick_id = -2
@@ -288,6 +290,7 @@ func _input(e: InputEvent) -> void:
 
 var _hint: PanelContainer
 var _hint_label: Label
+var _hint_key: Label
 
 
 ## Etkilesim: bilgisayarda ekranda dugme yok, sol ustte "[F] ..." ipucu; tablette kucuk F dugmesi.
@@ -317,11 +320,12 @@ func set_context(text: String, cmd: String, icon := "star") -> void:
 		ks.content_margin_right = 10
 		key.add_theme_stylebox_override("panel", ks)
 		row.add_child(key)
-		_fx_label(key, "F", F_BODY, 24, Color("111111"))
+		_hint_key = _fx_label(key, "F", F_BODY, 24, Color("111111"))
 		_hint_label = _fx_label(row, "", F_BODY, 24, Color.WHITE)
 	if cmd == _context_cmd and _hint.visible == (cmd != "" or text != ""):
 		return
 	_context_cmd = cmd
+	_hint_key.text = Keybinds.primary("interact")
 	var touch := DisplayServer.is_touchscreen_available()
 	_hint.visible = text != "" and not touch
 	(_hint.get_child(0).get_child(0) as Control).visible = cmd != ""
@@ -1056,20 +1060,78 @@ func open_settings() -> void:
 			state.d["mouse_sens"] = steps[(i + 1) % steps.size()]
 			state.save_game()
 			open_settings())
-	var info := _fx_label(body, "KONTROLLER", F_BODY, 30, ACCENT, 6)
-	info.custom_minimum_size = Vector2(0, 56)
-	info.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	var keys := "W A S D  yürü / sür     SHIFT  koş     BOŞLUK  zıpla, el freni\nE  etkileşim     V  araç içi kamera     M  harita\nP  telefon     G  görevler     C  fotoğraf     ESC  menü\nFARE  etrafına bak     ALT  imleci göster" \
-		if not DisplayServer.is_touchscreen_available() else "Sol alttaki çubukla yürü, ekranı sürükleyerek etrafına bak.\nHayvanına dokun: sev, besle, oyna."
-	var kl := _fx_label(body, keys, F_BODY, 22, Color(1, 1, 1, 0.85))
-	kl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	kl.add_theme_constant_override("line_spacing", 6)
+	if not DisplayServer.is_touchscreen_available():
+		_menu_item(body, "KONTROLLER  >", func(): open_keys())
+		var kl := _fx_label(body, "Hareket: %s / %s / %s / %s     Koş: %s     Etkileşim: %s\nHarita: %s     Telefon: %s     Görevler: %s     Fotoğraf: %s     ESC: menü\nTuşları değiştirmek için KONTROLLER'e gir." % [
+			Keybinds.primary("move_forward"), Keybinds.primary("move_left"), Keybinds.primary("move_back"), Keybinds.primary("move_right"),
+			Keybinds.primary("sprint"), Keybinds.primary("interact"), Keybinds.primary("map"), Keybinds.primary("phone"),
+			Keybinds.primary("quests"), Keybinds.primary("photo")], F_BODY, 22, Color(1, 1, 1, 0.85))
+		kl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		kl.add_theme_constant_override("line_spacing", 6)
+	else:
+		var tl := _fx_label(body, "Sol alttaki çubukla yürü, ekranı sürükleyerek etrafına bak.\nHayvanına dokun: sev, besle, oyna.", F_BODY, 22, Color(1, 1, 1, 0.85))
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_menu_item(body, "GERİ", func():
 		if menu.visible:
 			close_modal()
 		else:
 			open_pause())
 	_focus_first(body)
+
+
+var _cap_action := ""
+var _cap_msg := ""
+
+
+## Kontroller: her eylem ve atanmis tus; sec, sonra yeni tusa bas (Esc iptal).
+func open_keys(msg := "") -> void:
+	_cap_action = ""
+	var body := _open_page("KONTROLLER", "Bir eylemi seç, sonra yeni tuşa bas")
+	if msg != "":
+		_fx_label(body, msg, F_BODY, 24, ACCENT2, 5)
+	for a in Keybinds.ACTIONS:
+		var name: String = a[0]
+		_menu_item(body, "%s:  %s" % [a[1], Keybinds.key_text(name)], func():
+			_cap_action = name
+			open_keys_capture(name))
+	_menu_item(body, "VARSAYILANA DÖN", func():
+		Keybinds.reset(state.d["keys"] if state.d.has("keys") else {})
+		state.d["keys"] = {}
+		state.save_game()
+		_context_cmd = "~"
+		open_keys("Tuşlar varsayılana döndü."))
+	_menu_item(body, "GERİ", func(): open_settings())
+	_focus_first(body)
+
+
+func open_keys_capture(name: String) -> void:
+	var body := _open_page("KONTROLLER", Keybinds.label_of(name))
+	_fx_label(body, "Bir tuşa bas...", F_TITLE, 56, ACCENT, 8)
+	_fx_label(body, "ESC: vazgeç", F_BODY, 24, Color(1, 1, 1, 0.8))
+
+
+func _capture_key(e: InputEvent) -> void:
+	if _cap_action == "" or not (e is InputEventKey) or e.echo or not e.pressed:
+		return
+	get_viewport().set_input_as_handled()
+	var code: int = e.physical_keycode if e.physical_keycode != KEY_NONE else e.keycode
+	var name := _cap_action
+	_cap_action = ""
+	if code == KEY_ESCAPE:
+		open_keys()
+		return
+	if code in Keybinds.RESERVED:
+		open_keys("Bu tuş ayrılmış, başka bir tuş dene.")
+		return
+	if not state.d.has("keys"):
+		state.d["keys"] = {}
+	var sw: String = Keybinds.rebind(name, code, state.d["keys"])
+	state.save_game()
+	_context_cmd = "~"
+	if sw != "":
+		open_keys("%s tuşu %s ile takas edildi." % [Keybinds.key_name(code), Keybinds.label_of(sw)])
+	else:
+		open_keys("%s  >  %s" % [Keybinds.label_of(name), Keybinds.key_name(code)])
 
 
 func _open_food() -> void:
