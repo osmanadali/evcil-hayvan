@@ -22,6 +22,18 @@ Keçiören (Subayevleri, Altınpark gölü, Arif Sokak'taki ev, Çınaraltı) bu
 - Sabit noktalar (spot: baslangic, kafe, petshop, oyun_alani, cardak, cesme, piknik,
   dondurmaci, bahce; metro girişleri; ev) üreticide isimli olarak tanımlanır.
 
+## 1b. Arazi ve manzara (oyuncunun isteği, referans: docs/referans/sehir-manzara.webp)
+- Şehir düz değil: denize bakan tepeler, yamaç boyunca yukarı tırmanan yerleşim (Monaco'nun üst mahalleleri gibi).
+- Kıvrılarak tırmanan yamaç yolları; virajlarda manzara noktaları (seyir terası, bank, sokak lambası),
+  aşağıda şehir ışıkları ve deniz görünür.
+- Sahil şeridi: kordon, plaj, marina; hemen arkasında dik yamaç.
+- Tepenin üstünde şehrin simge yapısı (uydurma kule/seyir kulesi) ve kemerli eski yapı; yamaçta kubbeli cami.
+- Tepelerin arkasında geniş bir ova; ovanın üst kenarından (yamaç eteğinden) geçen ana yol / otoyol,
+  ovada tarlalar, köy yolu, sanayi ve otogar.
+- Taş döşeli sokaklar, kiremit çatılı 3-5 katlı evler, çınarlar, gün batımında mor-turuncu gökyüzü.
+- Teknik: city_gen arazi yükseklik haritası üretir (terrain_height), yollar eğime göre kıvrılır,
+  binalar yamaçta teraslanır; uzak manzara için düşük detaylı şehir/deniz arka planı.
+
 ## 2. Şehirlerarası yolculuk
 - Otogar: peronlar, bilet gişeleri, firma tabelaları (uydurma firma adları), bekleme salonu, çay ocağı.
 - Telefonda "Otobüs Bileti" uygulaması: sefer listesi (saat, firma, koltuk seçimi, fiyat).
