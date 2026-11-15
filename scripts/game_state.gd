@@ -33,6 +33,7 @@ const QUESTS := [
 	["tea", "Çay ocağında çay iç", 1, 15],
 	["lawful", "Hız sınırına uyarak 1 km araba sür", 1000, 30],
 	["sleep", "Evinde uyu ya da bankta kestir", 1, 15],
+	["hotel", "Kale Palas Otel'de bir oda kirala", 1, 40],
 	["train", "Hayvanına numara öğret: 3 kez ödül ver", 3, 25],
 	["radio", "Arabada radyo aç", 1, 10],
 	["dealer", "Otokent Galeri'den araç satın al", 1, 50],

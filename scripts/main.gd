@@ -109,6 +109,7 @@ var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
+var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
@@ -170,6 +171,10 @@ func _ready() -> void:
 	home_life.m = self
 	home_life.state = state
 	add_child(home_life)
+	hotel = preload("res://scripts/hotel.gd").new()
+	hotel.m = self
+	hotel.state = state
+	add_child(hotel)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -256,6 +261,7 @@ func _ready() -> void:
 				break
 		ui.toast("%s istasyonundan çıktın · %s" % [travel_to, ParkMap.ZONE_TITLES[ParkMap.zone]])
 		travel_to = ""
+		hotel.restore_pending = false
 		_enter_play()
 	elif _args.has("gate"):
 		for g in world.metro_gates:
@@ -555,6 +561,7 @@ func _enter_play() -> void:
 	_mode = "play"
 	_link_buddies()
 	ui.show_screen("hud")
+	hotel.on_enter_play()
 
 
 func _spawn_npcs() -> void:
@@ -1623,6 +1630,8 @@ func _open_phone() -> void:
 	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
 	if dealer.center != Vector2.INF:
 		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
+	if hotel.center != Vector2.INF:
+		apps.append(["Otel", "7a1f2b", "moon", func(): hotel.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
 	apps.append(["Mobilya", "8a5a35", "home", func(): home_life.open_shop()])
 	if not pet_care.shelter.is_empty():
@@ -1818,6 +1827,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "dealer":
 		dealer.open_panel()
+		return
+	if cmd.begins_with("htl_"):
+		hotel.command(cmd)
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
@@ -2112,6 +2124,7 @@ func _spawn_rides() -> void:
 		_place_ride(v, p, PI)
 	dealer.build()
 	dealer.spawn_garage()
+	hotel.build()
 
 
 ## Govde boyasini degistirir (lastik ve camlar koyu oldugu icin carpim az etkiler).
@@ -2936,6 +2949,8 @@ func _open_map() -> void:
 		dyn.append([st["name"] + ((" · " + " ".join(st["lines"])) if not st["lines"].is_empty() else ""), st["pos"], "1a4fa0", "pin"])
 	for g in world.metro_gates:
 		dyn.append(["M · " + str(g["name"]), g["pos"], "c8322b", "pin"])
+	if hotel.center != Vector2.INF:
+		dyn.append(["Kale Palas Otel", hotel.door_pos(), "7a1f2b", "moon"])
 	if world.vet_pos != Vector2.INF:
 		dyn.append(["Veteriner", world.vet_pos, "1e9a8a", "plus"])
 	for fs in world.fuel_stations:
@@ -3614,6 +3629,7 @@ func _process(dt: float) -> void:
 	needs.update(dt)
 	_update_play_ride(dt)
 	radio.update(dt)
+	hotel.update(dt)
 	_update_wet(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
@@ -3808,6 +3824,10 @@ func _update_context() -> void:
 	for n in _npc_pets:
 		if n != _job.get("dog") and Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
 			_near_npc = n
+	var htc: Array = hotel.context() if _bus_ride == null and _taxi == null else []
+	if not htc.is_empty():
+		ui.set_context(htc[0], htc[1], htc[2])
+		return
 	if _bus_ride != null:
 		if _bus_ride.at_stop != "":
 			ui.set_context("Otobüsten İn", "busexit", "come")
@@ -4550,6 +4570,8 @@ func _debug_shot() -> void:
 		print("RADYO ", radio.label(), " · ", radio.sub_label())
 	if _args.has("dealer"):
 		await dealer.debug(_args["dealer"])
+	if _args.has("hotel") or _args.has("hotelroom"):
+		await hotel.debug(_args.get("hotelroom", _args.get("hotel", "1")), _args.has("hotelroom"))
 	if _args.has("police") or _args.has("redlight") or _args.has("parkfine"):
 		traffic.update(0.0)
 	if _args.has("police"):

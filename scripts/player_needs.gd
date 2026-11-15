@@ -147,7 +147,7 @@ func context() -> Array:
 	if sleeping:
 		return ["", "", ""]
 	if _near_bed():
-		return ["Uyu · sabah 08:00'e kadar", "sleep", "moon"]
+		return ["Yatak · Uyu / Kaydet", "htl_homebed", "moon"]
 	if ParkMap_home() == null and m._ride == null and not m.street_food.is_seated():
 		var b := _bench_at(m._owner_pos())
 		if not b.is_empty():
