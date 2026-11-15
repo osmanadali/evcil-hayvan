@@ -933,7 +933,7 @@ func _pointer_up(pos: Vector2) -> void:
 			_select_pet(k)
 			ui.open_radial(cam.unproject_position(a.position + Vector3(0, 0.4, 0)), state.d["active"] == "kedi", state.owned_pets().size() > 1)
 			return
-	if hit != null:
+	if hit != null and DisplayServer.is_touchscreen_available():
 		_queue.clear()
 		if (hit as Vector2).distance_to(_owner_pos()) > 35.0:
 			walk_to(hit)      # uzak hedef: sokaklari izle
@@ -3603,6 +3603,10 @@ func _sparkle(at_pos: Vector3) -> void:
 
 func _process(dt: float) -> void:
 	_update_mouse_capture(dt)
+	# Ana menu ekrani tamamen kapliyor: arkadaki 3B sahneyi cizme (takilmayi onler)
+	var hide3d: bool = ui != null and ui.menu != null and ui.menu.visible
+	if get_viewport().disable_3d != hide3d:
+		get_viewport().disable_3d = hide3d
 	if minimap:
 		_update_minimap(dt)
 	if _ready_done and (_mode == "play" or _mode == "metro") and not _args.has("cmd"):
