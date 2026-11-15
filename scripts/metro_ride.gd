@@ -7,7 +7,7 @@ signal finished(station: String)
 signal announce(text: String)
 
 const Kit = preload("res://scripts/kit.gd")
-const LINE := ["Belediye", "Meteoroloji", "Dışkapı", "ASKİ", "Atatürk Kültür Merkezi", "Gar", "Adliye"]
+const LINE := ["Belediye", "Meteoroloji", "Dışkapı", "ASKİ", "Atatürk Kültür Merkezi", "Gar", "Adliye", "Kızılay"]
 const LEG_TIME := 20.0
 const CAR_H := 3.5            # gercek metro vagonu ~3.5 m yuksek
 const PLAT_Z := 0.95          # peron kenari

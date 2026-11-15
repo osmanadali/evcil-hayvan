@@ -25,7 +25,7 @@ const QUESTS := [
 	["pet", "Hayvanını 5 kez sev", 5, 20], ["fetch", "3 kez oyun oyna", 3, 25], ["feed", "Hayvanını besle", 1, 15],
 	["walk", "500 metre yürü", 500, 25], ["coin", "10 altın topla", 10, 20], ["photo", "Bir fotoğraf çek", 1, 15],
 	["metro", "Metroyla bir yolculuk yap", 1, 40], ["drive", "Arabayla 1 km sür", 1000, 30],
-	["shop", "Market ya da eczaneden alışveriş yap", 1, 20], ["swim", "Göle gir, ıslan", 1, 10],
+	["shop", "Market ya da eczaneden alışveriş yap", 1, 20], ["swim", "Göle gir, ıslan", 1, 10], ["bikerent", "Pedal Ankara bisikletiyle gez", 1, 25],
 	["seesaw", "Hayvanınla tahterevalliye bin", 1, 15], ["npcplay", "Başka bir hayvanla oynat", 1, 20],
 	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["job", "Bir iş bitir (köpek gezdir / kurye)", 1, 25], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
 	["weather", "Yağmurda ya da karda 1 dakika dışarıda gez", 60, 20],

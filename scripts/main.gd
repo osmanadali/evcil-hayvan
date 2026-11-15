@@ -103,6 +103,7 @@ var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
+var tplus: Node           # ek ulasim: bisiklet kiralama, taksi duragi, trafik sikisikligi, Kizilay (scripts/transport_plus.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
@@ -142,6 +143,10 @@ func _ready() -> void:
 	boat.m = self
 	boat.state = state
 	add_child(boat)
+	tplus = preload("res://scripts/transport_plus.gd").new()
+	tplus.m = self
+	tplus.state = state
+	add_child(tplus)
 	street_food = preload("res://scripts/street_food.gd").new()
 	street_food.m = self
 	street_food.state = state
@@ -228,6 +233,7 @@ func _ready() -> void:
 	_spawn_npcs()
 	_spawn_coins()
 	street_food.build()
+	tplus.build()
 	pet_care.build()
 	bank.build()
 	neighbors.build()
@@ -1911,6 +1917,9 @@ func _on_command(cmd: String) -> void:
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
 		return
+	if cmd.begins_with("pa_") or cmd.begins_with("tr_"):
+		tplus.command(cmd)
+		return
 	if cmd.begins_with("boat_"):
 		boat.command(cmd)
 		return
@@ -3266,7 +3275,7 @@ func _near_home_exit() -> bool:
 
 ## M4 hattinda oyunda olan istasyonlar: [istasyon, bolge, aciklama]
 const METRO_STOPS := [["Meteoroloji", "", "Subayevleri"], ["Gar", "gar", "Ankara Garı · Gazi Mühendislik"],
-	["Adliye", "gar", "Adliye · Maltepe Pazarı"]]
+	["Adliye", "gar", "Adliye · Maltepe Pazarı"], ["Kızılay", "kizilay", "Kızılay Meydanı · Güvenli Park"]]
 var _metro: Node3D
 static var travel_to := ""      # bolge degisince cikilacak istasyon
 static var _debug_traveled := false
@@ -3795,6 +3804,7 @@ func _process(dt: float) -> void:
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
+	tplus.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4100,6 +4110,10 @@ func _update_context() -> void:
 			if o.distance_to(pr["pos"]) < 2.0:
 				ui.set_context("Tahterevalliye Bin" if pr["kind"] == "tahterevalli" else "Salıncağa Bin", "playride", "play")
 				return
+	var tpc: Array = tplus.context()
+	if not tpc.is_empty():
+		ui.set_context(tpc[0], tpc[1], tpc[2])
+		return
 	if _ride != null:
 		var fc: Array = fuel.context()
 		if not fc.is_empty():
@@ -4455,6 +4469,9 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f % 5 == 0:
 				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
+	for tk in ["bikerent", "taxirank", "jam"]:
+		if _args.has(tk):
+			tplus.debug(tk)
 	if _args.has("boattour"):
 		boat.debug_board("tour", float(_args["boattour"]) if float(_args["boattour"]) > 1.0 else 25.0)
 	if _args.has("pedalo"):
@@ -4720,7 +4737,7 @@ func _debug_shot() -> void:
 		_debug_traveled = true
 		print("YOLCULUK ", ParkMap.zone, " -> ", _args["travel"])
 		for st in METRO_STOPS:
-			if st[0] == _args["travel"]:
+			if str(st[0]).replace("ı", "i").to_lower() == str(_args["travel"]).replace("ı", "i").to_lower():
 				_travel(st[0], st[1])
 				if _metro and _args.has("fastride"):
 					_metro.fast = true
