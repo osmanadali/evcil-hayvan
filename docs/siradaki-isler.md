@@ -41,3 +41,9 @@ Sigara içme (animasyon, duman, sağlık/dayanıklılık etkisi).
 - Saç/sakal: MakeHuman CC0 saç modellerinden 6-8 saç + 3-4 sakal/bıyık parçası ayrı mesh olarak dışa aktarılır;
   berberde seçilen parça takılır, renk materyalden değişir.
 - Kıyafet: MakeHuman CC0 giysi setlerinden ayrı üst/alt/ayakkabı parçaları; mağazada denenip alınır.
+
+## Araç içi kamerada eller
+- Şu an araç içi (FPS) kamerada karakter tamamen gizleniyor: direksiyon kendi kendine dönüyor, kol/el yok.
+- Yapılacak: FPS'te baş gizli, kollar ve gövde görünür; eller direksiyona IK ile oturur ve simitle birlikte döner
+  (motosikletteki gidon tutuşu gibi), vites/el freni için sağ el hareketi, aşağı bakınca bacaklar ve pedallar.
+- Dış kamerada da eller simide tam otursun (şu an hazır "Driving" animasyonu, yaklaşık duruyor).
