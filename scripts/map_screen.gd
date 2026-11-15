@@ -3,6 +3,7 @@ extends Control
 
 signal place_chosen(p: Vector2)
 signal nav_chosen(p: Vector2, name: String)    # yalnizca yol tarifi (yurumeden)
+signal nav_cancel                               # etkin rotayi iptal et
 
 const ParkMap = preload("res://scripts/park_map.gd")
 const K = preload("res://scripts/ui_kit.gd")
@@ -40,6 +41,15 @@ var _dyn_nodes: Array[Control] = []
 var _custom := Vector2.INF       # haritada bos bir yere dokunulunca isaretlenen yer
 var _custom_pin: Control
 var dynamic: Array = []          # main doldurur: [ad, konum, renk, simge]
+# Etkin rota (main._route_to_map doldurur): mini haritadaki ayni cizgi
+var route: Array = []
+var route_dest := Vector2.INF
+var route_name := ""
+var route_speed := 1.4           # m/s (yuruyus); aracta daha hizli
+var _route_layer: Control
+var _dest_pin: Control
+var _route_card: Control
+var _route_label: Label
 
 
 func _ready() -> void:
@@ -94,6 +104,11 @@ func _ready() -> void:
 	tex.size = Vector2(MAP_PX, MAP_PX)
 	tex.texture = load(ParkMap.asset("park_map.png"))
 	_canvas.add_child(tex)
+	_route_layer = Control.new()
+	_route_layer.mouse_filter = MOUSE_FILTER_IGNORE
+	_route_layer.size = Vector2(MAP_PX, MAP_PX)
+	_route_layer.draw.connect(_draw_route)
+	_canvas.add_child(_route_layer)
 	for s in STREETS:
 		var sl := K.label(_canvas, s[0], 15, Color("8d8f92"), HORIZONTAL_ALIGNMENT_CENTER)
 		sl.size = Vector2(220, 20)
@@ -216,6 +231,43 @@ func _ready() -> void:
 	_custom_pin.add_child(cstem)
 	_custom_pin.visible = false
 	_canvas.add_child(_custom_pin)
+	# Rota hedefi: buyuk kirmizi-beyaz bayrakli isaret
+	_dest_pin = Control.new()
+	_dest_pin.mouse_filter = MOUSE_FILTER_IGNORE
+	var dring := K.panel(_dest_pin, Color("e8453c"), 22, 5, Color.WHITE, 6)
+	dring.mouse_filter = MOUSE_FILTER_IGNORE
+	dring.position = Vector2(-22, -58)
+	dring.size = Vector2(44, 44)
+	var dic := Icon.new("pin", Color.WHITE, 24)
+	dic.position = Vector2(-12, -48)
+	dic.size = Vector2(24, 24)
+	_dest_pin.add_child(dic)
+	var dstem := ColorRect.new()
+	dstem.color = Color("e8453c")
+	dstem.position = Vector2(-3, -16)
+	dstem.size = Vector2(6, 16)
+	_dest_pin.add_child(dstem)
+	_dest_pin.visible = false
+	_canvas.add_child(_dest_pin)
+	# Ust solda rota karti: hedef, mesafe, sure ve iptal dugmesi
+	_route_card = K.panel(screen, Color("16171c"), 18, 0, Color.WHITE, 10)
+	_route_card.set_anchors_and_offsets_preset(PRESET_TOP_LEFT)
+	_route_card.position = Vector2(20, 128)
+	_route_card.size = Vector2(600, 132)
+	var rhead := K.label(_route_card, "ROTA", 18, Color("f5c518"))
+	rhead.position = Vector2(20, 10)
+	_route_label = K.label(_route_card, "", 22, Color.WHITE)
+	_route_label.position = Vector2(20, 32)
+	_route_label.size = Vector2(560, 30)
+	_route_label.clip_text = true
+	_route_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	var cancel := K.button(_route_card, "Rotayı iptal et", "close", _cancel_route, K.RED, Color.WHITE, Vector2(230, 46), 19, 20)
+	cancel.position = Vector2(20, 72)
+	cancel.size = Vector2(230, 46)
+	var show_btn := K.button(_route_card, "Hedefe bak", "pin", _show_dest, Color.WHITE, K.BROWN, Vector2(180, 46), 19, 20)
+	show_btn.position = Vector2(266, 72)
+	show_btn.size = Vector2(180, 46)
+	_route_card.visible = false
 	var credit := K.outline(K.label(_view, "© OpenStreetMap katkıcıları", 15, K.MUTED), 4)
 	credit.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
 	credit.offset_left = 26
@@ -232,6 +284,7 @@ func open(player_pos: Vector2) -> void:
 	_rebuild_dynamic()
 	_custom = Vector2.INF
 	_custom_pin.visible = false
+	_update_route_ui()
 	_select(-1)
 	await get_tree().process_frame
 	_zoom_min = maxf(_view.size.x, _view.size.y) / MAP_PX
@@ -261,6 +314,8 @@ func _apply() -> void:
 	for s in _streets:
 		s.visible = _zoom > _zoom_min * 2.2
 	_me.scale = Vector2.ONE / _zoom
+	_dest_pin.scale = Vector2.ONE / _zoom
+	_route_layer.queue_redraw()
 
 
 func _zoom_at(factor: float, pivot: Vector2) -> void:
@@ -380,7 +435,7 @@ func _select(i: int) -> void:
 	var t := _target()
 	if t[0] == Vector2.INF:
 		_sheet_title.text = "Nereye gidelim?"
-		_sheet_info.text = "Bir yere ya da işarete dokun, sonra Yol Tarifi."
+		_sheet_info.text = "Bir yere ya da işarete tıkla, sonra Yol Tarifi."
 		go.visible = false
 		nav.visible = false
 	else:
@@ -393,7 +448,7 @@ func _select(i: int) -> void:
 			dist += prev.distance_to(p)
 			prev = p
 		_sheet_info.text = "%d metre  ·  yaklaşık %d dk yürüyüş" % [int(dist), maxi(1, int(dist / 3.4 / 60.0 + 0.5))]
-		go.visible = true
+		go.visible = DisplayServer.is_touchscreen_available()   # bilgisayarda otomatik yurume yok
 	if is_inside_tree() and _view.size.x > 0:
 		_apply()
 
@@ -412,3 +467,59 @@ func _go() -> void:
 		visible = false
 		nav_chosen.emit(t[0], t[1])
 		place_chosen.emit(t[0])
+
+
+## Etkin rotanin cizgisi: ekranda sabit kalinlikta (yakinlastirmadan bagimsiz).
+func _draw_route() -> void:
+	if route_dest == Vector2.INF:
+		return
+	var pts := PackedVector2Array([_to_px(_me_world)])
+	for p in route:
+		pts.append(_to_px(p))
+	if pts[pts.size() - 1].distance_to(_to_px(route_dest)) > 0.5:
+		pts.append(_to_px(route_dest))
+	if pts.size() < 2:
+		return
+	var w := 7.0 / maxf(_zoom, 0.01)
+	_route_layer.draw_polyline(pts, Color(0.05, 0.2, 0.5, 0.55), w * 1.7, true)
+	_route_layer.draw_polyline(pts, Color("3d8bff"), w, true)
+
+
+func _route_length() -> float:
+	var d := 0.0
+	var prev := _me_world
+	for p in route:
+		d += prev.distance_to(p)
+		prev = p
+	if route_dest != Vector2.INF:
+		d += prev.distance_to(route_dest)
+	return d
+
+
+func _update_route_ui() -> void:
+	var on := route_dest != Vector2.INF
+	_route_card.visible = on
+	_dest_pin.visible = on
+	if not on:
+		_route_layer.queue_redraw()
+		return
+	_dest_pin.position = _to_px(route_dest)
+	var d := _route_length()
+	var dist := ("%.1f km" % (d / 1000.0)) if d >= 1000.0 else ("%d m" % int(d))
+	var mins := maxi(1, int(d / maxf(route_speed, 0.5) / 60.0 + 0.5))
+	var how := "araçla" if route_speed > 3.0 else "yürüyüş"
+	_route_label.text = "%s  ·  %s  ·  %s ~%d dk" % [route_name if route_name != "" else "Hedef", dist, how, mins]
+	_route_layer.queue_redraw()
+
+
+func _cancel_route() -> void:
+	route = []
+	route_dest = Vector2.INF
+	route_name = ""
+	_update_route_ui()
+	nav_cancel.emit()
+
+
+func _show_dest() -> void:
+	if route_dest != Vector2.INF:
+		_center_on(_to_px(route_dest))

@@ -182,8 +182,7 @@ func _build_hud() -> void:
 	weather_label = K.label(row, "", 22, Color(0.9, 0.95, 1.0))
 	weather_label.add_theme_font_override("font", F_UI)
 	_coins = Label.new()      # para yazisi mini haritada; bu etiket yalniz eski kod icin
-	var phone_btn := K.button(right, "", "phone", func(): command.emit("phone"), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
-	_glass(phone_btn)
+	# Telefon dugmesi yok: bilgisayarda telefon kendi tusuyla (P) acilir
 	var menu_btn := K.button(right, "", "list", func(): open_pause(), GLASS, Color.WHITE, Vector2(60, 60), 30, 30)
 	_glass(menu_btn)
 	# Bilgisayarda menu Esc ile acilir, hareket klavyeyle: dugme ve cubuk gizli
@@ -270,6 +269,7 @@ func _build_hud() -> void:
 ## Hareket cubugu: dokunmayi (ya da fareyi) dogrudan izler, boylece ikinci parmak kamerayi cevirebilir.
 func _input(e: InputEvent) -> void:
 	_capture_key(e)
+	_pet_menu_key(e)
 	if not hud.visible or is_blocking():
 		stick = Vector2.ZERO
 		_stick_id = -2
@@ -445,6 +445,49 @@ func open_radial(at: Vector2, cat: bool, two: bool) -> void:
 	x.position = at - Vector2(22, 22)
 
 
+## Bilgisayar: hayvanla etkilesim listesi (GTA tarzi yan panel). 1-9 / 0 tuslari ya da oklar + Enter.
+var _pet_menu_cmds: Array = []
+
+
+func open_pet_menu(pet_name: String, cat: bool, two: bool) -> void:
+	close_radial()
+	var items := [["Sev", "pet"], ["Mama ver", "food"], ["Yumakla oyna" if cat else "Top at", "yarn" if cat else "throw"],
+		["Otur", "sit"], ["Yat", "lie"], ["Gel", "come"], ["Tasma", "leash"], ["Eğitim", "train"]]
+	if two:
+		items.append(["Birlikte oynat", "play"])
+		items.append(["Diğer hayvana geç", "switch"])
+	var body := _open_panel(pet_name.to_upper(), "Ne yapalım?")
+	_pet_menu_cmds = []
+	for i in items.size():
+		var cmd: String = items[i][1]
+		var key := str((i + 1) % 10)
+		_panel_item(body, "%s   %s" % [key, items[i][0]], func():
+			close_modal()
+			_on_action(cmd))
+		_pet_menu_cmds.append(cmd)
+	_modal.tree_exiting.connect(func(): _pet_menu_cmds = [])
+	_focus_first(body)
+
+
+func _pet_menu_key(e: InputEvent) -> void:
+	if _pet_menu_cmds.is_empty() or _modal == null or not (e is InputEventKey) or e.echo or not e.pressed:
+		return
+	var code: int = e.physical_keycode if e.physical_keycode != KEY_NONE else e.keycode
+	var i := -1
+	if code >= KEY_1 and code <= KEY_9:
+		i = code - KEY_1
+	elif code == KEY_0:
+		i = 9
+	elif code >= KEY_KP_1 and code <= KEY_KP_9:
+		i = code - KEY_KP_1
+	if i < 0 or i >= _pet_menu_cmds.size():
+		return
+	get_viewport().set_input_as_handled()
+	var cmd: String = _pet_menu_cmds[i]
+	close_modal()
+	_on_action(cmd)
+
+
 ## Saydam koyu yuvarlak dugme gorunumu
 func _glass(b: Button) -> void:
 	var r := int(b.custom_minimum_size.y / 2.0) - 1
@@ -463,6 +506,8 @@ func _on_action(cmd: String) -> void:
 		refresh()
 	elif cmd == "food":
 		_open_food()
+	elif cmd == "switch":
+		command.emit("switch_pet")
 	else:
 		command.emit(cmd)
 
@@ -1044,7 +1089,7 @@ func open_store(kind: String, title: String) -> void:
 	body.add_child(row)
 	var pay := _tile(row, "ÖDE  %d ₺" % total, true, func():
 		if total == 0:
-			toast("Sepetin boş. Ürünlere dokunarak ekle.")
+			toast("Sepetin boş. Ürünlere tıklayarak ekle.")
 		elif state.d["coins"] < total:
 			toast("Paran yetmiyor! %d ₺ eksik." % (total - state.d["coins"]))
 		else:
@@ -1135,7 +1180,7 @@ func open_settings() -> void:
 		kl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		kl.add_theme_constant_override("line_spacing", 6)
 	else:
-		var tl := _fx_label(body, "Sol alttaki çubukla yürü, ekranı sürükleyerek etrafına bak.\nHayvanına dokun: sev, besle, oyna.", F_BODY, 22, Color(1, 1, 1, 0.85))
+		var tl := _fx_label(body, "WASD ile yürü, fareyle etrafına bak.\nHayvanının yanında F: sev, besle, oyna.", F_BODY, 22, Color(1, 1, 1, 0.85))
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_menu_item(body, "GERİ", func():
 		if menu.visible:
@@ -1305,7 +1350,7 @@ const ACCENT2 := Color("ff5f8f")    # pembe
 const INK := Color(0.07, 0.075, 0.095, 0.9)     # koyu antrasit panel
 const LOAD_ART := ["res://assets/ui/load_park.jpg", "res://assets/ui/load_metro.jpg", "res://assets/ui/load_lake.jpg"]
 const TIPS := ["Dostunun açlığı ve enerjisi azaldığında marketten mama al.",
-	"Haritayı açmak için M'ye bas; bir yere dokunup yol tarifi al.",
+	"Haritayı açmak için M'ye bas; bir yere tıklayıp yol tarifi al.",
 	"Telefonundan taksi çağırabilir, görevlere bakabilirsin.",
 	"Parkta top at: dostun eğlenir, sen de günlük görevi tamamlarsın.",
 	"Metroyla Keçiören'den şehrin öbür ucuna hızla geçebilirsin.",

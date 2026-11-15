@@ -259,6 +259,7 @@ func _ready() -> void:
 	ui.hud.add_child(minimap)
 	minimap.tapped.connect(_open_map)
 	map_screen.nav_chosen.connect(func(p: Vector2, n: String): _set_nav(p, n))
+	map_screen.nav_cancel.connect(_cancel_nav)
 	get_tree().set_auto_accept_quit(false)
 	if _args.has("holdload"):    # test: yukleniyor ekranini acik birak (--holdload)
 		get_tree().create_timer(60.0).timeout.connect(loading.queue_free)
@@ -561,8 +562,8 @@ func _start_game(owner_kind: String, pet_kind: String, pet_name: String) -> void
 	_coins.clear()
 	_spawn_coins()
 	_enter_play()
-	ui.toast("Hoş geldin! Soldaki çubukla yürü, ekranı sürükleyerek etrafına bak.")
-	ui.toast("Dostunu sevmek için üzerine dokun.")
+	ui.toast("Hoş geldin! WASD ile yürü, fareyle etrafına bak.")
+	ui.toast("Dostunun yanında %s'ye bas: sev, besle, oyna." % Keybinds.primary("interact"))
 	ui.toast("Haritayı aç: Altınpark'taki Pet Shop'ta mama ve aksesuar var.")
 
 
@@ -809,7 +810,7 @@ func _input(e: InputEvent) -> void:
 		elif k.is_action_pressed("pet_play"):
 			_on_command("yarn" if state.d["active"] == "kedi" else "throw")
 		elif k.is_action_pressed("commands"):
-			ui._on_action("more")
+			_on_command("petmenu")
 		elif k.is_action_pressed("map"):
 			_open_map()
 		elif k.is_action_pressed("photo"):
@@ -934,6 +935,9 @@ func _pointer_up(pos: Vector2) -> void:
 	if ui.radial_open():
 		ui.close_radial()
 		return
+	# Bilgisayar: tiklama ne yurutur ne de hayvan menusu acar (hayvan menusu etkilesim tusuyla)
+	if not DisplayServer.is_touchscreen_available():
+		return
 	for k in agents:
 		var a: Node3D = agents[k]
 		if cam.unproject_position(a.position + Vector3(0, 0.35, 0)).distance_to(pos) < 64.0:
@@ -988,7 +992,7 @@ func _go(p: Vector2) -> void:
 	_moving = true
 	_stuck = 0.0
 	_marker.position = Vector3(p.x, ParkMap.walk_height(p) + 0.06, p.y)
-	_marker.visible = _queue.is_empty()
+	_marker.visible = false       # beyaz hedef halkasi gosterilmez
 
 
 # ---------------------------------------------------------------- komutlar
@@ -1878,6 +1882,15 @@ func _on_command(cmd: String) -> void:
 	if cmd == "jump":
 		_jump()
 		return
+	if cmd == "petmenu":
+		var pk: String = state.d["active"]
+		ui.open_pet_menu(String(state.pet(pk).get("name", "Dostun")), pk == "kedi", state.owned_pets().size() > 1)
+		return
+	if cmd == "switch_pet":
+		var pets: Array = state.owned_pets()
+		if pets.size() > 1:
+			_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
+		return
 	if cmd == "umbrella":
 		_toggle_umbrella()
 		return
@@ -1977,7 +1990,7 @@ func _on_command(cmd: String) -> void:
 			_do_pet()
 		"throw":
 			_aim = true
-			ui.toast("Nereye atayım? Bir yere dokun.")
+			ui.toast("Nereye atayım? Ortaya nişan al ve tıkla.")
 		"yarn":
 			_do_yarn()
 		"come":
@@ -3163,7 +3176,30 @@ func _open_map() -> void:
 	for fs in world.fuel_stations:
 		dyn.append([fs["name"], fs["entry"], "17694a", "drop"])
 	map_screen.dynamic = dyn
+	_route_to_map()
 	map_screen.open(_owner_pos())
+
+
+## Buyuk haritaya etkin rotayi aktar (mini haritadakiyle ayni cizgi).
+func _route_to_map() -> void:
+	if _nav == Vector2.INF:
+		map_screen.route = []
+		map_screen.route_dest = Vector2.INF
+		return
+	var r: Array = minimap.route.duplicate()
+	if r.is_empty():
+		r = world.find_path(_owner_pos(), _nav)
+	map_screen.route = r
+	map_screen.route_dest = _nav
+	map_screen.route_name = minimap.dest_name
+	map_screen.route_speed = maxf(absf(_drive_speed), 8.0) if (_ride != null or _taxi != null) else 1.4
+
+
+func _cancel_nav() -> void:
+	_nav = Vector2.INF
+	minimap.route = []
+	minimap.dest_name = ""
+	ui.toast("Rota iptal edildi.")
 
 
 func _set_nav(p: Vector2, label := "") -> void:
@@ -3183,10 +3219,9 @@ func _set_nav(p: Vector2, label := "") -> void:
 
 func _update_minimap(dt: float) -> void:
 	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null and not (_fps and _ride != null and _ride.get_meta("kind") == "araba")
-	# Sag altta, komut dugmelerinin ustunde
+	# Tam sag alt kose (yaylar icin ~20 px pay); para ve rota yazisi haritanin ustunde
 	var vp := get_viewport().get_visible_rect().size
-	var bottom := 130.0 if ui._actions.visible else 60.0
-	minimap.position = Vector2(vp.x - minimap.SIZE - 40.0, vp.y - minimap.SIZE - bottom - 50.0)
+	minimap.position = Vector2(vp.x - minimap.SIZE - 34.0, vp.y - minimap.SIZE - 34.0)
 	minimap.player = _owner_pos()
 	minimap.heading = _cam_yaw
 	minimap.coins = int(state.d["coins"])
@@ -4180,6 +4215,8 @@ func _update_context() -> void:
 		ui.set_context("Kulübede Uyut", "bed", "moon")
 	elif _near_npc and not a.is_busy():
 		ui.set_context("Arkadaşıyla Oynat", "npcplay", "play")
+	elif not DisplayServer.is_touchscreen_available() and o.distance_to(Vector2(a.position.x, a.position.z)) < 3.5:
+		ui.set_context("%s ile ilgilen" % String(state.pet(state.d["active"]).get("name", "Dostun")), "petmenu", "paw")
 	elif ParkMap.home == null and (weather.rain > 0.3 or (_umbrella != null and _umbrella.visible)):
 		ui.set_context("Şemsiyeyi Kapat" if _umbrella != null and _umbrella.visible else "Şemsiye Aç", "umbrella", "drop")
 	else:
@@ -4556,6 +4593,22 @@ func _debug_shot() -> void:
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("bigmaproute"):
+		var bi := 0
+		for i in map_screen.PINS.size():
+			var dd: float = (map_screen.PINS[i][2] as Vector2).distance_to(_owner_pos())
+			if dd > 250.0 and dd < 700.0:
+				bi = i
+				break
+		_set_nav(map_screen.PINS[bi][2], map_screen.PINS[bi][0])
+		await get_tree().create_timer(0.4).timeout
+		_open_map()
+		await get_tree().create_timer(0.4).timeout
+		print("BIGMAP rota=", map_screen.route.size(), " hedef=", map_screen.route_name)
+	if _args.has("petmenu"):
+		map_screen.visible = false
+		_on_command("petmenu")
+		await get_tree().create_timer(0.4).timeout
 	if _args.has("job"):
 		if _args["job"] == "dog":
 			_start_dog_walk()
