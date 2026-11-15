@@ -2332,11 +2332,113 @@ func _build_grass_field() -> void:
 	_grass_mesh_d.surface_set_material(0, _grass_mat)
 
 
+## Grafik kalitesi: cim sikligi (0..1) ve hucre yaricapi. Degisince hucreler yeniden doldurulur.
+var grass_density := 0.6
+var grass_radius := 6
+var _grass_order: Array[Vector2i] = []   # yakindan uzaga hucre sirasi (yaricapa gore onbellek)
+var _grass_wind_t := -1.0
+
+
+func set_grass_quality(density: float, radius: int) -> void:
+	density = clampf(density, 0.0, 1.0)
+	radius = clampi(radius, 2, GRASS_R)
+	if is_equal_approx(density, grass_density) and radius == grass_radius and not _grass_order.is_empty():
+		return
+	grass_density = density
+	grass_radius = radius
+	_grass_order.clear()
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			if Vector2(dx, dy).length() <= radius + 0.5:
+				_grass_order.append(Vector2i(dx, dy))
+	_grass_order.sort_custom(func(a: Vector2i, b: Vector2i): return a.length_squared() < b.length_squared())
+	for key in _grass_cells.keys():
+		_release_grass_cell(key)
+	_grass_last = Vector2i(1 << 20, 0)
+
+
+func _release_grass_cell(key: Vector2i) -> void:
+	var m: MultiMeshInstance3D = _grass_cells[key]
+	if m != null:
+		m.visible = false
+		_grass_free.append(m)
+	_grass_cells.erase(key)
+
+
+## Hucreyi doldurur; cim yoksa (yol, su, bina, sehir zemini) null doner ve hic MultiMesh harcanmaz.
 func _fill_grass_cell(c: Vector2i) -> MultiMeshInstance3D:
+	var o := Vector2(c) * GRASS_CELL
+	# Kaba on eleme: 3x3 ornekte hic park cimi yoksa hucre bos sayilir (700 nokta sinamasi yapilmaz)
+	var any := false
+	for sy in 3:
+		for sx in 3:
+			if _is_lawn(o + Vector2(sx + 0.5, sy + 0.5) * (GRASS_CELL / 3.0)):
+				any = true
+				break
+		if any:
+			break
+	if not any:
+		return null
+	# Bu hucreye degebilecek kaplamali alanlar (tum listeyi her tutam icin gezmemek icin)
+	var mid := o + Vector2(GRASS_CELL, GRASS_CELL) * 0.5
+	var pav: Array = []
+	for pv in paved:
+		if (pv[1] as Rect2).grow(GRASS_CELL).has_point((pv[0] as Transform2D) * mid):
+			pav.append(pv)
+	var cells: Array = []        # engel listeleri (hucre CELL boyutlu izgarada)
+	var ckey := Vector2i(1 << 20, 0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(c)
+	var count := int(GRASS_PER_CELL * grass_density * (0.5 if OS.has_feature("mobile") else 1.0))
+	var xfs: Array[Transform3D] = []
+	var hues := PackedFloat32Array()
+	for i in count:
+		var p := o + Vector2(rng.randf(), rng.randf()) * GRASS_CELL
+		var sc := rng.randf_range(0.6, 1.3)
+		var yaw := rng.randf() * TAU
+		var hue := rng.randf()
+		# Boyama dokusu: park cimi (kiyi kanali > 0.62 = sudan en az ~1 m uzak; ayrica cokgen mesafesi hesaplanmaz)
+		if not _is_lawn(p):
+			continue
+		var bad := false
+		for pv in pav:
+			if (pv[1] as Rect2).has_point((pv[0] as Transform2D) * p):
+				bad = true
+				break
+		if bad:
+			continue
+		# Engeller (agac govdesi, bank, duvar): dogrudan uzamsal izgaradan
+		var hk := Vector2i(floori(p.x / CELL), floori(p.y / CELL))
+		if hk != ckey:
+			ckey = hk
+			cells = _hash.get(hk, [])
+		for e in cells:
+			if e.x == 0:
+				var cc := _circles[e.y]
+				if p.distance_squared_to(Vector2(cc.x, cc.y)) < (cc.z + 0.15) * (cc.z + 0.15):
+					bad = true
+					break
+			else:
+				var sg: Array = _segments[e.y]
+				var sa: Vector2 = sg[0]
+				var ab: Vector2 = sg[1] - sa
+				var q := sa + ab * clampf((p - sa).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+				if p.distance_squared_to(q) < 0.23 * 0.23:
+					bad = true
+					break
+		if bad or not ParkMap.inside_bounds(p, 3.0):
+			continue
+		# seyrek ayarda tutamlar biraz genis: zemin yine dolu gorunur
+		var w := sc * lerpf(1.5, 1.0, grass_density)
+		xfs.append(Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3(w, sc, w)), Vector3(p.x, gy(p) + 0.01, p.y)))
+		hues.append(hue)
+	if xfs.is_empty():
+		return null
 	var mmi: MultiMeshInstance3D = _grass_free.pop_back() if not _grass_free.is_empty() else null
 	if mmi == null:
 		mmi = MultiMeshInstance3D.new()
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
@@ -2344,51 +2446,69 @@ func _fill_grass_cell(c: Vector2i) -> MultiMeshInstance3D:
 		mm.instance_count = GRASS_PER_CELL
 		mmi.multimesh = mm
 		add_child(mmi)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(c)
-	var o := Vector2(c) * GRASS_CELL
-	var used := 0
 	var mm2 := mmi.multimesh
-	var count := GRASS_PER_CELL if not OS.has_feature("mobile") else GRASS_PER_CELL / 3
-	for i in GRASS_PER_CELL:
-		if i >= count:
-			mm2.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
-			continue
-		var p := o + Vector2(rng.randf(), rng.randf()) * GRASS_CELL
-		var keep := _is_lawn(p) and ParkMap.water_sd(p) > 1.0 and is_free(p, 0.15) and not _paved(p)
-		var sc := rng.randf_range(0.6, 1.3) if keep else 0.0
-		var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(p.x, gy(p) + 0.01, p.y))
-		mm2.set_instance_transform(i, xf)
-		mm2.set_instance_custom_data(i, Color(rng.randf(), 0, 0, 0))
-		used += int(keep)
-	mmi.visible = used > 0
+	for i in xfs.size():
+		mm2.set_instance_transform(i, xfs[i])
+		mm2.set_instance_custom_data(i, Color(hues[i], 0, 0, 0))
+	mm2.visible_instance_count = xfs.size()
+	mmi.set_meta("used", xfs.size())
+	# Gorus kesimi icin kutu: yalniz dolu kisim (bos ornekler cizilmez)
+	mmi.custom_aabb = AABB(Vector3(o.x - 0.3, gy(o + Vector2(GRASS_CELL, GRASS_CELL) * 0.5) - 3.0, o.y - 0.3), Vector3(GRASS_CELL + 0.6, 6.5, GRASS_CELL + 0.6))
+	mmi.visible = true
 	return mmi
+
+
+## [dolu hucre sayisi, cizilen tutam sayisi] (--perf raporu)
+func grass_stats() -> Vector2i:
+	var n := 0
+	var blades := 0
+	for k in _grass_cells:
+		var m: MultiMeshInstance3D = _grass_cells[k]
+		if m != null:
+			n += 1
+			blades += m.multimesh.visible_instance_count
+	return Vector2i(n, blades)
 
 
 func update_grass(cam_pos: Vector3, t: float) -> void:
 	if _grass_mat == null:
 		return
+	if _grass_order.is_empty():
+		set_grass_quality(grass_density, grass_radius)
 	_grass_mat.set_shader_parameter("wind_t", t)
+	# Yuksekten bakista (acilis ucusu, harita) cim gorunmez: hucre doldurma
+	if cam_pos.y > gy(Vector2(cam_pos.x, cam_pos.z)) + 22.0:
+		return
 	var cc := Vector2i(floori(cam_pos.x / GRASS_CELL), floori(cam_pos.z / GRASS_CELL))
 	if cc == _grass_last:
 		return
 	_grass_last = cc
+	var r := grass_radius
 	for key in _grass_cells.keys():
-		if absi(key.x - cc.x) > GRASS_R or absi(key.y - cc.y) > GRASS_R:
-			var m: MultiMeshInstance3D = _grass_cells[key]
-			m.visible = false
-			_grass_free.append(m)
-			_grass_cells.erase(key)
-	var budget := 40
-	for dy in range(-GRASS_R, GRASS_R + 1):
-		for dx in range(-GRASS_R, GRASS_R + 1):
-			var key := cc + Vector2i(dx, dy)
-			if not _grass_cells.has(key) and Vector2(dx, dy).length() <= GRASS_R + 0.5:
-				_grass_cells[key] = _fill_grass_cell(key)
-				budget -= 1
-				if budget <= 0:
-					_grass_last = Vector2i(1 << 20, 0)     # sonraki karede devam et
-					return
+		if absi(key.x - cc.x) > r or absi(key.y - cc.y) > r:
+			_release_grass_cell(key)
+	# Kare basina sinirli sayida hucre (yakindan uzaga): yururken takilma olmaz
+	var budget := 3.0
+	var pending := false
+	for off in _grass_order:
+		var key := cc + off
+		if not _grass_cells.has(key):
+			if budget <= 0:
+				pending = true
+				break
+			var mmi := _fill_grass_cell(key)
+			_grass_cells[key] = mmi
+			budget -= 1.0 if mmi != null else 0.05
+	if pending:
+		_grass_last = Vector2i(1 << 20, 0)     # sonraki karede devam et
+	# Uzaklikla seyrelme: yakin hucreler tam, en distakiler ucte bir
+	for key in _grass_cells:
+		var m: MultiMeshInstance3D = _grass_cells[key]
+		if m == null:
+			continue
+		var d := Vector2(key - cc).length() / float(r)
+		var frac := clampf(1.0 - (d - 0.35) / 0.65 * 0.68, 0.32, 1.0)
+		m.multimesh.visible_instance_count = int(int(m.get_meta("used", 0)) * frac)
 
 
 func _build_plants() -> void:

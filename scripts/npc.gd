@@ -23,6 +23,8 @@ var _target := Vector2.ZERO
 var _idx := 0
 var _dir := 1
 var _pause := 0.0
+var _lod_i := randi() % 10
+var _lod_dt := 0.0
 
 
 func _ready() -> void:
@@ -77,6 +79,17 @@ func _next() -> void:
 
 
 func _process(dt: float) -> void:
+	# Uzaktaki yayalar daha seyrek guncellenir (birikmis sureyle): goruntu ayni, islemci yuku az
+	_lod_dt += dt
+	_lod_i += 1
+	if play_t <= 0.0:
+		var lod_cam := get_viewport().get_camera_3d()
+		if lod_cam != null:
+			var far := lod_cam.global_position.distance_squared_to(global_position)
+			if far > 45.0 * 45.0 and _lod_i % (2 if far < 90.0 * 90.0 else 5) != 0:
+				return
+	dt = minf(_lod_dt, 0.25)
+	_lod_dt = 0.0
 	var p := Vector2(position.x, position.z)
 	if play_t > 0.0 and is_instance_valid(play_mate):
 		play_t -= dt

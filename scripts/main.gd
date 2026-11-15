@@ -209,6 +209,7 @@ func _ready() -> void:
 	state.set_places()
 	world = World.new()
 	add_child(world)
+	apply_gfx()
 
 	cam.fov = 60.0
 	cam.far = 900.0
@@ -250,6 +251,7 @@ func _ready() -> void:
 	ui.closet_toggled.connect(_on_closet)
 	ui.worn_changed.connect(func(): agents[state.d["active"]].refresh())
 	ui.adopted.connect(_on_adopted)
+	ui.gfx_changed.connect(apply_gfx)
 	ui.back_to_menu.connect(func():
 		state.save_game()
 		_mode = "menu"
@@ -260,11 +262,14 @@ func _ready() -> void:
 	minimap.tapped.connect(_open_map)
 	map_screen.nav_chosen.connect(func(p: Vector2, n: String): _set_nav(p, n))
 	get_tree().set_auto_accept_quit(false)
+	if DisplayServer.get_name() != "headless" and not _args.has("noprewarm"):
+		await _prewarm()
 	if _args.has("holdload"):    # test: yukleniyor ekranini acik birak (--holdload)
 		get_tree().create_timer(60.0).timeout.connect(loading.queue_free)
 	else:
 		loading.queue_free()
 	_ready_done = true
+	_boot_ms = Time.get_ticks_msec()
 	if travel_to != "":
 		# Metroyla gelindi: istasyon girisinden cik, dogrudan oyuna devam
 		for g in world.metro_gates:
@@ -404,6 +409,58 @@ func _build_environment() -> void:
 	moon.shadow_enabled = false
 	add_child(moon)
 	moon.look_at_from_position(Vector3(-20, 40, 25), Vector3.ZERO)
+
+
+## Grafik kalitesi (Ayarlar): 0 Dusuk, 1 Orta (varsayilan), 2 Yuksek. Pahali ekran-uzayi efektleri, golge ve cim sikligi.
+func apply_gfx() -> void:
+	var q := clampi(int(_args.get("gfx", state.d.get("gfx", 1))), 0, 2)
+	var fp := RenderingServer.get_current_rendering_method() == "forward_plus"
+	var mobile := OS.has_feature("mobile")
+	env.ssao_enabled = fp and q >= 1
+	env.ssil_enabled = fp and q >= 2
+	env.ssr_enabled = fp and q >= 2
+	env.sdfgi_enabled = false
+	env.volumetric_fog_enabled = false
+	env.glow_enabled = q >= 1
+	var vp := get_viewport()
+	vp.msaa_3d = Viewport.MSAA_DISABLED if q == 0 or mobile else Viewport.MSAA_2X
+	vp.scaling_3d_scale = 0.75 if q == 0 else 1.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = [36.0, 50.0, 60.0][q]
+	sun.shadow_blur = [1.0, 1.3, 1.6][q]
+	RenderingServer.directional_shadow_atlas_set_size(2048 if q == 0 or mobile else 4096, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_SOFT_LOW,
+		RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM if mobile else RenderingServer.SHADOW_QUALITY_SOFT_HIGH][q])
+	if world:
+		world.set_grass_quality([0.3, 0.6, 1.0][q], [4, 6, 7][q])
+
+
+## Yukleniyor ekrani arkasinda sahneyi birkac acidan bir kez cizdir: golgelendirici / doku / MultiMesh yuklemeleri
+## acilis ucusunda ve oyunun ilk karelerinde degil burada olur (takilmayi onler).
+var _prewarming := false
+
+func _prewarm() -> void:
+	_prewarming = true
+	get_viewport().disable_3d = false
+	var h := func(p: Vector2) -> float: return ParkMap.terrain_height(p)
+	var st := ParkMap.spot("baslangic") if ParkMap.has_spot("baslangic") else Vector2.ZERO
+	var views: Array = [[Vector3(st.x - 90, h.call(st) + 70, st.y + 70), Vector3(st.x, h.call(st), st.y)]]
+	for a in 4:
+		var dir := Vector2.from_angle(a * TAU / 4.0 + 0.4)
+		views.append([Vector3(st.x - dir.x * 5.0, h.call(st) + 2.2, st.y - dir.y * 5.0), Vector3(st.x + dir.x * 20.0, h.call(st) + 1.0, st.y + dir.y * 20.0)])
+	if ParkMap.zone == "":
+		var c := Vector2(540, 160)
+		views.append([Vector3(c.x - 25, h.call(c) + 5, c.y - 15), Vector3(c.x + 40, h.call(c) + 0.5, c.y + 20)])
+	if not world.metro_gates.is_empty():
+		var g: Vector2 = world.metro_gates[0]["pos"]
+		views.append([Vector3(g.x + 14, h.call(g) + 6, g.y + 10), Vector3(g.x, h.call(g) + 1, g.y)])
+	for v in views:
+		cam.global_position = v[0]
+		cam.look_at(v[1])
+		world.update_grass(cam.global_position, 0.0)
+		await get_tree().process_frame
+		await get_tree().process_frame
+	_prewarming = false
 
 
 ## Gun donumu: saat ilerler; gunes dogudan dogar, batidan batar, gece ay isigi ve lambalar.
@@ -3758,9 +3815,11 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	var pt := Time.get_ticks_usec()
+	var pt0 := pt
 	_update_mouse_capture(dt)
 	# Ana menu ekrani tamamen kapliyor: arkadaki 3B sahneyi cizme (takilmayi onler)
-	var hide3d: bool = ui != null and ui.menu != null and ui.menu.visible
+	var hide3d: bool = ui != null and ui.menu != null and ui.menu.visible and not _prewarming
 	if get_viewport().disable_3d != hide3d:
 		get_viewport().disable_3d = hide3d
 	if minimap:
@@ -3776,6 +3835,8 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
+	if _perf_on:
+		pt = _pm("on (fare/harita/gun/hava)", pt)
 	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
@@ -3787,6 +3848,8 @@ func _process(dt: float) -> void:
 		if _ride == null:
 			owner_model.position.y = _jump_h
 		owner_model.airborne = _jump_h > 0.05
+	if _perf_on:
+		pt = _pm("oyuncu", pt)
 	_update_street_life(dt)
 	bank.update(dt)
 	neighbors.update(dt)
@@ -3805,6 +3868,8 @@ func _process(dt: float) -> void:
 	radio.update(dt)
 	hotel.update(dt)
 	_update_wet(dt)
+	if _perf_on:
+		pt = _pm("moduller (toplam)", pt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
 	_update_thrown(dt)
@@ -3843,6 +3908,8 @@ func _process(dt: float) -> void:
 			c.queue_free()
 			_coins.remove_at(i)
 
+	if _perf_on:
+		pt = _pm("efekt+altin", pt)
 	if _mode == "play" or _mode == "closet" or _mode == "photo":
 		state.tick(dt)
 		_slow_t -= dt
@@ -3857,10 +3924,192 @@ func _process(dt: float) -> void:
 		if _save_t > 20.0:
 			_save_t = 0.0
 			state.save_game()
+	if _perf_on:
+		pt = _pm("baglam/tabela/lamba (0.3 sn)", pt)
 	_update_camera(dt)
 	# Binalar artik delinmiyor (kamera onlarin onune gelir); yalniz agaclar icin
 	world.set_focus(owner_node.position, false)
+	if _perf_on:
+		pt = _pm("kamera", pt)
 	world.update_grass(owner_node.global_position if _mode == "play" else cam.global_position, Time.get_ticks_msec() / 1000.0)
+	if _perf_on:
+		pt = _pm("cim", pt)
+		_perf_frame(pt - pt0, dt)
+
+
+# ---------------------------------------------------------------- performans olcumu (--perf[=x,z])
+
+var _perf_on := false
+var _perf_acc := {}
+var _perf_n := 0
+var _perf_max := 0.0
+var _perf_dt := 0.0
+var _perf_dtmax := 0.0
+var _perf_ri := [0.0, 0.0, 0.0]
+
+
+func _pm(name: String, t: int) -> int:
+	var n := Time.get_ticks_usec()
+	_perf_acc[name] = int(_perf_acc.get(name, 0)) + n - t
+	return n
+
+
+func _perf_frame(us: int, dt: float) -> void:
+	_perf_n += 1
+	_perf_max = maxf(_perf_max, us / 1000.0)
+	_perf_dt += dt
+	_perf_dtmax = maxf(_perf_dtmax, dt)
+	_perf_acc["motor: islem suresi (son 1 sn en uzun)"] = int(_perf_acc.get("motor: islem suresi (son 1 sn en uzun)", 0)) + int(Performance.get_monitor(Performance.TIME_PROCESS) * 1e6)
+	_perf_ri[0] += RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	_perf_ri[1] += RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	_perf_ri[2] += RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
+
+
+## Olcum: once bulunulan yerde (baslangic ya da --at), sonra --perf=x,z noktasinda (varsayilan: Altinpark golu kiyisi).
+## Her modulun kare basi islemci suresi, dugum / mesh / MultiMesh sayilari ve cizim sayaclari yazdirilir.
+func _perf_run() -> void:
+	var spots: Array = [["BASLANGIC", _owner_pos()]]
+	var a: PackedStringArray = (_args["perf"] as String).split(",")
+	spots.append(["GOL KIYISI", Vector2(float(a[0]), float(a[1])) if a.size() > 1 else Vector2(540, 160)])
+	print("PERF grafik=", state.d.get("gfx", 1) if not _args.has("gfx") else _args["gfx"], " surucu=", RenderingServer.get_current_rendering_method(),
+		" hazirlik=%d ms" % _boot_ms)
+	for sp in spots:
+		_place_owner(sp[1])
+		for k in agents:
+			agents[k].place(_owner_pos() + agents[k].slot)
+		_focus = owner_node.position
+		_perf_acc = {}
+		_perf_n = 0
+		_perf_max = 0.0
+		_perf_dt = 0.0
+		_perf_dtmax = 0.0
+		_perf_ri = [0.0, 0.0, 0.0]
+		_perf_on = true
+		# ilk 0.6 sn: yeni yere gelis (cim hucreleri dolar) -> "gelis" takilmasi olarak ayri yazilir
+		await get_tree().create_timer(0.6).timeout
+		var arrive_max := _perf_dtmax * 1000.0
+		var arrive_grass := int(_perf_acc.get("cim", 0)) / 1000.0
+		_perf_acc = {}
+		_perf_n = 0
+		_perf_max = 0.0
+		_perf_dt = 0.0
+		_perf_dtmax = 0.0
+		_perf_ri = [0.0, 0.0, 0.0]
+		await get_tree().create_timer(float(_args.get("perfsecs", "2.0"))).timeout
+		_perf_on = false
+		var n := maxi(_perf_n, 1)
+		print("PERF ==== ", sp[0], " ", sp[1], " kare=", n, " ort.kare=%.1f ms (%.0f FPS) en uzun kare=%.0f ms | gelis: en uzun kare=%.0f ms, cim doldurma=%.1f ms" % [
+			_perf_dt / n * 1000.0, n / maxf(_perf_dt, 0.001), _perf_dtmax * 1000.0, arrive_max, arrive_grass])
+		var keys: Array = _perf_acc.keys()
+		keys.sort_custom(func(x, y): return _perf_acc[x] > _perf_acc[y])
+		for k in keys:
+			print("PERF   %-34s %7.3f ms/kare" % [k, _perf_acc[k] / 1000.0 / n])
+		print("PERF   main._process en uzun: %.2f ms" % _perf_max)
+		# Moduller tek tek (dt=0 ile 40 kez cagrilip ortalamasi)
+		var mods := {"sokak": _update_street_life, "banka": bank.update, "komsular": neighbors.update, "spor": sports.update,
+			"ev": home_life.update, "hayvan bakimi": pet_care.update, "yakit": fuel.update, "sokak yemegi": street_food.update,
+			"trafik": traffic.update, "is": _update_job, "saglik": _update_health, "ihtiyac": needs.update, "tekne": boat.update,
+			"radyo": radio.update, "otel": hotel.update}
+		var line := "PERF   modul us/kare:"
+		for k in mods:
+			var t0 := Time.get_ticks_usec()
+			for i in 40:
+				(mods[k] as Callable).call(0.0)
+			line += " %s=%d" % [k, (Time.get_ticks_usec() - t0) / 40]
+		print(line)
+		# Sahne sayaclari
+		var cnt := {"MeshInstance3D": 0, "MultiMeshInstance3D": 0, "Label3D": 0, "CPUParticles3D": 0, "GPUParticles3D": 0, "Light3D": 0}
+		var near_mi := 0
+		var near_tris := 0
+		var mm_inst := 0
+		var mm_tris := 0
+		var stack: Array = [get_tree().root]
+		var top := {}
+		var procs: Array = []
+		var cp := cam.global_position
+		while not stack.is_empty():
+			var nd: Node = stack.pop_back()
+			for c in nd.get_children():
+				stack.append(c)
+			if nd.get_script() != null and nd.has_method("_process"):
+				procs.append(nd)
+			if nd is MultiMeshInstance3D:
+				cnt["MultiMeshInstance3D"] += 1
+				var mmi := nd as MultiMeshInstance3D
+				if mmi.multimesh == null or mmi.multimesh.mesh == null or not mmi.is_visible_in_tree():
+					continue
+				if mmi.custom_aabb.size != Vector3.ZERO:
+					continue      # cim hucreleri ayri sayilir
+				var box := mmi.global_transform * mmi.get_aabb()
+				var d := maxf(0.0, Vector2(cp.x, cp.z).distance_to(Vector2(box.get_center().x, box.get_center().z)) - maxf(box.size.x, box.size.z) * 0.5)
+				if d > 120.0 or (mmi.visibility_range_end > 0.0 and cp.distance_to(box.get_center()) > mmi.visibility_range_end):
+					continue
+				var ic := mmi.multimesh.visible_instance_count
+				if ic < 0:
+					ic = mmi.multimesh.instance_count
+				mm_inst += ic
+				mm_tris += ic * _mesh_tris(mmi.multimesh.mesh)
+			elif nd is MeshInstance3D:
+				cnt["MeshInstance3D"] += 1
+				var mi := nd as MeshInstance3D
+				if mi.mesh != null and mi.is_visible_in_tree() and mi.global_position.distance_to(cp) < 120.0:
+					near_mi += 1
+					near_tris += _mesh_tris(mi.mesh)
+					var own: Node = mi
+					while own.get_parent() != null and own.get_parent() != world and own.get_parent() != self and own.get_parent() != get_tree().root:
+						own = own.get_parent()
+					var tn: String = (own.get_script() as Script).resource_path.get_file() if own.get_script() != null else String(own.name).rstrip("0123456789@_")
+					top[tn] = int(top.get(tn, 0)) + _mesh_tris(mi.mesh)
+			elif nd is Label3D:
+				cnt["Label3D"] += 1
+			elif nd is CPUParticles3D:
+				cnt["CPUParticles3D"] += 1
+			elif nd is GPUParticles3D:
+				cnt["GPUParticles3D"] += 1
+			elif nd is Light3D:
+				cnt["Light3D"] += 1
+		print("PERF   dugum=%d nesne=%d | %s" % [int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_COUNT)), cnt])
+		var gs: Vector2i = world.grass_stats()
+		print("PERF   120 m icinde: MeshInstance3D=%d (%d ucgen)  MultiMesh ornegi=%d (%d ucgen)  cim: %d hucre, %d tutam, %d ucgen" % [
+			near_mi, near_tris, mm_inst, mm_tris, gs.x, gs.y, gs.y * 6])
+		var tk: Array = top.keys()
+		tk.sort_custom(func(x, y): return top[x] > top[y])
+		var tl := "PERF   en agir meshler (120 m, ucgen):"
+		for i in mini(8, tk.size()):
+			tl += " %s=%d" % [tk[i], top[tk[i]]]
+		print(tl)
+		# Kendi _process'i olan dugumler: betige gore bir karelik maliyet (dt=0 ile birer kez)
+		var by := {}
+		var byn := {}
+		for nd2 in procs:
+			if not is_instance_valid(nd2) or nd2 == self or not (nd2 as Node).is_processing():
+				continue
+			var key: String = ((nd2 as Node).get_script() as Script).resource_path.get_file()
+			var t1 := Time.get_ticks_usec()
+			(nd2 as Node).call("_process", 0.0)
+			by[key] = int(by.get(key, 0)) + Time.get_ticks_usec() - t1
+			byn[key] = int(byn.get(key, 0)) + 1
+		var bk: Array = by.keys()
+		bk.sort_custom(func(x, y): return by[x] > by[y])
+		var bl := "PERF   dugum _process us/kare:"
+		for k in bk:
+			bl += " %s(%d)=%d" % [k, byn[k], by[k]]
+		print(bl)
+		print("PERF   cizim cagrisi=%.0f  ilkel=%.0f  nesne=%.0f (kare basi; ekransiz modda 0)" % [_perf_ri[0] / n, _perf_ri[1] / n, _perf_ri[2] / n])
+
+
+func _mesh_tris(mesh: Mesh) -> int:
+	if not _tri_cache.has(mesh):
+		var t := 0
+		for s in mesh.get_surface_count():
+			var arr := mesh.surface_get_arrays(s)
+			var idx = arr[Mesh.ARRAY_INDEX]
+			t += (idx.size() if idx != null and idx.size() > 0 else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+		_tri_cache[mesh] = t
+	return _tri_cache[mesh]
+
+var _tri_cache := {}
+var _boot_ms := 0
 
 
 func _update_owner(dt: float) -> void:
@@ -4437,14 +4686,6 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f > 120 and fmod(_blink_t, 0.8) < 0.3:
 				break
-	if _args.has("perf"):
-		await get_tree().create_timer(6.0).timeout
-		var t0 := Time.get_ticks_usec()
-		var f0 := Engine.get_process_frames()
-		await get_tree().create_timer(5.0).timeout
-		var ms := float(Time.get_ticks_usec() - t0) / 1000.0 / float(Engine.get_process_frames() - f0)
-		print("PERF kare=%.1f ms  islem=%.2f ms  kisi=%d" % [ms, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, _npc_people.size()])
-		get_tree().quit()
 	if _args.has("jumptest"):
 		var ev := InputEventKey.new()
 		ev.keycode = KEY_SPACE
@@ -4807,6 +5048,8 @@ func _debug_shot() -> void:
 		traffic.debug_redlight_scene()
 	if _args.has("parkfine"):
 		traffic.debug_parkfine()
+	if _args.has("perf"):
+		await _perf_run()
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("police"):
