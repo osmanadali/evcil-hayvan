@@ -49,7 +49,20 @@ var _clouds: Array[Node3D] = []
 var _t := 0.0
 
 
+const BUILD_STEPS := ["ground", "water", "buildings", "spots", "sports", "pitches", "kerbs", "streets", "details", "fuel", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]
+## true ise dunya _ready'de degil, build_async ile kare kare kurulur (yukleniyor ekrani icin)
+var deferred := false
+
+
 func _ready() -> void:
+	if deferred:
+		return
+	_begin()
+	for step in BUILD_STEPS:
+		call("_build_" + step)
+
+
+func _begin() -> void:
 	_rng.seed = 20261112
 	ParkMap.load_data()
 	_splat_a = load(ParkMap.asset("splat_a.png"))
@@ -57,14 +70,16 @@ func _ready() -> void:
 	_img_a = _splat_a.get_image()
 	_img_b = _splat_b.get_image()
 	_px = _img_a.get_width()
-	var t0 := Time.get_ticks_msec()
-	for step in ["ground", "water", "buildings", "spots", "sports", "pitches", "kerbs", "streets", "details", "fuel", "transit", "doors", "road_marks", "cars", "parks", "pond_life", "plants"]:
-		var t := Time.get_ticks_msec()
-		call("_build_" + step)
-		if OS.has_environment("SURE"):
-			print("SURE ", step, " ", Time.get_ticks_msec() - t, " ms")
-	if OS.has_environment("SURE"):
-		print("SURE toplam ", Time.get_ticks_msec() - t0, " ms")
+
+
+## Adim adim kurar; her adimdan sonra cb(oran) cagrilir ve bir kare beklenir.
+func build_async(cb: Callable) -> void:
+	_begin()
+	var n := BUILD_STEPS.size()
+	for i in n:
+		call("_build_" + BUILD_STEPS[i])
+		cb.call(float(i + 1) / float(n))
+		await get_tree().process_frame
 
 
 func gy(p: Vector2) -> float:

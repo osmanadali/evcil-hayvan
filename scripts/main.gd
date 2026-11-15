@@ -3,6 +3,7 @@ extends Node3D
 
 const ParkMap = preload("res://scripts/park_map.gd")
 const Kit = preload("res://scripts/kit.gd")
+const LoadingScreen = preload("res://scripts/loading_screen.gd")
 const World = preload("res://scripts/world.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const PetModel = preload("res://scripts/pet_model.gd")
@@ -203,26 +204,28 @@ func _ready() -> void:
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
 	# Dunya kurulurken yukleniyor ekrani goster
-	var loading := CanvasLayer.new()
-	loading.layer = 50
 	var zone: String = ParkMap.zone if travel_to != "" else _args.get("zone", state.d.get("zone", ""))
 	if not ParkMap.ZONE_TITLES.has(zone):
 		zone = ""
 	if zone != ParkMap.zone or not ParkMap.loaded:
 		ParkMap.reset(zone)
 	state.d["zone"] = zone
-	# Yukleniyor ekrani: illustrasyon (metroyla gelirken metro sahnesi)
-	Ui.build_loading(loading, "%s hazırlanıyor…" % ParkMap.ZONE_TITLES[zone],
-		"M4 metrosuyla yoldasın…" if travel_to != "" else "", 1 if travel_to != "" else int(_args.get("loadart", "-1")))
+	var loading := LoadingScreen.new()
+	loading.setup(ParkMap.ZONE_TITLES[zone], "M4 metrosuyla yoldasın…" if travel_to != "" else "",
+		1 if travel_to != "" else int(_args.get("loadart", "-1")))
 	add_child(loading)
 	cam = Camera3D.new()
 	add_child(cam)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	loading.set_progress(0.03, "Harita verisi okunuyor…")
 	ParkMap.load_data()
 	state.set_places()
+	await get_tree().process_frame
 	world = World.new()
+	world.deferred = true
 	add_child(world)
+	await world.build_async(func(f: float): loading.set_progress(0.05 + f * 0.7, _load_label(f)))
 	apply_gfx()
 
 	cam.fov = 60.0
@@ -239,9 +242,13 @@ func _ready() -> void:
 	_yarn = _make_ball("d95f76", 0.12)
 	_yarn.visible = false
 
+	loading.set_progress(0.78, "Dostlar ve insanlar yerleşiyor…")
+	await get_tree().process_frame
 	_spawn_cast()
 	_spawn_npcs()
 	_spawn_coins()
+	loading.set_progress(0.86, "Dükkanlar ve iç mekanlar hazırlanıyor…")
+	await get_tree().process_frame
 	street_food.build()
 	eateries.build()
 	seating.build()
@@ -250,6 +257,8 @@ func _ready() -> void:
 	neighbors.build()
 	sports.build()
 	boat.build()
+	loading.set_progress(0.92, "Arayüz kuruluyor…")
+	await get_tree().process_frame
 
 	ui = Ui.new()
 	ui.state = state
@@ -280,11 +289,10 @@ func _ready() -> void:
 	map_screen.nav_cancel.connect(_cancel_nav)
 	get_tree().set_auto_accept_quit(false)
 	if DisplayServer.get_name() != "headless" and not _args.has("noprewarm"):
+		loading.set_progress(0.96, "Gölgeler ve ışıklar ısıtılıyor…")
 		await _prewarm()
-	if _args.has("holdload"):    # test: yukleniyor ekranini acik birak (--holdload)
-		get_tree().create_timer(60.0).timeout.connect(loading.queue_free)
-	else:
-		loading.queue_free()
+	# --loading / --holdload: yukleniyor ekranini acik birak (test)
+	loading.finish(_args.has("loading") or _args.has("holdload"))
 	_ready_done = true
 	_boot_ms = Time.get_ticks_msec()
 	if travel_to != "":
@@ -455,6 +463,11 @@ func apply_gfx() -> void:
 ## Yukleniyor ekrani arkasinda sahneyi birkac acidan bir kez cizdir: golgelendirici / doku / MultiMesh yuklemeleri
 ## acilis ucusunda ve oyunun ilk karelerinde degil burada olur (takilmayi onler).
 var _prewarming := false
+
+func _load_label(f: float) -> String:
+	var names := ["Zemin ve araziler", "Göl ve dereler", "Binalar", "Mekanlar", "Spor alanları", "Sahalar", "Kaldırımlar", "Sokaklar", "Şehir detayları", "Akaryakıt", "Metro ve duraklar", "Kapılar", "Yol çizgileri", "Trafik", "Parklar", "Göl yaşamı", "Ağaçlar ve bitkiler"]
+	return names[clampi(int(f * names.size()) - 1, 0, names.size() - 1)] + " kuruluyor…"
+
 
 func _prewarm() -> void:
 	_prewarming = true
@@ -3850,6 +3863,8 @@ func _sparkle(at_pos: Vector3) -> void:
 # ---------------------------------------------------------------- dongu
 
 func _process(dt: float) -> void:
+	if ui == null or world == null or agents.is_empty():
+		return      # yukleniyor ekrani sirasinda dunya yari kurulu
 	var pt := Time.get_ticks_usec()
 	var pt0 := pt
 	_update_mouse_capture(dt)
