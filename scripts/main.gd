@@ -103,6 +103,7 @@ var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
+var seasons: Node       # mevsimler ve etkinlikler (scripts/seasons.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
@@ -146,6 +147,10 @@ func _ready() -> void:
 	street_food.m = self
 	street_food.state = state
 	add_child(street_food)
+	seasons = preload("res://scripts/seasons.gd").new()
+	seasons.m = self
+	seasons.state = state
+	add_child(seasons)
 	pet_care = preload("res://scripts/pet_care.gd").new()
 	pet_care.m = self
 	pet_care.state = state
@@ -228,6 +233,7 @@ func _ready() -> void:
 	_spawn_npcs()
 	_spawn_coins()
 	street_food.build()
+	seasons.build()
 	pet_care.build()
 	bank.build()
 	neighbors.build()
@@ -824,6 +830,8 @@ func _input(e: InputEvent) -> void:
 			_open_jobs()
 		elif k.is_action_pressed("call_pet"):
 			_on_command("come")
+		elif k.is_action_pressed("snowball"):
+			seasons.throw_ball()
 		elif k.is_action_pressed("umbrella"):
 			_on_command("umbrella")
 		elif k.is_action_pressed("leash"):
@@ -1683,6 +1691,8 @@ func _open_phone() -> void:
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
 	if boat.built:
 		apps.append(["Göl Turu", "1f7fb8", "drop", func(): boat.phone_app()])
+	if seasons.snow_ok():
+		apps.append(["Kış Oyunları", "9ad7f2", "ball", func(): seasons.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
@@ -1907,6 +1917,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "atm" or cmd == "bank_app" or cmd == "bills_app":
 		bank.command(cmd)
+		return
+	if cmd.begins_with("ss_"):
+		seasons.command(cmd)
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
@@ -3795,6 +3808,7 @@ func _process(dt: float) -> void:
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
+	seasons.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4091,6 +4105,10 @@ func _update_context() -> void:
 	if not sf.is_empty():
 		ui.set_context(sf[0], sf[1], sf[2])
 		return
+	var ssc: Array = seasons.context()
+	if not ssc.is_empty():
+		ui.set_context(ssc[0], ssc[1], ssc[2])
+		return
 	var nc: Array = needs.context()
 	if nc.size() == 3 and nc[1] != "":
 		ui.set_context(nc[0], nc[1], nc[2])
@@ -4143,7 +4161,11 @@ func _update_context() -> void:
 	elif ParkMap.home == null and (weather.rain > 0.3 or (_umbrella != null and _umbrella.visible)):
 		ui.set_context("Şemsiyeyi Kapat" if _umbrella != null and _umbrella.visible else "Şemsiye Aç", "umbrella", "drop")
 	else:
-		ui.set_context("", "")
+		var sfb: Array = seasons.fallback()
+		if sfb.is_empty():
+			ui.set_context("", "")
+		else:
+			ui.set_context(sfb[0], sfb[1], sfb[2])
 
 
 func _update_camera(dt: float) -> void:
@@ -4459,6 +4481,9 @@ func _debug_shot() -> void:
 		boat.debug_board("tour", float(_args["boattour"]) if float(_args["boattour"]) > 1.0 else 25.0)
 	if _args.has("pedalo"):
 		boat.debug_board("pedal", 0.0)
+	for ka in ["snowman", "mangal", "yilbasi", "konvoy"]:
+		if _args.has(ka):
+			seasons.debug(_args)
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):
