@@ -557,7 +557,7 @@ func _build_hud() -> void:
 
 func _update_hud(dt: float) -> void:
 	var kind: String = m._ride.get_meta("kind") if m._ride != null else ""
-	var show: bool = TANK.has(kind) and m.minimap.visible
+	var show: bool = TANK.has(kind) and m.minimap.visible and m.minimap.gauge_h <= 0.0      # hiz kadraninda yakit yayi varsa gizli
 	if _hud == null:
 		if not show:
 			return
@@ -579,7 +579,7 @@ func _update_hud(dt: float) -> void:
 ## Araba gosterge panelinde (orta ekranin altinda) yakit yazisi ve cubugu.
 func _update_cockpit() -> void:
 	var cp: Node3D = m._cockpit
-	if cp == null or not is_instance_valid(cp) or not cp.visible or m._ride == null:
+	if cp == null or not is_instance_valid(cp) or not cp.visible or m._ride == null or cp.has_meta("gosterge"):
 		return
 	var kind: String = m._ride.get_meta("kind")
 	if not TANK.has(kind):

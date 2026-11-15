@@ -38,6 +38,8 @@ var face_socket: Node3D
 var back_socket: Node3D
 var paw_sockets: Array[Node3D] = []
 var tint := Color.WHITE
+var wind := 0.0            # aracta ruzgar: kulaklar ve bas titrer (0..1)
+var paws_up := 0.0         # on patiler yukarida (cam kenarina dayali) 0..1
 var look_at_point = null   # Vector3 ya da null: basi bu noktaya cevirir
 
 var sitting: bool:
@@ -172,8 +174,8 @@ func _process(dt: float) -> void:
 	_paw_t = maxf(_paw_t - dt, 0.0)
 	_paw_w = move_toward(_paw_w, 1.0 if _paw_t > 0.0 and still else 0.0, dt * 4.0)
 	var pw := smoothstep(0.0, 1.0, _paw_w) * (1.0 + sin(_t * 7.0) * 0.08)
-	_turn("fl1", [[X, sw + 0.6 * sit - 1.35 * lie - tuck]])
-	_turn("fr1", [[X, sw2 + 0.6 * sit - 1.35 * lie - tuck - 1.75 * pw]])
+	_turn("fl1", [[X, sw + 0.6 * sit - 1.35 * lie - tuck - 1.1 * paws_up]])
+	_turn("fr1", [[X, sw2 + 0.6 * sit - 1.35 * lie - tuck - 1.75 * pw - 1.1 * paws_up]])
 	_turn("bl1", [[X, sw2 - 1.5 * sit - 1.35 * lie + tuck]])
 	_turn("br1", [[X, sw - 1.5 * sit - 1.35 * lie + tuck]])
 	_turn("fl2", [[X, maxf(lift, 0.0) * 0.6 * move]])
@@ -211,7 +213,7 @@ func _process(dt: float) -> void:
 		yaw = clampf(atan2(-local.x, -local.z), -0.9, 0.9)
 	_turn("head", [[Y, yaw + float(_cfg["head_yaw"])], [X, nod + 0.5 * sit + 0.75 * eat + sin(_t * 10.0) * 0.07 * eat + 0.55 * slp + 0.15 * lie],
 		[Z, sin(_t * 0.9) * 0.1 * (1.0 - move) * (1.0 - slp)]])
-	var flap := sin(_phase * 2.0) * 0.25 * move + sin(_t * 1.3) * 0.04
+	var flap := sin(_phase * 2.0) * 0.25 * move + sin(_t * 1.3) * 0.04 + (sin(_t * 23.0) * 0.3 - 0.25) * wind
 	_blink -= dt
 	var twitch := 0.0
 	if _blink < 0.0:
@@ -219,4 +221,4 @@ func _process(dt: float) -> void:
 	elif _blink < 0.15:
 		twitch = 0.35
 	_turn("ear_l", [[Z, flap + twitch]])
-	_turn("ear_r", [[Z, -flap]])
+	_turn("ear_r", [[Z, -flap + sin(_t * 19.0) * 0.2 * wind]])

@@ -24,9 +24,14 @@ var grip_fwd := Vector3.ZERO # araba: direksiyon ekseninin surucuden uzaga bakan
 var ride_feet := Vector3.ZERO    # ayak bileginin arac uzayindaki yeri (x = yarim aciklik); sifir = serbest poz
 var ride_crank := Vector3.ZERO   # bisiklet: (pedal yarim acikligi, orta gobek y, orta gobek z); pedal dairesi
 var ride_crank_r := 0.16
+var ride_mount := 1.0            # iki tekerli: 0 = aracin solunda ayakta, 1 = selede (binme / inme hareketi)
+var ride_foot_down := 0.0        # iki tekerli: sol ayak yerde (dururken) 0..1
+var ride_ground := Vector3.ZERO  # sol ayak bileginin yerdeki hedefi (arac uzayi)
+var ride_seat_y := 0.9           # sele yuksekligi (bacagi selenin ustunden asirmak icin)
 const FOOT_RIDES := ["bisiklet", "motosiklet", "scooter"]
 var _lean_key := ""
 var _lean_auto := 0.0
+var _lean_s := 0.2
 var _palm := {}           # taraf -> dinlenme durusunda avuc cercevesi (x: parmak yonu, y: avuc ici yonu)
 var hand_twist := 1.2     # avucu asagi cevirmek icin on kol donusu
 var _pedal := 0.0
@@ -39,7 +44,7 @@ var seated := false            # taburede / sandalyede oturuyor (Sitting_Idle)
 var _lod_i := randi() % 4          # ziplarken (main ayarlar)
 var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
 const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
-	"eat": "Interact", "sit": "Sitting_Idle", "cook": "Interact"}
+	"eat": "Interact", "sit": "Sitting_Idle", "cook": "Interact", "door": "Interact"}
 var tint := Color.WHITE   # tisort rengi
 var tint2 := Color.WHITE  # desen ikinci rengi
 var pattern := 0          # 0 duz, 1 cizgili, 2 kareli
@@ -328,7 +333,7 @@ func _lean_pose(lean: float) -> void:
 ## Surus egimi: en az 'ride_lean'; eller gidona rahat yetisene kadar artirilir (arac ve boya gore).
 func _ride_lean_now() -> float:
 	var base := ride_lean if ride_lean >= 0.0 else (0.3 if riding == "bisiklet" else (0.25 if riding == "motosiklet" else 0.06))
-	if grips.size() != 2 or not riding in FOOT_RIDES:
+	if grips.size() != 2 or not riding in FOOT_RIDES or ride_mount < 0.999:
 		return base
 	var key := "%s %.2f" % [riding, base]
 	if key != _lean_key:
@@ -358,7 +363,8 @@ func _ride_pose(dt: float) -> void:
 	var moto := riding == "motosiklet"
 	_pedal += dt * ride_speed / 0.55 * (1.0 if bike else 0.0)
 	_reset_pose()
-	var lean := _ride_lean_now()
+	_lean_s = lerpf(_lean_s, _ride_lean_now(), minf(1.0, dt * 6.0))
+	var lean := _lean_s
 	_lean_pose(lean)
 	var to_skel := _skel.global_transform.affine_inverse() * (get_parent() as Node3D).global_transform
 	var use_feet := riding in FOOT_RIDES and (ride_feet != Vector3.ZERO or ride_crank != Vector3.ZERO)
