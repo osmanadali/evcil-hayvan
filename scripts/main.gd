@@ -2807,14 +2807,59 @@ func _push_from_vehicles(p: Vector2, r: float, skip: Node3D = null) -> Vector2:
 # ---------------------------------------------------------------- taksi ve dolmus (yolcu)
 
 ## Arac yolu: yalnizca araclarin gidebildigi sokaklar (tek yonlere uyulur).
+var _road_both: Array = []      # tek yonler yok sayilarak yol komsulugu (yedek rota icin)
+var _road_main := PackedByteArray()   # dugum ana yol aginda mi (en buyuk bagli parca)
+
+
+## Ana yol agi: kopuk kucuk yol parcalari (otopark ici, park servis yolu) rota basi/sonu secilmez.
+func _road_prepare() -> void:
+	var nodes := ParkMap.nodes
+	var n := nodes.size()
+	_road_both.resize(n)
+	for i in n:
+		_road_both[i] = (ParkMap.road_next[i] as Array).duplicate()
+	for i in n:
+		for v in ParkMap.road_next[i]:
+			if not (_road_both[v] as Array).has(i):
+				(_road_both[v] as Array).append(i)
+	var comp := PackedInt32Array()
+	comp.resize(n)
+	comp.fill(-1)
+	var sizes: Array = []
+	for i in n:
+		if comp[i] >= 0 or (_road_both[i] as Array).is_empty():
+			continue
+		var id := sizes.size()
+		var stack: Array = [i]
+		comp[i] = id
+		var cnt := 0
+		while not stack.is_empty():
+			var u: int = stack.pop_back()
+			cnt += 1
+			for v in _road_both[u]:
+				if comp[v] < 0:
+					comp[v] = id
+					stack.append(v)
+		sizes.append(cnt)
+	var big := 0
+	for k in sizes.size():
+		if sizes[k] > sizes[big]:
+			big = k
+	_road_main.resize(n)
+	for i in n:
+		_road_main[i] = 1 if (not sizes.is_empty() and comp[i] == big) else 0
+
+
 func _road_route(from: Vector2, to: Vector2) -> PackedVector2Array:
 	var nodes := ParkMap.nodes
+	if _road_main.size() != nodes.size():
+		_road_prepare()
 	var start := -1
 	var goal := -1
 	var bs := 1e18
 	var bg := 1e18
 	for i in nodes.size():
-		if ParkMap.road_next[i].is_empty():
+		if _road_main[i] == 0:
 			continue
 		var ds := nodes[i].distance_squared_to(from)
 		var dg := nodes[i].distance_squared_to(to)
@@ -2824,6 +2869,24 @@ func _road_route(from: Vector2, to: Vector2) -> PackedVector2Array:
 		if dg < bg:
 			bg = dg
 			goal = i
+	if start < 0:
+		return PackedVector2Array()
+	var res := _road_dijkstra(ParkMap.road_next, start, goal)
+	if not (res[1] as Dictionary).has(goal) and goal != start:
+		# Tek yonler yuzunden ulasilamiyor: tek yonleri yok sayarak dene
+		res = _road_dijkstra(_road_both, start, goal)
+	var back: Dictionary = res[1]
+	var out := PackedVector2Array()
+	var k := goal
+	while k != start and back.has(k):
+		out.insert(0, nodes[k])
+		k = back[k]
+	out.insert(0, nodes[start])
+	return out
+
+
+func _road_dijkstra(adj: Array, start: int, goal: int) -> Array:
+	var nodes := ParkMap.nodes
 	var dist := {start: 0.0}
 	var back := {}
 	var open: Array = [start]
@@ -2836,19 +2899,14 @@ func _road_route(from: Vector2, to: Vector2) -> PackedVector2Array:
 		open.remove_at(bi)
 		if u == goal:
 			break
-		for v in ParkMap.road_next[u]:
+		for v in adj[u]:
 			var nd: float = dist[u] + nodes[u].distance_to(nodes[v])
 			if nd < dist.get(v, 1e18):
 				dist[v] = nd
 				back[v] = u
-				open.append(v)
-	var out := PackedVector2Array()
-	var k := goal
-	while k != start and back.has(k):
-		out.insert(0, nodes[k])
-		k = back[k]
-	out.insert(0, nodes[start])
-	return out
+				if not open.has(v):
+					open.append(v)
+	return [dist, back]
 
 
 func _nearest_taxi() -> Node3D:
@@ -4182,6 +4240,17 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			await get_tree().process_frame
 			print("F SONRA arac=", _ride, " mod=", _mode))
+	if _args.has("navtest"):
+		get_tree().create_timer(2.0).timeout.connect(func():
+			var o := _owner_pos()
+			for pin in map_screen.PINS:
+				var r := _road_route(o, pin[2])
+				var L := 0.0
+				for i in range(1, r.size()):
+					L += r[i - 1].distance_to(r[i])
+				print("NAV ", pin[0], " dugum=", r.size(), " yol=%.0f" % L, " kus=%.0f" % o.distance_to(pin[2]), " son-hedef=%.0f" % (r[r.size() - 1].distance_to(pin[2]) if r.size() > 0 else -1.0))
+			var rh := _road_route(o, HOME_DOOR)
+			print("NAV Evim dugum=", rh.size(), " son-hedef=%.0f" % rh[rh.size() - 1].distance_to(HOME_DOOR)))
 	if _args.has("mousetest"):
 		get_tree().create_timer(1.5).timeout.connect(func():
 			var y0 := _cam_yaw
