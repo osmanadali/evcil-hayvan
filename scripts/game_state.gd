@@ -45,6 +45,8 @@ const QUESTS := [
 	["petride", "Dostunla araçta 500 metre yol al", 500, 25],
 	["radio", "Arabada radyo aç", 1, 10],
 	["dealer", "Otokent Galeri'den araç satın al", 1, 50],
+	["plant", "Balkondaki çiçeklerini sula", 1, 20],
+	["playroom", "Evdeki oyun odasında hayvanınla oyna", 1, 25],
 	["bill", "Bir faturanı öde", 1, 20],
 	["atm", "ATM'den para çek ya da yatır", 1, 10],
 	["goal", "Halı sahada gol at", 1, 25],
