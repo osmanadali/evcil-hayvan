@@ -54,6 +54,7 @@ const QUESTS := [
 	["kahvehane", "Kahvehanede tavla ya da okey oyna", 1, 20],
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],
 	["furniture", "Evine bir mobilya al", 1, 20],
+	["friend", "Bir arkadaşınla buluş (Sosyal / Mesajlar)", 1, 30],
 ]
 
 

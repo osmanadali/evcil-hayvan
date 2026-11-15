@@ -261,7 +261,8 @@ func _build_market() -> void:
 			["cikolata", Vector2(3.0, 5.0), PI], ["top", Vector2(5.4, 5.0), PI], ["sampuan", Vector2(5.4, 6.85), PI],
 			["odul", Vector2(6.35, 3.05), PI], ["mama", Vector2(7.05, 3.05), PI], ["konserve", Vector2(7.75, 3.05), PI],
 			["yumurta", Vector2(4.2, 3.15), PI], ["makarna", Vector2(4.2, 5.0), PI], ["peynir", Vector2(3.0, 6.85), PI],
-			["domates", Vector2(8.0, 5.75), PI], ["biber", Vector2(9.2, 5.75), PI]]:
+			["domates", Vector2(8.0, 5.75), PI], ["biber", Vector2(9.2, 5.75), PI],
+			["seker", Vector2(4.2, 6.85), PI], ["hediye", Vector2(1.6, 5.0), PI], ["cicek", Vector2(6.7, 6.85), PI]]:
 		spots.append([sp[0], sp[1]])
 		_tag(sp[0], sp[1], sp[2])
 
@@ -295,7 +296,8 @@ func _tag(id: String, stand: Vector2, face: float) -> void:
 const PRICES := [["mama", "Kuru Mama", 8], ["konserve", "Konserve", 14], ["odul", "Ödül Bisküvisi", 6], ["su", "Su", 3],
 	["simit", "Simit", 5], ["ayran", "Ayran", 6], ["ekmek", "Ekmek", 4], ["cikolata", "Çikolata", 8], ["dondurma", "Dondurma", 10],
 	["meyve", "Meyve Suyu", 7], ["top", "Oyuncak Top", 12], ["sampuan", "Pati Şampuanı", 15],
-	["yumurta", "Yumurta", 3], ["domates", "Domates", 4], ["biber", "Biber", 3], ["makarna", "Makarna", 9], ["peynir", "Peynir", 14]]
+	["yumurta", "Yumurta", 3], ["domates", "Domates", 4], ["biber", "Biber", 3], ["makarna", "Makarna", 9], ["peynir", "Peynir", 14],
+	["seker", "Bayram Şekeri", 4], ["hediye", "Hediye Paketi", 35], ["cicek", "Çiçek Buketi", 25]]
 
 
 func _build_pharmacy() -> void:

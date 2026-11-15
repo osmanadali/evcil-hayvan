@@ -199,6 +199,8 @@ func _flowers(root: Node3D, toward: Vector2) -> void:
 func _present(id: String) -> bool:
 	if force_all:
 		return true
+	if m.social and (m.social.guest.get("id", "") == id or not m.social.iftar.is_empty()):
+		return false
 	var info: Array = PEOPLE[id]
 	var h: float = m.clock
 	if m.weather and m.weather.kind in ["yagmur", "saganak", "kar"] and id != "hasan":
@@ -306,6 +308,8 @@ func talk(id: String) -> void:
 	var fv: Array = _favor_option(id)
 	if not fv.is_empty():
 		ui._panel_item(body, fv[0], fv[1])
+	if m.social:
+		m.social.neighbor_options(id, body)
 	ui._panel_item(body, "Hoşça kal", func():
 		ui.close_modal()
 		m._say(pd["node"], "Güle güle!"))
@@ -1011,6 +1015,8 @@ func _header_pin(body: VBoxContainer, place: String) -> void:
 
 
 func _act_label(act: String) -> String:
+	if act.begins_with("soc:") and m.social:
+		return m.social.act_label(act)
 	if act.begins_with("nav:"):
 		return "Konuma Git"
 	return {"jobs": "İş İlanlarını Aç", "vet": "Veterinere Yol Tarifi", "home": "Apartmana Git (Konuma git)"}.get(act, "Aç")
@@ -1018,6 +1024,9 @@ func _act_label(act: String) -> String:
 
 func _do_act(act: String) -> void:
 	m.ui.close_modal()
+	if act.begins_with("soc:") and m.social:
+		m.social.do_act(act)
+		return
 	if act == "jobs":
 		m._open_jobs()
 	elif act.begins_with("nav:") or act in ["vet", "home"]:
