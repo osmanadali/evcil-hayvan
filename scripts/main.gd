@@ -107,6 +107,7 @@ var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.
 var eateries: Node        # lokantalar, ek marketler, Yakinimda (scripts/eateries.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
+var tutorial: Node        # ilk kullanim ipuclari (scripts/tutorial.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
@@ -243,6 +244,10 @@ func _ready() -> void:
 	ui = Ui.new()
 	ui.state = state
 	add_child(ui)
+	tutorial = preload("res://scripts/tutorial.gd").new()
+	tutorial.m = self
+	tutorial.state = state
+	add_child(tutorial)
 	map_screen = MapScreen.new()
 	ui.add_child(map_screen)
 	map_screen.place_chosen.connect(walk_to)
@@ -1431,6 +1436,7 @@ func _random_door(min_d: float, max_d: float) -> Array:
 
 
 func _open_jobs() -> void:
+	tutorial.show_once("job")
 	if not _job.is_empty():
 		var body: VBoxContainer = ui._open_page("İŞ", _job_text())
 		ui._menu_item(body, "İŞİ BIRAK", func():
@@ -1683,6 +1689,7 @@ func _end_job(ok: bool, msg: String) -> void:
 
 ## Telefon: arabani yanina cagir## Telefon: arabani yanina cagir, taksi/dolmus cagir, eve yol tarifi.
 func _open_phone() -> void:
+	tutorial.show_once("phone")
 	var unread: int = neighbors.unread()
 	var apps: Array = [
 		["Mesajlar" + (" (%d)" % unread if unread > 0 else ""), "1fae5b", "phone", func(): neighbors.open_messages()],
@@ -1887,6 +1894,7 @@ func _jump() -> void:
 
 
 func _on_command(cmd: String) -> void:
+	tutorial.on_command(cmd)
 	if cmd.begins_with("shop_take:"):
 		_put_in_basket(cmd.substr(10))
 		return
@@ -3126,6 +3134,7 @@ func _leave_taxi(arrived: bool) -> void:
 
 ## Harita: evim, araclarim, otobus duraklari ve metro girisleri her acilista guncellenir.
 func _open_map() -> void:
+	tutorial.show_once("map")
 	var dyn: Array = []
 	if ParkMap.zone == "":
 		dyn.append(["Evim", HOME_DOOR + HOME_DOOR_OUT * 1.5, "e0703a", "home"])
@@ -3811,6 +3820,7 @@ func _process(dt: float) -> void:
 			owner_model.position.y = _jump_h
 		owner_model.airborne = _jump_h > 0.05
 	_update_street_life(dt)
+	tutorial.update(dt)
 	bank.update(dt)
 	neighbors.update(dt)
 	sports.update(dt)
@@ -4549,6 +4559,9 @@ func _debug_shot() -> void:
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("tutorial"):
+		tutorial.show_once(str(_args["tutorial"]), true)
+		await get_tree().create_timer(1.0).timeout
 	if _args.has("job"):
 		if _args["job"] == "dog":
 			_start_dog_walk()

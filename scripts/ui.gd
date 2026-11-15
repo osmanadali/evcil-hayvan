@@ -1126,6 +1126,16 @@ func open_settings() -> void:
 			state.d["mouse_sens"] = steps[(i + 1) % steps.size()]
 			state.save_game()
 			open_settings())
+	var tips_on: bool = state.d.get("tips", true)
+	_menu_item(body, "İPUÇLARI:  " + ("AÇIK" if tips_on else "KAPALI"), func():
+		state.d["tips"] = not tips_on
+		state.save_game()
+		open_settings())
+	_menu_item(body, "İPUÇLARINI SIFIRLA", func():
+		state.d["tutorials_seen"] = {}
+		state.save_game()
+		toast("İpuçları sıfırlandı, yeniden gösterilecek.")
+		open_settings())
 	if not DisplayServer.is_touchscreen_available():
 		_menu_item(body, "KONTROLLER  >", func(): open_keys())
 		var kl := _fx_label(body, "Hareket: %s / %s / %s / %s     Koş: %s     Etkileşim: %s\nHarita: %s     Telefon: %s     Görevler: %s     Fotoğraf: %s     ESC: menü\nTuşları değiştirmek için KONTROLLER'e gir." % [
