@@ -1,0 +1,7 @@
+sedan_ic_mekanli.glb
+  Kaynak: Sketchfab, "2014 Toyota Corolla E180 EU (with interior)", yapan: Armored Wave
+  https://sketchfab.com/3d-models/36f95efb0585464cae43a25a3b3392e8
+  Lisans: CC Attribution (CC-BY 4.0) - oyunun "Emegi gecenler" bolumunde yapanin adi yazilmali.
+  Not: Oyunda marka amblemleri kaldirilacak ve araca uydurma bir ad verilecek.
+  Parcalar: govde (tek parca, kapilar ayri degil), camlar, tekerler, farlar, ic mekan,
+  koltuklar, on panel, gosterge, direksiyon (ayri).

@@ -1,0 +1,7 @@
+Mixamo'dan indirilen animasyonlar buraya yuklenir (FBX).
+Indirme ayari: Format "FBX Binary (.fbx)", Skin "Without Skin", 30 fps, "In Place" isaretli (varsa).
+Istenenler (Mixamo'daki arama adlari):
+ Futbol : Soccer Pass, Strike Foward Jog (sut), Soccer Header, Goalkeeper Catch, Goalkeeper Diving Save,
+          Dribble (soccer), Soccer Tackle, Soccer Idle, Victory
+ Basket : Dribble (basketball), Basketball Shoot / Jump Shot, Lay Up, Basketball Pass, Defensive Stance
+ Arac   : Entering Car, Exiting Car, Driving, Sitting Idle
