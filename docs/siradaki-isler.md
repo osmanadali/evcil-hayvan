@@ -47,3 +47,7 @@ Sigara içme (animasyon, duman, sağlık/dayanıklılık etkisi).
 - Yapılacak: FPS'te baş gizli, kollar ve gövde görünür; eller direksiyona IK ile oturur ve simitle birlikte döner
   (motosikletteki gidon tutuşu gibi), vites/el freni için sağ el hareketi, aşağı bakınca bacaklar ve pedallar.
 - Dış kamerada da eller simide tam otursun (şu an hazır "Driving" animasyonu, yaklaşık duruyor).
+
+## Karar: sadece bilgisayar oyunu
+- Tablet/mobil hedefi bırakıldı. Dokunmatik düğmeler, mobil grafik kısıtları ve APK derlemesi artık öncelik değil;
+  yeni özelliklerde dokunmatik desteği yazılmayacak. Grafik ve kontrol kararları bilgisayara (klavye + fare, Forward+) göre.
