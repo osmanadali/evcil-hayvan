@@ -69,16 +69,37 @@ var _built_for: Node3D = null
 var _anim_t := 0.0
 
 
+## Etkin evin kayit anahtari eki: asil ev "", EvBul evleri "_<ilan no>" (her evin esyasi ve daginikligi ayri).
+func _key() -> String:
+	var h := _home()
+	return "_" + str(h.get("lid")) if h != null and h != m._home else ""
+
+
 func items() -> Array:
-	if not state.d.has("home_items") or typeof(state.d["home_items"]) != TYPE_ARRAY:
-		state.d["home_items"] = []
-	return state.d["home_items"]
+	var k := "home_items" + _key()
+	if not state.d.has(k) or typeof(state.d[k]) != TYPE_ARRAY:
+		state.d[k] = []
+	return state.d[k]
 
 
 func mess() -> Array:
-	if not state.d.has("home_mess") or typeof(state.d["home_mess"]) != TYPE_ARRAY:
-		state.d["home_mess"] = [[7.0, 4.4, "tuy"], [3.0, 8.9, "top"], [5.0, 8.2, "tuy"]]
-	return state.d["home_mess"]
+	var k := "home_mess" + _key()
+	if not state.d.has(k) or typeof(state.d[k]) != TYPE_ARRAY:
+		state.d[k] = [[7.0, 4.4, "tuy"], [3.0, 8.9, "top"], [5.0, 8.2, "tuy"]] if k == "home_mess" else []
+	return state.d[k]
+
+
+## Mobilyanin etkin evdeki yeri (EvBul evleri kendi yerlerini verir).
+func _slot(id: String) -> Vector2:
+	var h := _home()
+	if h != null and h.get("furn_slots") != null and h.furn_slots.has(id):
+		return h.furn_slots[id]
+	return FURNITURE[id][3]
+
+
+func _stove_stand() -> Vector2:
+	var h := _home()
+	return h.stove_stand if h != null and h.get("stove_stand") != null else STOVE_STAND
 
 
 func _bag() -> Dictionary:
@@ -87,12 +108,30 @@ func _bag() -> Dictionary:
 	return bag
 
 
+## Etkin ev: icinde bulunulan EvBul evi (kiralik / satin alinmis) ya da asil ev.
 func _home() -> Node3D:
+	var h: Node3D = ParkMap.home
+	if h != null and h != m._home and h.get("lived") == true:
+		return h
 	return m._home
 
 
 func at_home() -> bool:
-	return m._home != null and ParkMap.home == m._home
+	return ParkMap.home != null and ParkMap.home == _home()
+
+
+## Ic mekan silinmeden once (EvBul evinden cikarken) dugum baglantilarini birak.
+func forget(home: Node3D) -> void:
+	if _built_for != home:
+		return
+	cooking = false
+	_built_for = null
+	_root = null
+	_furn_root = null
+	_mess_root = null
+	_cook_root = null
+	_mess_nodes.clear()
+	_fish.clear()
 
 
 func busy() -> bool:
@@ -107,6 +146,12 @@ func on_home(home: Node3D) -> void:
 		_rebuild_mess()
 		return
 	_built_for = home
+	var old := home.get_node_or_null("EvHayati")
+	if old != null:
+		home.remove_child(old)
+		old.queue_free()
+	_mess_nodes.clear()
+	_fish.clear()
 	_root = Node3D.new()
 	_root.name = "EvHayati"
 	home.add_child(_root)
@@ -116,6 +161,8 @@ func on_home(home: Node3D) -> void:
 	_root.add_child(_mess_root)
 	_cook_root = Node3D.new()
 	_root.add_child(_cook_root)
+	if home.get("stove_pos") != null:
+		_cook_root.position = home.stove_pos - Vector3(4.45, 0.93, 0.5)
 	_build_cooking()
 	_rebuild_furniture()
 	_rebuild_mess()
@@ -227,8 +274,10 @@ func _rebuild_furniture() -> void:
 
 func _build_item(id: String) -> void:
 	var home := _home()
-	var p: Vector2 = FURNITURE[id][3]
+	var p: Vector2 = _slot(id)
 	var r := Kit.pivot(_furn_root, Vector3(p.x, 0, p.y))
+	if home.get("furn_rot") != null:
+		r.rotation.y = float(home.furn_rot.get(id, 0.0))
 	match id:
 		"bitki":
 			Kit.cyl(r, 0.2, 0.15, 0.38, Vector3(0, 0.19, 0), Kit.mat("b5553a", 0.8), 14)
@@ -358,7 +407,7 @@ func buy(id: String) -> void:
 	m._sfx("kasa", -6.0)
 	if _furn_root != null:
 		_build_item(id)
-	m.ui.toast("%s alındı! Evinde %s yerleştirildi." % [f[0], f[2]])
+	m.ui.toast("%s alındı! Evinde %s yerleştirildi." % [f[0], f[2]] if _key() == "" else "%s alındı ve bu evdeki yerine yerleştirildi." % f[0])
 	open_shop()
 
 
@@ -407,7 +456,9 @@ func _spawn_mess() -> void:
 	if list.size() >= MESS_MAX or state.owned_pets().is_empty():
 		return
 	var free: Array = []
-	for s in MESS_SPOTS:
+	var h := _home()
+	var spots: Array = h.mess_spots if h != null and h.get("mess_spots") != null else MESS_SPOTS
+	for s in spots:
 		var used := false
 		for e in list:
 			if Vector2(float(e[0]), float(e[1])).distance_to(s) < 0.6:
@@ -462,7 +513,7 @@ func _clean(i: int) -> void:
 # ---------------------------------------------------------------- yemek
 
 func _near_stove(lo: Vector2) -> bool:
-	return lo.distance_to(STOVE_STAND) < 0.9
+	return lo.distance_to(_stove_stand()) < 0.9
 
 
 func _has(recipe: String) -> bool:
@@ -531,8 +582,8 @@ func start_cook(recipe: String) -> void:
 	m._moving = false
 	m._queue.clear()
 	var home := _home()
-	m._place_owner(home.w2(STOVE_STAND))
-	m.owner_node.rotation.y = home.rotation.y
+	m._place_owner(home.w2(_stove_stand()))
+	m.owner_node.rotation.y = home.rotation.y + (float(home.stove_yaw) if home.get("stove_yaw") != null else 0.0)
 	m.owner_model.speed = 0.0
 	m.owner_model.act("cook", COOK_TIME)
 	_build_food(recipe)

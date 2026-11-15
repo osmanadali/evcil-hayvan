@@ -222,17 +222,20 @@ func _stand(pos: Vector2) -> void:
 
 
 ## Evde yatakta uyu: karar, saat ertesi sabah 08:00, enerji dolar.
-func sleep() -> void:
-	if sleeping or m._home == null:
+## at / edge_at: baska bir evde (EvBul) uyurken ic mekan ve yatagin oturulan kenari (yerel).
+func sleep(at: Node3D = null, edge_at := Vector2.INF) -> void:
+	if sleeping or (at == null and m._home == null):
 		return
 	sleeping = true
 	_stop_owner()
 	m.ui.set_context("", "")
 	m.ui._actions.visible = false
-	var home: Node3D = m._home
+	var home: Node3D = at if at != null else m._home
 	var stand_l: Vector2 = home.local2(m._owner_pos())
 	# Yatagin kenarina otur (yatak odasina bakan uzun kenar)
 	var edge_l := Vector2(BED_LOCAL.x + 0.62, clampf(stand_l.y, BED_LOCAL.y - 0.5, BED_LOCAL.y + 0.7))
+	if edge_at != Vector2.INF:
+		edge_l = edge_at
 	var edge: Vector2 = home.w2(edge_l)
 	var out: Vector2 = home.w2(edge_l + Vector2(0.75, 0.0))
 	var face := out - edge
