@@ -2192,6 +2192,16 @@ func _inside_building(p: Vector2) -> bool:
 	return _inside_building_cell(p)
 
 
+## Kamera icin: yalnizca gercek bina cokgenleri (cit, araba gibi engeller sayilmaz).
+func inside_building_poly(p: Vector2) -> bool:
+	if _bpolys.is_empty():
+		_inside_building(p)
+	for bp in _bpolys:
+		if (bp[0] as Rect2).has_point(p) and Geometry2D.is_point_in_polygon(p, bp[1]):
+			return true
+	return false
+
+
 func _inside_building_cell(p: Vector2) -> bool:
 	# Engel dogrularina cok yakin degilse ve cevresi kapaliysa bina icidir: dort yone isin atarak say
 	var hits := 0
