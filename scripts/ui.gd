@@ -1413,7 +1413,7 @@ func open_pause() -> void:
 ## Dukkan urunleri: [kimlik, ad, fiyat, tur]  tur: "food" (hayvan mamasi), "bag" (cantaya), "pet:<ihtiyac>:<miktar>" (hemen etki)
 const SHOP_ITEMS := {
 	"market": [["mama", "Kuru Mama", 8, "food"], ["konserve", "Konserve", 14, "food"], ["odul", "Ödül Bisküvisi", 6, "food"],
-		["su", "Su", 3, "bag"], ["simit", "Simit", 5, "bag"], ["ayran", "Ayran", 6, "bag"], ["ekmek", "Ekmek", 4, "bag"],
+		["diyet", "Diyet Mama", 12, "food"], ["su", "Su", 3, "bag"], ["simit", "Simit", 5, "bag"], ["ayran", "Ayran", 6, "bag"], ["ekmek", "Ekmek", 4, "bag"],
 		["cikolata", "Çikolata", 8, "bag"], ["dondurma", "Dondurma", 10, "bag"], ["meyve", "Meyve Suyu", 7, "bag"],
 		["yumurta", "Yumurta", 3, "bag"], ["domates", "Domates", 4, "bag"], ["biber", "Biber", 3, "bag"],
 		["makarna", "Makarna", 9, "bag"], ["peynir", "Peynir", 14, "bag"],
