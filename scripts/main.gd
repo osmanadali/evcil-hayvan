@@ -119,6 +119,7 @@ var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var emlak: Node          # EvBul: kiralik / satilik evler (scripts/emlak.gd)
+var meslek: Node         # taksi, garson, bakici isleri ve gunluk kazanc (scripts/meslekler.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var pview: Node          # yolcu bakisi: taksi / dolmus / otobuste koltuktan kamera + yolcu gostergesi (scripts/passenger_view.gd)
 var life: Node           # arac hayati: binme / inme hareketi, yan ayak, hayvan koltugu, gostergeler (scripts/vehicle_life.gd)
@@ -219,6 +220,10 @@ func _ready() -> void:
 	emlak.m = self
 	emlak.state = state
 	add_child(emlak)
+	meslek = preload("res://scripts/meslekler.gd").new()
+	meslek.m = self
+	meslek.state = state
+	add_child(meslek)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -1560,6 +1565,7 @@ func _open_jobs() -> void:
 	ui._menu_item(body, "KURYE (MOTOR)  ·  25–70 ₺", func():
 		ui.close_modal()
 		_start_courier())
+	meslek.add_menu(body)
 	ui._menu_item(body, "GERİ", func(): ui.close_modal())
 	ui._focus_first(body)
 
@@ -1574,6 +1580,8 @@ func _job_text() -> String:
 			return ("%s parka götür" % _acc(_job["name"]) if _job["stage"] == "go" else "%s sahibine (%s) geri getir" % [_acc(_job["name"]), _job["client_name"]]) + "  ·  " + tm
 		"courier":
 			return ("Paketi al: %s" if _job["stage"] == "pickup" else "Teslim et: %s") % _job["addr"] + "  ·  " + tm
+		"taxi", "garson", "bakici":
+			return meslek.text()
 	return ""
 
 
@@ -1689,6 +1697,8 @@ func _update_job(dt: float) -> void:
 				ui.toast("Paketi aldın. Adres: %s" % _job["drop_addr"])
 			elif _job["stage"] == "drop" and me.distance_to(_job["drop"]) < 6.0:
 				_end_job(true, "Teslim edildi! Müşteri memnun.")
+		"taxi", "garson", "bakici":
+			meslek.job_tick(dt)
 	if not _job.is_empty() and _job["t"] <= 0.0:
 		_end_job(false, "Süre doldu! İş iptal oldu.")
 
@@ -1779,18 +1789,21 @@ func _end_job(ok: bool, msg: String) -> void:
 		if is_instance_valid(client):
 			client.hold = 0.0
 			client.graph_node = ParkMap.nearest_node(job["client_pos"])
+	meslek.cleanup(job)
 	_nav = Vector2.INF
 	minimap.route = []
 	if job.has("neighbor"):
 		neighbors.on_job_done(job["neighbor"], ok)
 	if ok:
-		var pay: int = job["pay"] + (10 if job["t"] > 120.0 else 0)
+		var fast: bool = job["t"] > 120.0 and job["type"] in ["dog", "courier"]
+		var pay: int = job["pay"] + (10 if fast else 0)
+		meslek.record(job["type"], pay)
 		state.d["coins"] += pay
 		state.count("job")
 		state.changed.emit()
 		state.save_game()
 		_sfx("para", -4.0)
-		ui.toast("%s  +%d ₺%s" % [msg, pay, "  (hızlı teslim bonusu!)" if job["t"] > 120.0 else ""])
+		ui.toast("%s  +%d ₺%s" % [msg, pay, "  (hızlı teslim bonusu!)" if fast else ""])
 	else:
 		ui.toast(msg)
 
@@ -2137,6 +2150,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("em_"):
 		emlak.command(cmd)
+		return
+	if cmd.begins_with("mj_"):
+		meslek.command(cmd)
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
@@ -3997,6 +4013,7 @@ func _process(dt: float) -> void:
 	radio.update(dt)
 	hotel.update(dt)
 	emlak.update(dt)
+	meslek.update(dt)
 	_update_wet(dt)
 	if _perf_on:
 		pt = _pm("moduller (toplam)", pt)
@@ -4397,6 +4414,10 @@ func _update_context() -> void:
 			ui.set_context("" if pview.stop_req else "İnecek var!", "" if pview.stop_req else "stopreq", "hand")
 		else:
 			ui.set_context("Taksiden İn", "taxiexit", "come")
+		return
+	var mjc: Array = meslek.context() if _bus_ride == null and _taxi == null else []
+	if not mjc.is_empty():
+		ui.set_context(mjc[0], mjc[1], mjc[2])
 		return
 	var emc: Array = emlak.context() if _bus_ride == null and _taxi == null else []
 	if not emc.is_empty():
@@ -4999,7 +5020,10 @@ func _debug_shot() -> void:
 		map_screen.visible = false
 		_on_command("petmenu")
 		await get_tree().create_timer(0.4).timeout
-	if _args.has("job"):
+	if _args.has("job") and _args["job"] in ["taxi", "garson", "bakici", "meslekler"]:
+		for jk in (["taxi", "garson", "bakici"] if _args["job"] == "meslekler" else [_args["job"]]):
+			await meslek.debug(jk, _args.has("jobrun"))
+	elif _args.has("job"):
 		if _args["job"] == "dog":
 			_start_dog_walk()
 		else:
