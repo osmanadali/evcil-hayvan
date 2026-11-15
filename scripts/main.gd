@@ -1696,6 +1696,7 @@ func _open_phone() -> void:
 		apps.append(["Otel", "7a1f2b", "moon", func(): hotel.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
 	apps.append(["Mobilya", "8a5a35", "home", func(): home_life.open_shop()])
+	apps.append(["Çiçekçi", "4fae5a", "sun", func(): home_life.open_flower_shop()])
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
@@ -4560,6 +4561,24 @@ func _debug_shot() -> void:
 				home_life.items().append(fid)
 		home_life._rebuild_furniture()
 		print("MOBILYA ", home_life.items())
+	if _args.has("decor") or _args.has("balcony"):
+		if ParkMap.home == null:
+			_enter_home()
+			for f in 3:
+				await get_tree().process_frame
+		var balc := _args.has("balcony")
+		if balc:
+			_place_owner(_home.w2(Vector2(0.95, 5.0)))
+			owner_node.rotation.y = _home.rotation.y - PI * 0.5
+			var j := 0
+			for k in agents:
+				agents[k].place(_home.w2(Vector2(1.0 + 0.4 * j, 6.4)))
+				j += 1
+		home_life.debug_setup("balcony" if balc else "decor")
+		for f in 3:
+			await get_tree().process_frame
+		_update_context()
+		print("DEKOR baglam=", ui._context_cmd)
 	if _args.has("cook"):
 		if ParkMap.home == null:
 			_enter_home()
