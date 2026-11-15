@@ -1492,12 +1492,31 @@ func _start_courier() -> void:
 	ui.toast("Kurye işi: paket hazır, %s. Motorla daha hızlı!" % pick_name)
 
 
+## Sol ust yigin: hayvan karti, altinda aclik/enerji cubuklari, altinda is hedefi, en altta [F] ipucu.
+## Ust uste binmesinler diye her karede gercek boyutlara gore dizilir.
+func _layout_left_hud() -> void:
+	var y := 104.0
+	var cards: Control = ui.hud.get_node_or_null("Cards")
+	if cards:
+		y = cards.position.y + cards.size.y + 8.0
+	var nh: Control = needs._hud if needs else null
+	if nh and nh.visible:
+		nh.position.y = y
+		y = nh.position.y + nh.get_combined_minimum_size().y + 6.0
+	if _job_label.visible:
+		_job_label.position.y = y
+		y += 40.0
+	if ui._hint:
+		ui._hint.position.y = y + 4.0
+
+
 func _update_job(dt: float) -> void:
 	if _job_label == null:
 		_job_label = ui._fx_label(ui.hud, "", ui.F_BODY, 26, Color.WHITE, 7)
 		_job_label.position = Vector2(26, 104)
 		_job_label.size = Vector2(760, 40)
 	_job_label.visible = not _job.is_empty() and ui.hud.visible
+	_layout_left_hud()
 	if _job.is_empty():
 		return
 	_job["t"] -= dt
@@ -2208,6 +2227,9 @@ func _car_model(c: Node3D) -> String:
 ## Trafikteki arabayi binilebilir araca cevirir (GTA gibi).
 func _take_traffic_car(c: Node3D) -> void:
 	c.set_process(false)
+	# Sofor iner (oyuncu direksiyona gecer)
+	for dr in c.find_children("Surucu", "", true, false):
+		dr.queue_free()
 	_cars.erase(c)
 	c.set_meta("kind", "araba")
 	if c.get_child_count() > 0 and c.get_child(0).has_meta("wheels"):
@@ -4414,6 +4436,17 @@ func _debug_shot() -> void:
 					var side: Vector3 = r.global_basis * Vector3(cos(ca), 0, sin(ca))
 					cam.global_position = r.global_position + side * float(_args.get("dist", "2.6")) + Vector3(0, 1.55, 0)
 					cam.look_at(r.global_position + Vector3(0, 0.75, 0))
+		elif view == "traffic":
+			# Trafikteki bir araca soldan-onden bakis (sofor denetimi): --view=traffic [--model=dolmus|taksi|araba]
+			var want: String = _args.get("model", "dolmus")
+			for c in _cars:
+				if _car_model(c) == want:
+					_mode = "debug"
+					c.set_process(false)
+					var cb: Basis = c.global_basis
+					cam.global_position = c.global_position + cb * Vector3(-3.2, 1.7, -3.4)
+					cam.look_at(c.global_position + Vector3(0, 1.0, 0))
+					break
 		elif view == "low":
 			_mode = "debug"
 			var a := float(_args.get("ang", "0.5"))

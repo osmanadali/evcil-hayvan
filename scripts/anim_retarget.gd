@@ -27,7 +27,13 @@ var _C := Quaternion.IDENTITY  # kaynak uzayindan hedef uzayina
 var _hips_s := 1.0
 var _src_hips_ref := Vector3.ZERO
 var _tgt_hips_rest := Vector3.ZERO
+var _tgt_foot_y := 0.0
 var current := ""
+var _straight := 0.0           # 1: dururken bacaklar dik (kaynak Idle dizleri fazla bukuk)
+var _legs := {}                # kaynak bacak kemikleri
+var _arm := {}                 # kaynak kol zinciri kemikleri -> taraf (+1 sol, -1 sag)
+const STAND_CLIPS := ["Idle", "Idle_Talking"]
+const GROUND_CLIPS := ["Idle", "Idle_Talking", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Interact", "PickUp_Table"]
 
 
 func setup(tgt: Skeleton3D) -> void:
@@ -61,6 +67,13 @@ func setup(tgt: Skeleton3D) -> void:
 	_hips_s = (_tpos("Head") - _tpos("LeftFoot")).length() / maxf((_gpos(src, "DEF-head") - _gpos(src, "DEF-foot.L")).length(), 0.001)
 	_src_hips_ref = src.get_bone_global_pose(src.find_bone("DEF-hips")).origin
 	_tgt_hips_rest = target.get_bone_rest(target.find_bone("Hips")).origin
+	for b in ["DEF-thigh.L", "DEF-shin.L", "DEF-foot.L", "DEF-thigh.R", "DEF-shin.R", "DEF-foot.R"]:
+		_legs[src.find_bone(b)] = true
+	for i in src.get_bone_count():
+		var bn := src.get_bone_name(i)
+		if bn.contains("upper_arm") or bn.contains("forearm") or bn.contains("hand") or bn.contains("f_") or bn.contains("thumb"):
+			_arm[i] = 1.0 if bn.ends_with(".L") else -1.0
+	_tgt_foot_y = minf(_tpos("LeftFoot").y, _tpos("RightFoot").y)
 	for i in target.get_bone_count():
 		var nm := target.get_bone_name(i)
 		var sname := _src_name(nm)
@@ -68,20 +81,43 @@ func setup(tgt: Skeleton3D) -> void:
 		_pairs.append([i, si])
 		if si >= 0:
 			_sref[si] = sg[si]
-			# Hedef kemigin notr yonunu kaynagin referans yonune ceviren hizalama
-			# Ayni kemige eslesen cocuk uzerinden yon (iki iskelette de ayni zincir)
-			var tdir := Vector3.ZERO
-			var sdir := Vector3.ZERO
+			# Hedef kemigin notr yonunu kaynagin referans yonune ceviren hizalama.
+			# Ayni kemige eslesen cocuklar uzerinden (iki iskelette de ayni zincir). Dallanan kemiklerde
+			# (kalca: omurga + uyluklar, gogus: boyun + omuzlar, el: parmaklar) tek yon yetmez; burulma
+			# da hizalanmazsa omurga/bas yana yatar. Ana cocuk (omurga/boyun/orta parmak) + ikinci cocuk
+			# ile tam cerceve hizalanir.
+			var pairs: Array = []
 			for c in target.get_bone_children(i):
 				var sc := src.find_bone(_src_name(target.get_bone_name(c)))
 				if sc >= 0 and src.get_bone_parent(sc) == si:
-					tdir = (tg[i] * target.get_bone_rest(c).origin).normalized()
-					sdir = _C * (sg[si] * src.get_bone_pose_position(sc)).normalized()
-					break
+					var td: Vector3 = (tg[i] * target.get_bone_rest(c).origin).normalized()
+					var sd: Vector3 = _C * (sg[si] * src.get_bone_pose_position(sc)).normalized()
+					if td != Vector3.ZERO and sd != Vector3.ZERO:
+						var sn := src.get_bone_name(sc)
+						var main := sn.contains("spine") or sn.contains("neck") or sn.contains("head") or sn.contains("middle")
+						if main:
+							pairs.push_front([td, sd])
+						else:
+							pairs.append([td, sd])
 			var a := Quaternion.IDENTITY
-			if tdir != Vector3.ZERO and sdir != Vector3.ZERO:
+			if pairs.size() >= 2:
+				var ft := _frame(pairs[0][0], pairs[1][0])
+				var fs := _frame(pairs[0][1], pairs[1][1])
+				a = (fs * ft.inverse()).get_rotation_quaternion()
+			elif pairs.size() == 1:
+				var tdir: Vector3 = pairs[0][0]
+				var sdir: Vector3 = pairs[0][1]
 				a = Quaternion(tdir, sdir) if tdir.dot(sdir) > -0.999 else Quaternion(Vector3.UP, PI)
 			_align[i] = a * tg[i]
+
+
+## Iki yonden dik cerceve (ilk yon ana eksen).
+func _frame(a: Vector3, b: Vector3) -> Basis:
+	var x := a.normalized()
+	var z := x.cross(b).normalized()
+	if z.length() < 0.001:
+		z = x.cross(Vector3.FORWARD if absf(x.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+	return Basis(x, z.cross(x), z).orthonormalized()
 
 
 func _src_name(nm: String) -> String:
@@ -133,6 +169,8 @@ func play(anim: String, blend := 0.25, speed := 1.0) -> void:
 func apply() -> void:
 	var sg := _globals(src)
 	var tg := {}
+	var want := 1.0 if current in STAND_CLIPS else 0.0
+	_straight = move_toward(_straight, want, get_process_delta_time() * 4.0)
 	for pr in _pairs:
 		var i: int = pr[0]
 		var si: int = pr[1]
@@ -141,6 +179,12 @@ func apply() -> void:
 		var g: Quaternion
 		if si >= 0:
 			var delta: Quaternion = sg[si] * (_sref[si] as Quaternion).inverse()
+			if _straight > 0.0 and _legs.has(si):
+				# Dururken dizler dik: referans (dik) duruse dogru cekilir
+				delta = delta.slerp(Quaternion.IDENTITY, _straight * 0.8)
+			elif _straight > 0.0 and _arm.has(si):
+				# Kaynak Idle'da kollar yana acik: omuzdan biraz indirilir (rahat, asagi sarkan kollar)
+				delta = Quaternion(Vector3.BACK, -_arm[si] * 0.26 * _straight) * delta
 			g = _C * delta * _C.inverse() * _align[i]
 		else:
 			g = pg * target.get_bone_rest(i).basis.get_rotation_quaternion()
@@ -152,4 +196,15 @@ func apply() -> void:
 	# Kalca yuksekligi/ileri-geri: kaynaktaki kayma olcekli aktarilir
 	var hs := src.get_bone_global_pose(src.find_bone("DEF-hips")).origin - _src_hips_ref
 	var hi := target.find_bone("Hips")
-	target.set_bone_pose_position(hi, _tgt_hips_rest + _C * (hs * _hips_s))
+	var hp := _tgt_hips_rest + _C * (hs * _hips_s)
+	target.set_bone_pose_position(hi, hp)
+	if current in GROUND_CLIPS and weight >= 1.0:
+		# Ayak kilidi: alttaki ayak dinlenme durusundaki yerde kalir (havada/yere gomulu durmasin)
+		var fy := minf(target.get_bone_global_pose(target.find_bone("LeftFoot")).origin.y,
+			target.get_bone_global_pose(target.find_bone("RightFoot")).origin.y)
+		var parent := target.get_bone_parent(hi)
+		var up := Vector3.UP
+		if parent >= 0:
+			up = target.get_bone_global_pose(parent).basis.inverse() * Vector3.UP
+		hp += up * (_tgt_foot_y - fy)
+		target.set_bone_pose_position(hi, hp)
