@@ -11,6 +11,7 @@ extends Node
 const Kit = preload("res://scripts/kit.gd")
 const ParkMap = preload("res://scripts/park_map.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
+const Icon = preload("res://scripts/icon.gd")
 
 # id: [ad, cinsiyet, tisort, pantolon, yan kayma, disari kayma, saat bas, saat son, renk]
 const PEOPLE := {
@@ -31,7 +32,7 @@ const CHAT := {
 }
 const MSG_SENDERS := {
 	"annem": ["Annem", "e8453c"],
-	"vet": ["Pati Veteriner Kliniği", "1e9a8a"],
+	"vet": ["Patiler Veteriner Kliniği", "1e9a8a"],
 	"is": ["Pati İş Ajansı", "34a853"],
 	"hasan": ["Kapıcı Hasan Efendi", "8a6a3a"],
 	"ayse": ["Ayşe Teyze", "b0559a"],
@@ -584,14 +585,17 @@ func unread() -> int:
 
 
 ## Yeni mesaj. act: "" | "nav:x,z:Ad" | "jobs" | "vet" | "home" ; replies: hizli cevaplar
-func push_msg(from: String, text: String, act := "", replies: Array = [], quiet := false) -> void:
+## place: mesajin isaret ettigi yer (bos ise act'tan / gondericiden cikarilir, bkz. msg_place)
+func push_msg(from: String, text: String, act := "", replies: Array = [], quiet := false, place := "") -> void:
 	var md := _md()
 	if not md.has(from):
 		var s: Array = MSG_SENDERS.get(from, [from, "777777"])
 		md[from] = {"name": s[0], "col": s[1], "items": [], "unread": 0, "order": 0}
 	var th: Dictionary = md[from]
 	var clk: String = m.ui.clock_label.text if m.ui and m.ui.clock_label else ""
-	th["items"].append({"me": false, "t": text, "c": clk, "act": act, "r": replies})
+	var it := {"me": false, "t": text, "c": clk, "act": act, "r": replies}
+	it["p"] = place if place != "" else msg_place(from, it)
+	th["items"].append(it)
 	while th["items"].size() > 14:
 		th["items"].pop_front()
 	th["unread"] = int(th["unread"]) + 1
@@ -630,7 +634,7 @@ func _random_msg() -> void:
 		for vn in ["Kuduz", "Karma", "İç-Dış Parazit"]:
 			if not vac.has(vn):
 				miss.append(vn)
-		push_msg("vet", "Sayın hasta sahibi, %s için %s aşısının zamanı geldi. Kliniğimizde randevusuz bekleriz." % [pet["name"], ", ".join(miss)], "vet", ["Bugün gelirim.", "Hatırlattığınız için sağ olun."])
+		push_msg("vet", "Sayın hasta sahibi, %s için %s aşısının zamanı geldi. Kliniğimizde randevusuz bekleriz." % [pet["name"], ", ".join(miss)], "vet", ["Tamam, geliyorum.", "Hatırlattığınız için sağ olun."], false, "vet")
 		return
 	var r := randi() % 4
 	if r == 0:
@@ -755,24 +759,255 @@ func open_thread(k: String) -> void:
 		var gap := Control.new()
 		gap.custom_minimum_size = Vector2(0, 4)
 		body.add_child(gap)
+	# Yer: cevaplansa da her acilista yol tarifi dugmesi (son yer bildiren mesaj)
+	var place := thread_place(k)
+	var loc := resolve_place(place)
+	if not loc.is_empty():
+		_header_pin(body, place)
+		ui._panel_item(body, "Yol tarifi al · %s" % loc["name"], func():
+			ui.close_modal()
+			route_to(place))
 	var last: Dictionary = items[-1] if not items.is_empty() else {}
 	if not last.is_empty() and not last["me"]:
 		var act: String = last.get("act", "")
-		if act != "":
+		var routed: bool = not loc.is_empty() and (act in ["vet", "home"] or act.begins_with("nav:"))
+		if act != "" and not routed:
 			ui._panel_item(body, _act_label(act), func(): _do_act(act))
 		for rp in last.get("r", []):
 			var rtxt: String = rp
-			ui._panel_item(body, "Cevapla: " + rtxt, func():
-				var clk: String = ui.clock_label.text if ui.clock_label else ""
-				items.append({"me": true, "t": rtxt, "c": clk, "act": "", "r": []})
-				if PEOPLE.has(k) and not _done_today(k, "msg"):
-					_mark_today(k, "msg")
-					_add_friend(k, 2)
-				state.save_game()
-				open_thread(k))
+			ui._panel_item(body, "Cevapla: " + rtxt, func(): reply(k, rtxt))
 	ui._panel_item(body, "Geri", func(): open_messages())
 	ui._focus_first(body)
 	state.save_game()
+
+
+## Cevap yaz; kabul eden cevaplar ("Tamam, geliyorum") rotayi hemen baslatir.
+func reply(k: String, rtxt: String) -> void:
+	var md := _md()
+	if not md.has(k):
+		return
+	var items: Array = md[k]["items"]
+	var clk: String = m.ui.clock_label.text if m.ui and m.ui.clock_label else ""
+	items.append({"me": true, "t": rtxt, "c": clk, "act": "", "r": [], "p": ""})
+	if PEOPLE.has(k) and not _done_today(k, "msg"):
+		_mark_today(k, "msg")
+		_add_friend(k, 2)
+	state.save_game()
+	if _accepts(rtxt):
+		route_to(thread_place(k))
+	open_thread(k)
+
+
+func _accepts(t: String) -> bool:
+	var l := t.to_lower()
+	for w in ["geliyorum", "gelirim", "uğrarım", "giderim", "yoldayım", "geçerim", "hallederim"]:
+		if l.contains(w):
+			return true
+	return false
+
+
+## Mesajin yer anahtari: "vet" "market" "eczane" "banka" "otel" "galeri" "barinak" "akaryakit"
+## "home" "nb:<komsu>" "ofis" "anne" "nav:x,z:Ad". Eski kayitlar icin act'tan ve gondericiden cikarilir.
+func msg_place(from: String, it: Dictionary) -> String:
+	var p: String = it.get("p", "")
+	if p != "":
+		return p
+	var act: String = it.get("act", "")
+	if act.begins_with("nav:"):
+		return act
+	match act:
+		"vet":
+			return "vet"
+		"home":
+			return ("nb:" + from) if PEOPLE.has(from) else "home"
+		"jobs":
+			return "ofis"
+	if PEOPLE.has(from):
+		return "nb:" + from
+	return {"vet": "vet", "is": "ofis", "annem": "anne"}.get(from, "")
+
+
+## Konusmanin en son yer bildiren mesaji (cevaplandiktan sonra da).
+func thread_place(k: String) -> String:
+	var md := _md()
+	if not md.has(k):
+		return ""
+	var items: Array = md[k]["items"]
+	for i in range(items.size() - 1, -1, -1):
+		var it: Dictionary = items[i]
+		if it.get("me", false):
+			continue
+		var p := msg_place(k, it)
+		if p != "":
+			return p
+	return msg_place(k, {})
+
+
+var _fixed_doors := {}
+
+## Haritada sabit bir apartman kapisi (evden ~dist m): ajans ofisi, annemin evi.
+func _fixed_door(key: String, dist: float) -> Vector2:
+	if _fixed_doors.has(key):
+		return _fixed_doors[key]
+	var home: Vector2 = m.HOME_DOOR
+	var best := Vector2.INF
+	var bd := 1e9
+	for b in ParkMap.data["buildings"]:
+		var dr = b.get("door")
+		if dr == null or not (dr is Array) or dr.size() < 4:
+			continue
+		var p := Vector2(dr[0], dr[1]) + Vector2(dr[2], dr[3]) * 1.5
+		if not ParkMap.inside_bounds(p, 10.0):
+			continue
+		var e := absf(p.distance_to(home) - dist)
+		if e < bd:
+			bd = e
+			best = p
+	_fixed_doors[key] = best
+	return best
+
+
+func _nearest(pts: Array) -> Dictionary:
+	var me: Vector2 = m._owner_pos()
+	var best := {}
+	var bd := 1e9
+	for e in pts:
+		var d: float = (e[0] as Vector2).distance_to(me)
+		if d < bd:
+			bd = d
+			best = {"pos": e[0], "name": e[1]}
+	return best
+
+
+## Yer anahtarini dunyadaki konuma cevir: {pos: Vector2, name: String} ya da {}.
+func resolve_place(place: String) -> Dictionary:
+	if place == "":
+		return {}
+	var w: Node = m.world
+	var outside: bool = ParkMap.zone == ""
+	if place.begins_with("nav:"):
+		var parts := place.split(":")
+		var xy := parts[1].split(",")
+		if xy.size() < 2:
+			return {}
+		return {"pos": Vector2(float(xy[0]), float(xy[1])), "name": parts[2] if parts.size() > 2 else "İşaretli konum"}
+	if place.begins_with("nb:"):
+		var id := place.substr(3)
+		if not outside or not PEOPLE.has(id):
+			return {}
+		var np: Vector2 = people[id]["pos"] if people.has(id) else m.HOME_DOOR
+		return {"pos": np, "name": "%s (apartman önü)" % PEOPLE[id][0]}
+	match place:
+		"vet":
+			if w.vet_pos != Vector2.INF:
+				return {"pos": w.vet_pos, "name": "Patiler Veteriner Kliniği"}
+		"home":
+			if outside:
+				return {"pos": m.HOME_DOOR, "name": "Evim"}
+		"market", "eczane":
+			var l: Array = []
+			for sp in w.shop_spots:
+				if sp.get("kind", "") == place:
+					l.append([sp["pos"], sp["name"]])
+			return _nearest(l)
+		"banka":
+			var l2: Array = []
+			for po in ParkMap.data["pois"]:
+				if po["k"] == "banka":
+					l2.append([Vector2(po["pos"][0], po["pos"][1]), po["name"]])
+			return _nearest(l2)
+		"akaryakit":
+			var l3: Array = []
+			for fs in w.fuel_stations:
+				l3.append([fs["entry"], fs["name"]])
+			return _nearest(l3)
+		"otel":
+			if m.hotel and m.hotel.center != Vector2.INF:
+				return {"pos": m.hotel.door_pos(), "name": "Kale Palas Otel"}
+		"galeri":
+			if m.dealer and m.dealer.center != Vector2.INF:
+				return {"pos": m.dealer.center, "name": "Otokent Galeri"}
+		"barinak":
+			if m.pet_care and not m.pet_care.shelter.is_empty():
+				return {"pos": m.pet_care.shelter.get("gate", m.pet_care.shelter["pos"]), "name": "Hayvan Barınağı"}
+		"ofis":
+			if outside:
+				var o := _fixed_door("ofis", 160.0)
+				if o != Vector2.INF:
+					return {"pos": o, "name": "Pati İş Ajansı (%s)" % m._street_name(o)}
+		"anne":
+			if outside:
+				var a := _fixed_door("anne", 420.0)
+				if a != Vector2.INF:
+					return {"pos": a, "name": "Annemin evi (%s)" % m._street_name(a)}
+	return {}
+
+
+## Rotayi baslat (haritadaki Yol Tarifi ile ayni sistem): mini harita + buyuk harita cizgisi.
+func route_to(place: String) -> bool:
+	var loc := resolve_place(place)
+	if loc.is_empty():
+		m.ui.toast("Bu yere şu an yol tarifi verilemiyor.")
+		return false
+	var p: Vector2 = loc["pos"]
+	m._set_nav(p, loc["name"])
+	var me: Vector2 = m._owner_pos()
+	var dist := me.distance_to(p)
+	var path: Array = m.world.find_path(me, p)
+	if path.size() > 0:
+		var plen := 0.0
+		var prev := me
+		for q in path:
+			plen += prev.distance_to(q)
+			prev = q
+		dist = maxf(dist, plen)
+	var dtxt := ("%d m" % int(round(dist / 10.0) * 10)) if dist < 1000.0 else ("%.1f km" % (dist / 1000.0))
+	m.ui.toast("Yol tarifi: %s · %s" % [loc["name"], dtxt])
+	m._sfx("tik", -6.0, 1.4)
+	return true
+
+
+## Konusma basligina konum (pin) dugmesi.
+func _header_pin(body: VBoxContainer, place: String) -> void:
+	var ui: Node = m.ui
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(40, 40)
+	b.tooltip_text = "Konuma git"
+	b.focus_mode = Control.FOCUS_NONE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(ui.ACCENT2)
+	sb.set_corner_radius_all(20)
+	var sh: StyleBoxFlat = sb.duplicate()
+	sh.bg_color = ui.ACCENT
+	b.add_theme_stylebox_override("normal", sb)
+	b.add_theme_stylebox_override("hover", sh)
+	b.add_theme_stylebox_override("pressed", sh)
+	var ic: Control = Icon.new("pin", Color.WHITE, 26)
+	ic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ic.offset_left = 7
+	ic.offset_top = 7
+	ic.offset_right = -7
+	ic.offset_bottom = -7
+	b.add_child(ic)
+	b.pressed.connect(func():
+		ui.close_modal()
+		route_to(place))
+	var head: Node = null
+	if ui._in_phone(body):
+		var col: Node = body.get_parent().get_parent()
+		if col and col.get_child_count() > 0 and col.get_child(0) is HBoxContainer:
+			head = col.get_child(0)
+	if head:
+		head.add_child(b)
+		return
+	# Yan panel: basligin hemen altinda pin + yazi
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	body.add_child(row)
+	body.move_child(row, 0)
+	row.add_child(b)
+	var lab: Label = ui._fx_label(row, "Konuma git", ui.F_BODY, 20, ui.ACCENT)
+	lab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 
 func _act_label(act: String) -> String:
@@ -783,20 +1018,10 @@ func _act_label(act: String) -> String:
 
 func _do_act(act: String) -> void:
 	m.ui.close_modal()
-	if act.begins_with("nav:"):
-		var parts := act.split(":")
-		var xy := parts[1].split(",")
-		m._set_nav(Vector2(float(xy[0]), float(xy[1])), parts[2] if parts.size() > 2 else "")
-		m.ui.toast("Konum haritada işaretlendi.")
-	elif act == "jobs":
+	if act == "jobs":
 		m._open_jobs()
-	elif act == "vet":
-		if m.world.vet_pos != Vector2.INF:
-			m._set_nav(m.world.vet_pos, "Veteriner")
-			m.ui.toast("Veteriner haritada işaretlendi.")
-	elif act == "home":
-		m._set_nav(m.HOME_DOOR, "Evim")
-		m.ui.toast("Apartmanın kapısı haritada işaretlendi.")
+	elif act.begins_with("nav:") or act in ["vet", "home"]:
+		route_to(msg_place("", {"act": act}))
 
 
 # ---------------------------------------------------------------- test
@@ -820,3 +1045,17 @@ func debug_msgs() -> void:
 	push_msg("is", "Yeni ilan: Keçiören'de köpek gezdirme işi var, 40-60 ₺.", "jobs", [], true)
 	push_msg("ayse", "Yavrum bugün bankta olacağım, uğrarsan Paşa çok sevinir.", "home", ["Uğrarım!", "Tamam, haber veririm."])
 	open_messages()
+
+
+## Test (--msgroute): veteriner mesaji, cevap "Tamam, geliyorum." -> rota otomatik baslar.
+func debug_msgroute() -> void:
+	push_msg("vet", "Sayın hasta sahibi, %s için Kuduz aşısının zamanı geldi." % state.pet(state.d["active"])["name"], "vet", ["Tamam, geliyorum.", "Hatırlattığınız için sağ olun."], true, "vet")
+	open_thread("vet")
+	reply("vet", "Tamam, geliyorum.")
+	print("MSGROUTE dest=%s name=%s place=%s" % [m._nav, m.minimap.dest_name, thread_place("vet")])
+	for k in ["annem", "is", "ayse"]:
+		var loc := resolve_place(thread_place(k) if _md().has(k) else msg_place(k, {}))
+		print("MSGROUTE %s -> %s" % [k, loc])
+	for pl in ["market", "eczane", "banka", "otel", "galeri", "barinak", "akaryakit", "home"]:
+		print("MSGROUTE %s -> %s" % [pl, resolve_place(pl)])
+	open_thread("vet")

@@ -4811,6 +4811,9 @@ func _debug_shot() -> void:
 	if _args.has("msgs"):
 		neighbors.debug_msgs()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("msgroute"):
+		neighbors.debug_msgroute()
+		await get_tree().create_timer(0.6).timeout
 	if _args.has("keytest"):
 		var sw: String = Keybinds.rebind("phone", KEY_B, state.d["keys"] if state.d.has("keys") else {})
 		var ev := InputEventKey.new()
