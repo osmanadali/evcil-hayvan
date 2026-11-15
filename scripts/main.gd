@@ -114,6 +114,7 @@ var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
+var pview: Node          # yolcu bakisi: taksi / dolmus / otobuste koltuktan kamera + yolcu gostergesi (scripts/passenger_view.gd)
 var life: Node           # arac hayati: binme / inme hareketi, yan ayak, hayvan koltugu, gostergeler (scripts/vehicle_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
@@ -179,6 +180,9 @@ func _ready() -> void:
 	sports.m = self
 	sports.state = state
 	add_child(sports)
+	pview = preload("res://scripts/passenger_view.gd").new()
+	pview.m = self
+	add_child(pview)
 	life = preload("res://scripts/vehicle_life.gd").new()
 	life.m = self
 	add_child(life)
@@ -800,7 +804,7 @@ func _input(e: InputEvent) -> void:
 	if _mode == "play" and not ui.is_blocking() and not map_screen.visible:
 		if k.is_action_pressed("interact"):
 			if _taxi != null:
-				_leave_taxi(false)
+				_on_command("stopreq" if _car_model(_taxi) == "dolmus" else "taxiexit")
 			elif _ride != null:
 				if ui._context_cmd == "fuel":
 					_on_command("fuel")
@@ -920,7 +924,7 @@ func _pointer_move(rel: Vector2) -> void:
 		_photo["pitch"] = clampf(_photo["pitch"] + rel.y * 0.006, 0.03, 1.2)
 	elif _mode == "play":
 		_cam_yaw -= rel.x * 0.006
-		if _ride != null and _fps:
+		if (_ride != null and _fps) or pview.on:
 			_fps_yaw = clampf(_fps_yaw - rel.x * 0.005, -1.9, 1.9)
 			_fps_pitch = clampf(_fps_pitch - rel.y * 0.004, -0.8, 0.55)
 		else:
@@ -2082,6 +2086,11 @@ func _on_command(cmd: String) -> void:
 			var tx := _nearest_taxi()
 			if tx:
 				_board_taxi(tx)
+		"taxiexit":
+			if _taxi != null:
+				_leave_taxi(false)
+		"stopreq":
+			pview.request_stop()
 		"exit":
 			_exit_ride()
 		"pet":
@@ -2662,6 +2671,7 @@ func _wheel_grips() -> void:
 
 func _toggle_fps() -> void:
 	if _ride == null:
+		pview.toggle()      # yolcu: koltuktan bakis (scripts/passenger_view.gd)
 		return
 	_fps = not _fps
 	_fps_pitch = 0.0
@@ -3042,6 +3052,22 @@ func _update_taxi(dt: float) -> void:
 	if _taxi_i + 1 < _taxi_path.size():
 		var nd := (_taxi_path[_taxi_i + 1] - tgt).normalized()
 		want = lerpf(4.0, 9.0, clampf(nd.dot(seg_dir), 0.0, 1.0)) if d < 14.0 else 9.0
+	if pview.stop_req:
+		# Inecek var: kavsak icinde degil, yolun duz yerinde kaldirima yanasip durur
+		var prev_d := p.distance_to(_taxi_path[_taxi_i - 1]) if _taxi_i > 0 else 99.0
+		var safe := d > 9.0 and prev_d > 9.0
+		want = 0.0 if safe else minf(want, 4.0)
+		if safe:
+			lane = tgt + Vector2(-seg_dir.y, seg_dir.x) * 2.7
+			to = lane - p
+			d = to.length()
+		if _taxi_speed < 0.3 and (safe or _taxi_i + 1 >= _taxi_path.size()):
+			var fare: int = pview.partial_fare(_taxi_fare)
+			_leave_taxi(false)
+			state.d["coins"] = maxi(0, int(state.d["coins"]) - fare)
+			state.count("taxi")
+			ui.toast("İndin · %d ₺ ödedin" % fare)
+			return
 	_taxi_speed = move_toward(_taxi_speed, want, dt * 2.5)
 	var dir := to / d
 	var np := p + dir * minf(_taxi_speed * dt, d)
@@ -3805,6 +3831,7 @@ func _process(dt: float) -> void:
 	_update_health(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
+	pview.update(dt)
 	life.update(dt)
 	boat.update(dt)
 	radio.update(dt)
@@ -4016,6 +4043,12 @@ func _update_context() -> void:
 	if not htc.is_empty():
 		ui.set_context(htc[0], htc[1], htc[2])
 		return
+	if _taxi != null:
+		if _car_model(_taxi) == "dolmus":
+			ui.set_context("" if pview.stop_req else "İnecek var!", "" if pview.stop_req else "stopreq", "hand")
+		else:
+			ui.set_context("Taksiden İn", "taxiexit", "come")
+		return
 	if _bus_ride != null:
 		if _bus_ride.at_stop != "":
 			ui.set_context("Otobüsten İn", "busexit", "come")
@@ -4193,6 +4226,8 @@ func _update_camera_raw(dt: float) -> void:
 			cam.look_at(_focus + Vector3(1.1, 0.9, 0))
 		_ when _ride != null and _fps:
 			_cockpit_camera()
+		_ when pview.on:
+			pview.camera(dt)
 		_:
 			_focus = _focus.lerp(owner_node.position, k)
 			var dist := CAM_DIST * _zoom
@@ -4788,6 +4823,8 @@ func _debug_shot() -> void:
 					break
 			if _bus_ride:
 				print("BINDI %s %s" % [_bus_ride.line, _bus_ride.at_stop])
+				if _args.has("fps"):
+					pview.set_on(true)
 				break
 			await get_tree().create_timer(0.5).timeout
 	if _args.has("nav"):
@@ -4796,14 +4833,20 @@ func _debug_shot() -> void:
 	if _args.has("taxiride"):
 		await get_tree().create_timer(1.0).timeout
 		var tx: Node3D = null
+		var want_model: String = "dolmus" if _args.get("summon", "") == "dolmus" else "taksi"
 		for c in _cars:
-			if _car_model(c) == "taksi" and c.hold > 0.0:
+			if _car_model(c) == want_model and (c.hold > 0.0 or tx == null):
 				tx = c
 		if tx:
 			_set_nav(map_screen.PINS[int(_args["taxiride"])][2])
 			owner_node.position = tx.position + Vector3(1.5, 0, 0)
 			_board_taxi(tx)
 			print("TAKSIYE BINDI ", _taxi != null, " yol=", _taxi_path.size())
+			if _args.has("fps"):
+				pview.set_on(true)
+			if _args.has("stopreq"):
+				await get_tree().create_timer(float(_args["stopreq"])).timeout
+				pview.request_stop()
 	if _args.has("drive") and not _rides.is_empty():
 		for r in _rides:
 			if r.get_meta("kind") == (_args["drive"] if _args["drive"] != "1" else "araba"):
