@@ -1215,6 +1215,7 @@ func _enter_shop(sp: Dictionary) -> void:
 		_shop = ShopInterior.new()
 	_shop.kind = sp["kind"]
 	_shop.title = sp["name"]
+	_shop.hour = clock
 	if sp.has("accent"):
 		_shop.accent = sp["accent"]
 	_shop.position = Vector3(0, 300, 0)      # gokyuzunde: kamera arazinin altina dusmesin
@@ -3831,7 +3832,12 @@ func _update_street_life(dt: float) -> void:
 
 
 func _say(n: Node3D, text: String) -> void:
+	# Ayni kisinin onceki konusma balonu kalkar (ust uste binmesin)
+	for ch in n.get_children():
+		if ch.has_meta("say"):
+			ch.queue_free()
 	var l := Label3D.new()
+	l.set_meta("say", true)
 	l.text = text
 	l.font_size = 40
 	l.pixel_size = 0.006
@@ -3840,7 +3846,7 @@ func _say(n: Node3D, text: String) -> void:
 	l.no_depth_test = true
 	l.position = Vector3(0, 2.15, 0)
 	n.add_child(l)
-	var tw := create_tween()
+	var tw := l.create_tween()      # balona bagli: balon erken kalkarsa tween de biter
 	tw.tween_property(l, "position:y", 2.35, 2.6)
 	tw.tween_callback(l.queue_free)
 
@@ -4713,7 +4719,14 @@ func _update_camera_raw(dt: float) -> void:
 		_:
 			_focus = _focus.lerp(owner_node.position, k)
 			var dist := CAM_DIST * _zoom
-			if ParkMap.home != null:
+			var in_room: bool = ParkMap.home != null and ParkMap.home.has_method("cam_clamp")
+			if in_room:
+				# Dukkan / lokanta ici: kamera odanin ICINDE, tavanin altinda kalir (dort duvar ve tavan
+				# kapali; disarisi ve bosluk gorunmez). Asagida konum oda kutusuna sikistirilir.
+				dist = clampf(dist, 2.3, 4.0)
+				_cam_pitch = clampf(_cam_pitch, 0.28, 0.62)
+				ParkMap.home.update_view(cam.global_position)
+			elif ParkMap.home != null:
 				# Evde: yukaridan, tavan ve aradaki duvarlar gorunmez
 				dist = clampf(dist, 3.2, 6.0)
 				_cam_pitch = maxf(_cam_pitch, 0.75)
@@ -4739,9 +4752,12 @@ func _update_camera_raw(dt: float) -> void:
 			if dist >= _cam_dist_s or _cam_block_t > 0.25:
 				_cam_dist_s = lerpf(_cam_dist_s, dist, minf(1.0, dtc * ((5.0 if _ride != null else 10.0) if dist < _cam_dist_s else 2.5)))
 			var pos := _focus + Vector3(0, 1.3, 0) + dirv * _cam_dist_s
-			pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
+			if in_room:
+				pos = ParkMap.home.cam_clamp(pos)
+			else:
+				pos.y = maxf(pos.y, ParkMap.walk_height(Vector2(pos.x, pos.z)) + 0.5)
 			cam.position = pos
-			cam.look_at(_focus + Vector3(0, 1.55, 0))
+			cam.look_at(_focus + Vector3(0, 1.55 if not in_room else 1.2, 0))
 
 
 # ---------------------------------------------------------------- fotograf ve dolap
@@ -4983,7 +4999,7 @@ func _debug_shot() -> void:
 	if _args.has("pedalo"):
 		boat.debug_board("pedal", 0.0)
 	if _args.has("lokanta"):
-		eateries.debug_enter(_args["lokanta"] == "order")
+		eateries.debug_enter(_args["lokanta"] == "order", _args["lokanta"], _args.get("lokstyle", ""))
 	if _args.has("fish"):
 		everyday.debug("fish", _args["fish"])
 	if _args.has("pazar"):
@@ -5518,6 +5534,26 @@ func _debug_shot() -> void:
 		await get_tree().process_frame
 	if _args.has("posedbg"):
 		_pose_debug()
+	if _args.has("lokanta") and _shop != null and "waiter" in _shop and _shop.waiter:
+		var wt: Node3D = _shop.waiter
+		print("GARSON poz=", wt.position.snappedf(0.01), " hiz=", wt.speed, " klip=", wt.anim.current if wt.anim else "-",
+			" faz=", eateries.phase, " yol=", eateries._walk.size())
+	if _args.has("floatchk"):
+		# Havada / yerin altinda duran insanlar: ayak yuksekligi ile zemin farki (--floatchk[=esik])
+		var lim := float(_args["floatchk"]) if float(_args["floatchk"]) > 0.0 else 0.6
+		var n_all := 0
+		for pm in get_tree().root.find_children("*", "Node3D", true, false):
+			if not (pm.get_script() == PersonModel) or not pm.is_visible_in_tree():
+				continue
+			if ParkMap.home != null and absf(pm.global_position.y) > 150.0:
+				continue
+			n_all += 1
+			var g2 := Vector2(pm.global_position.x, pm.global_position.z)
+			var gh := ParkMap.walk_height(g2)
+			var dy: float = pm.global_position.y - gh
+			if absf(dy) > lim:
+				print("HAVADA dy=%.2f y=%.2f zemin=%.2f @%s %s" % [dy, pm.global_position.y, gh, g2.round(), pm.get_path()])
+		print("HAVADA kontrol: ", n_all, " insan")
 	if _args.has("angs") and DisplayServer.get_name() != "headless":
 		# Karakterin onune gore acilardan (derece; 0 = onden, 90 = solundan, 180 = arkadan) ardisik goruntuler:
 		# --angs=0,90,180 [--dist=m] [--ch=bakis yuksekligi] -> cikti_0.png, cikti_90.png ...

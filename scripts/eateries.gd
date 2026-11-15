@@ -111,7 +111,7 @@ func build() -> void:
 		var door := _building(lot[0], lot[1], pl)
 		taken.append(lot[0])
 		var kind: String = "market" if pl[0] == "market" else "lokanta"
-		var sp := {"name": pl[1], "kind": kind, "style": pl[0], "pos": door, "accent": pl[3]}
+		var sp := {"name": pl[1], "kind": kind, "style": pl[0], "pos": door, "accent": pl[3], "dir": lot[1]}
 		w.shop_spots.append(sp)
 		places.append(sp)
 		print("LOKANTA ", pl[1], " @ ", door.round())
@@ -179,9 +179,12 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Vector2:
 	Kit.box(r, Vector3(0.4, 6.4, 0.75), Vector3(HX - 0.2, 1.8, HZ - 0.37), body)
 	Kit.box(r, Vector3(HX * 2.0, 2.2, 0.75), Vector3(0, 3.9, HZ - 0.37), body)
 	# Ust kat pencereleri
+	var win := Kit.mat("3d4a55", 0.15)
+	var sill := Kit.mat("d9d4c8", 0.6)
 	for x in [-2.6, 0.0, 2.6]:
-		Kit.box(r, Vector3(1.3, 1.1, 0.06), Vector3(x, 4.15, HZ + 0.02), Kit.mat("3d4a55", 0.15))
-		Kit.box(r, Vector3(1.45, 0.08, 0.15), Vector3(x, 3.55, HZ + 0.06), Kit.mat("d9d4c8", 0.6))
+		Kit.box(r, Vector3(1.3, 1.1, 0.06), Vector3(x, 4.15, HZ + 0.02), win)
+		Kit.box(r, Vector3(1.45, 0.08, 0.15), Vector3(x, 3.55, HZ + 0.06), sill)
+	_back_and_sides(r, HX, HZ, body, win, sill, accent, pl)
 	# Tabela (fasya): marka renginde, isikli yazi
 	Kit.box(r, Vector3(HX * 2.0 - 0.6, 0.85, 0.14), Vector3(0, 3.05, HZ + 0.08), Kit.mat(accent, 0.45))
 	var name_l: Label3D = w._text(r, pl[1], Vector3(0, 3.12 if pl[2] != "" else 3.05, HZ + 0.16), Color.WHITE, 0.34)
@@ -193,14 +196,20 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Vector2:
 	if pl[0] == "market":
 		w._shopfront(c + tw * (HZ - 0.12), tw, accent, "market")
 		return c + tw * (HZ + 1.0)
-	# Lokanta vitrini: sicak isikli ic, masa siluetleri, cam, cerceve, kapi
+	# Lokanta vitrini: loş sicak ic (arka duvar, lambri, raf), masa siluetleri, cam, cerceve, kapi.
+	# Arka duvar eskiden acik krem + guclu isimaydi: disaridan cam bembeyaz parliyordu.
 	var warm := StandardMaterial3D.new()
-	warm.albedo_color = Color("f6e2c0")
+	warm.albedo_color = Color("8a6448")
 	warm.emission_enabled = true
-	warm.emission = Color("ffd9a0")
-	warm.emission_energy_multiplier = 0.7
+	warm.emission = Color("7a4e2c")
+	warm.emission_energy_multiplier = 0.35
 	Kit.box(r, Vector3(HX * 2.0 - 0.8, 2.4, 0.04), Vector3(0, 1.25, HZ - 0.66), warm)
 	var wood := Kit.mat("6b3d22", 0.6)
+	Kit.box(r, Vector3(HX * 2.0 - 0.8, 0.9, 0.05), Vector3(0, 0.45, HZ - 0.63), Kit.mat("4a2a18", 0.7))
+	Kit.box(r, Vector3(HX * 2.0 - 0.8, 0.04, 0.6), Vector3(0, 0.03, HZ - 0.35), Kit.mat("5a3a24", 0.8))
+	for x in [-3.0, -1.8, 1.8, 3.0]:
+		Kit.box(r, Vector3(0.7, 0.5, 0.03), Vector3(x, 1.75, HZ - 0.62), Kit.mat("3a2414", 0.6))
+		Kit.box(r, Vector3(0.6, 0.4, 0.035), Vector3(x, 1.75, HZ - 0.615), Kit.mat(["c9962e", "b8401a", "3f6f78", "8a9a3a"][int(x + 3.0) % 4], 0.8))
 	for x in [-2.8, -1.6, 1.6, 2.8]:
 		Kit.box(r, Vector3(0.7, 0.05, 0.5), Vector3(x, 0.75, HZ - 0.4), wood)
 		Kit.box(r, Vector3(0.06, 0.72, 0.06), Vector3(x, 0.37, HZ - 0.4), wood)
@@ -208,10 +217,10 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Vector2:
 	for x in [-2.2, 2.2]:
 		Kit.ball(r, 0.14, Vector3(x, 2.25, HZ - 0.4), Kit.glow("ffd08a", 2.0), Vector3.ONE, 8)
 	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.7, 0.82, 0.9, 0.25)
+	glass.albedo_color = Color(0.45, 0.55, 0.6, 0.22)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.roughness = 0.05
-	glass.metallic_specular = 0.9
+	glass.roughness = 0.12
+	glass.metallic_specular = 0.4
 	Kit.box(r, Vector3(HX * 2.0 - 0.8, 2.5, 0.03), Vector3(0, 1.3, HZ - 0.05), glass)
 	for x in [-HX + 0.4, -0.7, 0.7, HX - 0.4]:
 		Kit.box(r, Vector3(0.09, 2.6, 0.1), Vector3(x, 1.3, HZ - 0.05), dark)
@@ -252,6 +261,52 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Vector2:
 	o.distance_fade_length = 20.0
 	r.add_child(o)
 	return c + tw * (HZ + 1.0)
+
+
+## Arka ve yan cepheler: eskiden duz, dokusuz kutuydu (parktan / yoldan bakinca ne oldugu anlasilmiyordu).
+## Kat silmesi, subasman, ust kat pencereleri, yanda marka levhasi, arkada servis kapisi, catida klima / depo.
+func _back_and_sides(r: Node3D, hx: float, hz: float, body: Material, win: Material, sill: Material, accent: String, pl: Array) -> void:
+	var w: Node = m.world
+	var band := Kit.mat("8f8577", 0.8)
+	var base := Kit.mat("6f6a62", 0.9)
+	var zb := -hz                     # arka yuz
+	var depth := hz * 2.0 - 0.7       # govde derinligi
+	var zc := -0.35                   # govde merkezi (z)
+	# Kat silmesi ve subasman (dort yanda)
+	Kit.box(r, Vector3(hx * 2.0 + 0.12, 0.16, 0.12), Vector3(0, 3.45, zb - 0.04), band)
+	Kit.box(r, Vector3(hx * 2.0 + 0.1, 0.55, 0.08), Vector3(0, 0.2, zb - 0.03), base)
+	for sx in [-1.0, 1.0]:
+		Kit.box(r, Vector3(0.12, 0.16, depth + 0.12), Vector3(sx * (hx + 0.04), 3.45, zc), band)
+		Kit.box(r, Vector3(0.08, 0.55, depth + 0.1), Vector3(sx * (hx + 0.03), 0.2, zc), base)
+	# Arka: ust kat pencereleri, servis kapisi, kucuk mutfak penceresi, havalandirma
+	for x in [-2.6, 0.0, 2.6]:
+		Kit.box(r, Vector3(1.2, 1.1, 0.06), Vector3(x, 4.15, zb - 0.02), win)
+		Kit.box(r, Vector3(1.35, 0.08, 0.15), Vector3(x, 3.55, zb - 0.06), sill)
+	Kit.box(r, Vector3(1.0, 2.1, 0.06), Vector3(2.4, 1.05, zb - 0.03), Kit.mat("4a4f55", 0.5))
+	Kit.box(r, Vector3(0.05, 0.05, 0.12), Vector3(2.75, 1.05, zb - 0.08), Kit.mat("c9ccd0", 0.3))
+	Kit.box(r, Vector3(1.3, 0.12, 0.6), Vector3(2.4, 2.25, zb - 0.3), Kit.mat(accent, 0.6))
+	Kit.box(r, Vector3(1.1, 0.7, 0.06), Vector3(-2.0, 1.9, zb - 0.02), win)
+	Kit.box(r, Vector3(0.6, 0.6, 0.25), Vector3(-0.3, 2.1, zb - 0.12), Kit.mat("b9bcc0", 0.4))
+	for k in 4:
+		Kit.box(r, Vector3(0.5, 0.04, 0.02), Vector3(-0.3, 1.9 + k * 0.13, zb - 0.25), Kit.mat("6f7378", 0.4))
+	# Yanlar: ust katta iki pencere, zemin katta marka levhasi (adi yazili, isikli)
+	for sx in [-1.0, 1.0]:
+		var xf: float = sx * (hx + 0.02)
+		for z in [zc - 1.6, zc + 1.6]:
+			Kit.box(r, Vector3(0.06, 1.1, 1.2), Vector3(xf, 4.15, z), win)
+			Kit.box(r, Vector3(0.15, 0.08, 1.35), Vector3(sx * (hx + 0.06), 3.55, z), sill)
+		Kit.box(r, Vector3(0.08, 0.9, depth - 1.6), Vector3(sx * (hx + 0.05), 2.45, zc), Kit.mat(accent, 0.45))
+		var t: Label3D = w._text(r, pl[1], Vector3(sx * (hx + 0.1), 2.45, zc), Color.WHITE, 0.22)
+		t.rotation.y = sx * PI * 0.5
+		t.visibility_range_end = 90.0
+	# Cati: klima dis uniteleri, su deposu, baca
+	var roof_y := 5.25
+	Kit.box(r, Vector3(0.9, 0.6, 0.45), Vector3(-2.6, roof_y + 0.3, zb + 1.0), Kit.mat("e4e4e0", 0.5))
+	Kit.cyl(r, 0.22, 0.22, 0.04, Vector3(-2.6, roof_y + 0.3, zb + 1.23), Kit.mat("55585e", 0.5), 14, Vector3(PI * 0.5, 0, 0))
+	Kit.box(r, Vector3(0.9, 0.6, 0.45), Vector3(-1.4, roof_y + 0.3, zb + 1.0), Kit.mat("e4e4e0", 0.5))
+	Kit.cyl(r, 0.55, 0.55, 1.1, Vector3(2.4, roof_y + 0.55, zb + 1.6), Kit.mat("d0d3d6", 0.35), 16)
+	Kit.cyl(r, 0.18, 0.18, 1.6, Vector3(3.6, roof_y + 0.8, zb + 0.6), Kit.mat("7a7f86", 0.4), 10)
+	Kit.cyl(r, 0.26, 0.26, 0.12, Vector3(3.6, roof_y + 1.6, zb + 0.6), Kit.mat("55585e", 0.5), 10)
 
 
 # ---------------------------------------------------------------- giris / cikis
@@ -953,16 +1008,36 @@ func nearby_app() -> void:
 
 # ---------------------------------------------------------------- test
 
-func debug_enter(order_too: bool) -> void:
+## Test: --lokanta=1|order|sit [--lokstyle=kebap|ev|fast|market]. "sit": oturur, garson masaya yurur.
+func debug_enter(order_too: bool, mode := "", want_style := "") -> void:
 	var sp: Dictionary = {}
 	for p in places:
-		if p["kind"] == "lokanta":
+		if (p["kind"] == "lokanta" and want_style == "") or (want_style != "" and p["style"] == want_style):
 			sp = p
 			break
 	if sp.is_empty():
 		print("LOKANTA yok")
 		return
+	if mode == "out" or mode == "back" or mode == "side":
+		# Binayi disaridan goster: on cephe (vitrin), arka ya da yan
+		var tw: Vector2 = sp.get("dir", Vector2(0, 1))
+		var door: Vector2 = sp["pos"]
+		var c: Vector2 = door - tw * 4.8
+		var eye: Vector2 = door + tw * 9.0 + Vector2(-tw.y, tw.x) * 3.0
+		if mode == "back":
+			eye = c - tw * 14.0 + Vector2(-tw.y, tw.x) * 6.0
+		elif mode == "side":
+			eye = c + Vector2(-tw.y, tw.x) * 14.0 - tw * 4.0
+		m._place_owner(door + tw * 3.0)
+		m._mode = "debug"
+		var gy := ParkMap.terrain_height(c)
+		m.cam.global_position = Vector3(eye.x, ParkMap.terrain_height(eye) + 2.2, eye.y)
+		m.cam.look_at(Vector3(c.x, gy + 2.6, c.y))
+		return
 	m._enter_shop(sp)
+	if mode == "sit":
+		sit(0, 1)
+		return
 	if not order_too:
 		return
 	var s := shop()

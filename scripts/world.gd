@@ -1179,10 +1179,11 @@ func _shopfront(p: Vector2, to_road: Vector2, hex: String, kind: String) -> void
 	var w := 5.2
 	# Ic (aydinlik arka duvar, raflar, urunler)
 	var back := StandardMaterial3D.new()
-	back.albedo_color = Color("f4efe4")
+	# Aydinlik ama parlamayan arka duvar (eskiden disaridan cam bembeyaz gorunuyordu)
+	back.albedo_color = Color("cfc8b8")
 	back.emission_enabled = true
-	back.emission = Color("fff3dc")
-	back.emission_energy_multiplier = 0.55
+	back.emission = Color("e8d8b8")
+	back.emission_energy_multiplier = 0.28
 	Kit.box(r, Vector3(w - 0.2, 2.3, 0.04), Vector3(0, 1.25, -0.5), back)
 	var cols := ["c8322b", "2f62a8", "f2c230", "3f8f4a", "ffffff", "e07b1f"] if kind != "eczane" else ["ffffff", "d9ecf7", "e6f4e6", "fde7e7"]
 	for row in 3:
@@ -1195,10 +1196,10 @@ func _shopfront(p: Vector2, to_road: Vector2, hex: String, kind: String) -> void
 			Kit.box(r, Vector3(0.22, 0.28, 0.16), Vector3(x, y + 0.155, -0.38), Kit.mat(cols[(k + row) % cols.size()], 0.5))
 	# Cam ve cerceve; ortada cam kapi
 	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.7, 0.82, 0.9, 0.28)
+	glass.albedo_color = Color(0.45, 0.55, 0.6, 0.24)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.roughness = 0.05
-	glass.metallic_specular = 0.9
+	glass.roughness = 0.12
+	glass.metallic_specular = 0.4
 	Kit.box(r, Vector3(w, 2.4, 0.03), Vector3(0, 1.3, 0.0), glass)
 	for x in [-w * 0.5, -0.65, 0.65, w * 0.5]:
 		Kit.box(r, Vector3(0.08, 2.5, 0.1), Vector3(x, 1.25, 0.0), frame)

@@ -71,6 +71,7 @@ var _move := 0.0
 var _act := ""
 var _act_t := 1.0
 var _act_d := 1.0
+var _bob := 0.0            # kodla pozda uygulanan yuruyus sekmesi (position.y'ye fark olarak)
 
 
 func _ready() -> void:
@@ -283,6 +284,8 @@ func _process(dt: float) -> void:
 		anim.setup(_skel)
 		_stand_pose()
 		anim.capture_stand()
+		position.y -= _bob
+		_bob = 0.0
 	_anim_wait -= 1
 	if anim:
 		# Uzaktakiler daha seyrek guncellenir (performans)
@@ -349,7 +352,12 @@ func _process(dt: float) -> void:
 		for f in FINGERS:
 			for n in 3:
 				_turn("%sHand%s%d" % [side, f, n + 1], [[d.inverse() * Z, curl]])
-	position.y = -absf(sin(_phase)) * 0.03 * move * (1.0 + run)
+	# Yuruyus sekmesi fark olarak eklenir: dugumun disaridan verilen yuksekligi (sandalye, bank, egimli
+	# zemin) korunur. Eskiden position.y dogrudan yaziliyordu; ilk karelerde oturan / yuksekte konan
+	# insanlar y = 0'a dusuyor (ya da arazi alcaksa havada kaliyordu).
+	var bob := -absf(sin(_phase)) * 0.03 * move * (1.0 + run)
+	position.y += bob - _bob
+	_bob = bob
 
 
 ## Notr durus: dik govde, kollar yanda asagi, bacaklar duz. Animasyon aktariminin referansi
