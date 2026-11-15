@@ -111,6 +111,7 @@ var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
+var social: Node          # arkadaslar, bulusmalar, sevgili, dogum gunu, bayram (scripts/social.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var _weather_seen := ""
@@ -173,6 +174,10 @@ func _ready() -> void:
 	neighbors.m = self
 	neighbors.state = state
 	add_child(neighbors)
+	social = preload("res://scripts/social.gd").new()
+	social.m = self
+	social.state = state
+	add_child(social)
 	sports = preload("res://scripts/sports.gd").new()
 	sports.m = self
 	sports.state = state
@@ -231,6 +236,7 @@ func _ready() -> void:
 	pet_care.build()
 	bank.build()
 	neighbors.build()
+	social.build()
 	sports.build()
 	boat.build()
 
@@ -1218,6 +1224,8 @@ func _on_bought(items: Dictionary, total: int) -> void:
 func _use_item(name: String) -> void:
 	if home_life.use_item(name):
 		return
+	if social.use_item(name):
+		return
 	owner_model.act("eat", 2.4)
 	# Eldeki yiyecek/icecek: kisa sure elde gorunur
 	var it := Node3D.new()
@@ -1674,6 +1682,7 @@ func _open_phone() -> void:
 		["Arabam", "e8453c", "play", func(): _summon_my_car()],
 		["Taksi", "f2c230", "star", func(): _call_taxi("taksi")],
 		["Dolmuş", "e07b1f", "star", func(): _call_taxi("dolmus")],
+		["Sosyal", "e86a8a", "heart", func(): social.phone_app()],
 		["Görevler", "8e5cd9", "list", func(): ui.open_quests()],
 		["Kamera", "555b66", "camera", func(): _on_photo("enter")],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
@@ -1901,6 +1910,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("nb_"):
 		neighbors.command(cmd)
+		return
+	if cmd.begins_with("soc_"):
+		social.command(cmd)
 		return
 	if cmd.begins_with("hl_"):
 		home_life.command(cmd)
@@ -3776,7 +3788,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy() and not social.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3790,6 +3802,7 @@ func _process(dt: float) -> void:
 	_update_street_life(dt)
 	bank.update(dt)
 	neighbors.update(dt)
+	social.update(dt)
 	sports.update(dt)
 	home_life.update(dt)
 	pet_care.update(dt)
@@ -4064,6 +4077,10 @@ func _update_context() -> void:
 				return
 	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
+		return
+	var soc: Array = social.context()
+	if not soc.is_empty():
+		ui.set_context(soc[0], soc[1], soc[2])
 		return
 	var hlc: Array = home_life.context()
 	if not hlc.is_empty():
@@ -4499,6 +4516,15 @@ func _debug_shot() -> void:
 	if _args.has("msgs"):
 		neighbors.debug_msgs()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("friendmeet"):
+		social.debug_friendmeet()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("bayram"):
+		social.debug_bayram()
+		await get_tree().create_timer(1.0).timeout
+	if _args.has("iftar"):
+		social.debug_iftar()
+		await get_tree().create_timer(1.0).timeout
 	if _args.has("keytest"):
 		var sw: String = Keybinds.rebind("phone", KEY_B, state.d["keys"] if state.d.has("keys") else {})
 		var ev := InputEventKey.new()

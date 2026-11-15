@@ -1007,6 +1007,7 @@ const SHOP_ITEMS := {
 		["cikolata", "Çikolata", 8, "bag"], ["dondurma", "Dondurma", 10, "bag"], ["meyve", "Meyve Suyu", 7, "bag"],
 		["yumurta", "Yumurta", 3, "bag"], ["domates", "Domates", 4, "bag"], ["biber", "Biber", 3, "bag"],
 		["makarna", "Makarna", 9, "bag"], ["peynir", "Peynir", 14, "bag"],
+		["seker", "Bayram Şekeri", 4, "bag"], ["hediye", "Hediye Paketi", 35, "bag"], ["cicek", "Çiçek Buketi", 25, "bag"],
 		["top", "Oyuncak Top", 12, "pet:fun:30"], ["sampuan", "Pati Şampuanı", 15, "pet:clean:40"]],
 	"eczane": [["vitamin", "Vitamin Macunu", 15, "pet:energy:35"], ["damla", "Pire-Kene Damlası", 20, "pet:clean:45"],
 		["kulak", "Kulak Solüsyonu", 10, "pet:clean:20"], ["sakin", "Sakinleştirici Ödül", 12, "pet:fun:25"],

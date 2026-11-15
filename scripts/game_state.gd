@@ -46,6 +46,7 @@ const QUESTS := [
 	["cook", "Evde yemek pişir", 1, 25],
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],
 	["furniture", "Evine bir mobilya al", 1, 20],
+	["friend", "Bir arkadaşınla buluş (Sosyal / Mesajlar)", 1, 30],
 ]
 
 
