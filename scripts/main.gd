@@ -119,6 +119,7 @@ var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var patigram: Node        # sosyal medya uygulamasi (scripts/patigram.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var sports: Node          # hali saha ve basket (scripts/sports.gd)
+var pet_health: Node      # asi karnesi, kisirlastirma, kilo (scripts/pet_health.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var social: Node          # arkadaslar, bulusmalar, sevgili, dogum gunu, bayram (scripts/social.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
@@ -210,6 +211,10 @@ func _ready() -> void:
 	bank.m = self
 	bank.state = state
 	add_child(bank)
+	pet_health = preload("res://scripts/pet_health.gd").new()
+	pet_health.m = self
+	pet_health.state = state
+	add_child(pet_health)
 	neighbors = preload("res://scripts/neighbors.gd").new()
 	neighbors.m = self
 	neighbors.state = state
@@ -1494,6 +1499,7 @@ func _open_vet() -> void:
 		for n in state.NEEDS:
 			state.add_need(a.kind, n, 15.0)
 		p["checkup"] = Time.get_date_string_from_system()
+		state.count("vet")
 		state.save_game()
 		_pet_voice(a.kind, true)
 		_hearts(a.position)
@@ -1512,10 +1518,12 @@ func _open_vet() -> void:
 				return
 			vac[vn] = Time.get_date_string_from_system()
 			p["vaccines"] = vac
+			state.count("vet")
 			state.save_game()
 			_pet_voice(a.kind)
 			ui.toast("%s aşısı yapıldı. %s biraz mızmızlandı ama ödül bisküvisiyle unuttu." % [vn, p["name"]])
 			_open_vet())
+	pet_health.vet_items(body, a.kind, func(): _open_vet())
 	ui._panel_item(body, "AŞI KARNESİ", func():
 		var lines := []
 		for vn in ["Kuduz", "Karma", "İç-Dış Parazit"]:
@@ -1874,6 +1882,7 @@ func _open_phone() -> void:
 		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
 	if hotel.center != Vector2.INF:
 		apps.append(["Otel", "7a1f2b", "moon", func(): hotel.phone_app()])
+	apps.append(["Sağlık Karnesi", "e0457b", "heart", func(): pet_health.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
 	apps.append(["Mobilya", "8a5a35", "home", func(): home_life.open_shop()])
 	apps.append(["EvBul", "e8375f", "pin", func(): emlak.open_app()])
@@ -3941,6 +3950,7 @@ func _on_reward(kind: String, what: String) -> void:
 			state.add_need(kind, "fun", f[3])
 			state.add_xp(kind, 2.0)
 			state.count("feed")
+			pet_health.on_eat(kind, _food_pending.get(kind, "mama"))
 		"splash":
 			_bubbles(agents[kind].position)
 		"wash":
@@ -4050,6 +4060,7 @@ func _process(dt: float) -> void:
 	_update_job(dt)
 	_courier_box_tick()
 	_update_health(dt)
+	pet_health.update(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
 	pview.update(dt)
@@ -5056,6 +5067,23 @@ func _debug_shot() -> void:
 		patigram._d()["posts"][0]["likes"] = 40
 		patigram.phone_app()
 		await get_tree().create_timer(0.6).timeout
+	if _args.has("karne"):
+		var kk: String = state.d["active"]
+		state.pet(kk)["vaccines"] = {"Kuduz": "2025-01-10", "Karma": Time.get_date_string_from_system()}
+		state.pet(kk)["weight"] = 15.2 if kk == "kopek" else 5.4
+		var wl := []
+		for i in 12:
+			wl.append([Time.get_unix_time_from_system() - (12 - i) * 100.0, 12.0 + i * 0.28])
+		state.pet(kk)["wlog"] = wl
+		pet_health.neuter(kk, true)
+		_open_phone()
+		await get_tree().create_timer(0.6).timeout
+		pet_health.phone_app()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("cone"):
+		pet_health.neuter(state.d["active"], true)
+		await get_tree().create_timer(1.5).timeout
+		print("CONE var=", agents[state.d["active"]].model.face_socket.get_node_or_null("Cone") != null)
 	if _args.has("phone"):
 		_open_phone()
 		await get_tree().create_timer(0.6).timeout

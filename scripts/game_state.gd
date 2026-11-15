@@ -19,6 +19,7 @@ const FOODS := {
 	"mama": ["Kuru Mama", 8, 35, 0],
 	"konserve": ["Konserve", 14, 60, 5],
 	"odul": ["Ödül Bisküvisi", 6, 12, 18],
+	"diyet": ["Diyet Mama", 12, 30, 0],
 }
 # Gunluk gorevler: [anahtar, aciklama, hedef, odul]
 const QUESTS := [
@@ -27,7 +28,7 @@ const QUESTS := [
 	["metro", "Metroyla bir yolculuk yap", 1, 40], ["drive", "Arabayla 1 km sür", 1000, 30],
 	["shop", "Market ya da eczaneden alışveriş yap", 1, 20], ["swim", "Göle gir, ıslan", 1, 10], ["bikerent", "Pedal Ankara bisikletiyle gez", 1, 25],
 	["seesaw", "Hayvanınla tahterevalliye bin", 1, 15], ["npcplay", "Başka bir hayvanla oynat", 1, 20],
-	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["job", "Bir iş bitir (köpek gezdir / kurye)", 1, 25], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
+	["taxi", "Taksi ya da dolmuşla bir yere git", 1, 30], ["job", "Bir iş bitir (köpek gezdir / kurye)", 1, 25], ["vet", "Veterinerde aşı, kontrol ya da ameliyat yaptır", 1, 35], ["outfit", "Dolaptan kıyafet değiştir", 1, 10],
 	["weather", "Yağmurda ya da karda 1 dakika dışarıda gez", 60, 20],
 	["fuel", "Benzinlikte aracına yakıt al", 1, 20],
 	["snowman", "Karda bir kardan adam yap (kış)", 1, 25],
