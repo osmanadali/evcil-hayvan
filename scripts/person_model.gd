@@ -19,6 +19,8 @@ var riding := ""          # "bisiklet" / "scooter": oturma ve pedal pozu
 var ride_speed := 0.0
 var ride_lean := -1.0      # surucunun one egilmesi (radyan); -1 = varsayilan
 var grips: Array = []     # [sol, sag] gidon tutaclarinin dunya konumu (surerken)
+var grip_palms: Array = []   # araba: [sol, sag] avuc icinin bakacagi dunya yonu (simidin merkezine dogru)
+var grip_fwd := Vector3.ZERO # araba: direksiyon ekseninin surucuden uzaga bakan dunya yonu
 var ride_feet := Vector3.ZERO    # ayak bileginin arac uzayindaki yeri (x = yarim aciklik); sifir = serbest poz
 var ride_crank := Vector3.ZERO   # bisiklet: (pedal yarim acikligi, orta gobek y, orta gobek z); pedal dairesi
 var ride_crank_r := 0.16
@@ -28,6 +30,7 @@ var _lean_auto := 0.0
 var _palm := {}           # taraf -> dinlenme durusunda avuc cercevesi (x: parmak yonu, y: avuc ici yonu)
 var hand_twist := 1.2     # avucu asagi cevirmek icin on kol donusu
 var _pedal := 0.0
+var _arm_in := 0.0          # yuruyuste ust kollarin govdeye yaklastirilmasi (radyan)
 const AnimRetarget = preload("res://scripts/anim_retarget.gd")
 var anim: Node                 # hazir animasyonlar (yoksa kodla poz)
 var use_anims := true
@@ -188,6 +191,10 @@ func _process(dt: float) -> void:
 		if anim and riding == "araba":
 			anim.play("Driving", 0.2)
 			anim.apply()
+			# Govde simide dogru hafifce egilir, bas dik kalir
+			_swing("Spine", 0.2)
+			_swing("Neck", -0.14)
+			_wheel_hands()
 			return
 		_ride_pose(dt)
 		return
@@ -382,6 +389,26 @@ func _ride_pose(dt: float) -> void:
 			_curl_fingers(side, 0.5)
 
 
+## Araba: iki el direksiyon simidini (saat 9 ve 3) kavrar; tutma noktalari simitle birlikte doner.
+func _wheel_hands() -> void:
+	if grips.size() != 2:
+		return
+	var inv := _skel.global_transform.affine_inverse()
+	for n in 2:
+		var palm := Vector3.ZERO
+		var fwd := Vector3.ZERO
+		if grip_palms.size() == 2:
+			palm = (inv.basis * (grip_palms[n] as Vector3)).normalized()
+			fwd = (inv.basis * grip_fwd).normalized()
+		_arm_ik("Left" if n == 0 else "Right", inv * (grips[n] as Vector3), true, palm, fwd)
+
+
+## Bas gizlenir / gosterilir (birinci sahis kamerada kendi basi goruntuye girmesin; kollar gorunur kalir).
+func set_head_hidden(on: bool) -> void:
+	if _skel and _bones.has("Head"):
+		_skel.set_bone_pose_scale(_bones["Head"], Vector3.ONE * (0.001 if on else 1.0))
+
+
 ## Parmaklari avuc icine kivirir (0 = acik, 1 = yumruk); bas parmak hafifce kapanir.
 func _curl_fingers(side: String, k: float) -> void:
 	var pf: Basis = _palm[side]
@@ -454,6 +481,12 @@ func _anim_pose() -> void:
 	else:
 		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
 	anim.apply()
+	# Yuruyus / kosu kliplerinde kollar govdeden fazla acik: ust kollar govdeye yaklastirilir
+	var loco: bool = anim.current in ["Walk", "Jog_Fwd", "Sprint"] and not airborne
+	_arm_in = move_toward(_arm_in, 0.16 if loco else 0.0, get_process_delta_time() * 0.8)
+	if _arm_in > 0.0:
+		_roll("LeftArm", -_arm_in)
+		_roll("RightArm", _arm_in)
 	if _act_t < 1.0 and _act == "kick":
 		# Sut: sag bacak geriye acilir, one savrulur; govde hafifce geri yaslanir
 		var t := _act_t
@@ -481,6 +514,14 @@ func _swing(bone: String, a: float) -> void:
 	_skel.set_bone_pose_rotation(i, (gp.inverse() * bg).get_rotation_quaternion())
 
 
+## Kemigi iskelet uzayinda ileri (Z) ekseni etrafinda dondurur (sol kol icin - = govdeye dogru).
+func _roll(bone: String, a: float) -> void:
+	var i: int = _bones[bone]
+	var gp := _skel.get_bone_global_pose(_skel.get_bone_parent(i)).basis.orthonormalized()
+	var bg := Basis(Vector3.BACK, a) * (gp * Basis(_skel.get_bone_pose_rotation(i)))
+	_skel.set_bone_pose_rotation(i, (gp.inverse() * bg).get_rotation_quaternion())
+
+
 ## Iskelet birimi -> metre (ice aktarilan modelin olcegi).
 func _scale_k() -> float:
 	var h := _skel.get_bone_global_rest(_bones["Head"]).origin.y
@@ -499,7 +540,8 @@ func _rot_between(u: Vector3, v: Vector3) -> Basis:
 ## Iki kemikli kol cozucusu: eli hedefe (iskelet uzayi) goturur, dirsek asagi-disari bakar.
 ## grip: hedef yatay bir gidon tutacagi; avuc tutacagin ustune oturur, parmaklar tutacagi sarar.
 ## Degilse el on kolun devaminda durur, avuc asagi doner.
-func _arm_ik(side: String, target: Vector3, grip := false) -> void:
+## palm / fwd verilirse (direksiyon simidi): avuc 'palm' yonune bakar, parmaklar 'fwd' yonunde simidi sarar.
+func _arm_ik(side: String, target: Vector3, grip := false, palm := Vector3.ZERO, fwd_dir := Vector3.ZERO) -> void:
 	var sx := 1.0 if side == "Left" else -1.0
 	var ia: int = _bones[side + "Arm"]
 	var iff: int = _bones[side + "ForeArm"]
@@ -515,7 +557,12 @@ func _arm_ik(side: String, target: Vector3, grip := false) -> void:
 	grip = grip and absf(reach.normalized().x) < 0.75
 	var hf := Vector3.ZERO      # elin parmak yonu
 	var hn := Vector3.ZERO      # avuc icinin baktigi yon
-	if grip:
+	if grip and palm != Vector3.ZERO:
+		hn = palm
+		hf = fwd_dir + reach.normalized() * 0.7
+		hf = (hf - hn * hf.dot(hn)).normalized()
+		target = target - hf * 0.08 - hn * 0.035       # bilek: avuc ortasi simidin dis yuzunde
+	elif grip:
 		var fwd := (reach * Vector3(0, 1, 1)).normalized()
 		var flat := (reach * Vector3(0, 0, 1)).normalized()
 		hf = (fwd + flat * 0.6 + Vector3(-sx * 0.12, 0, 0)).normalized()
