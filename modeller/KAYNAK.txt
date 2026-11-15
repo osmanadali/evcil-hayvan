@@ -5,3 +5,14 @@ sedan_ic_mekanli.glb
   Not: Oyunda marka amblemleri kaldirilacak ve araca uydurma bir ad verilecek.
   Parcalar: govde (tek parca, kapilar ayri degil), camlar, tekerler, farlar, ic mekan,
   koltuklar, on panel, gosterge, direksiyon (ayri).
+
+hatchback_kapili.glb
+  Kaynak: Sketchfab, "Ariel_ hatchback V2", yapan: gandoplyas
+  https://sketchfab.com/3d-models/52c7d1106dff4c7dbce94ce5f0a7a0fb
+  Lisans: CC Attribution (CC-BY 4.0). Ozgun tasarim; kapilar, bagaj ve kaput acilir, ic mekan var.
+  Parcalar adsiz (Object_2..25); hangisinin kapi oldugu konuma bakilarak bulunacak.
+
+fps_araba_kapili.glb (yedek)
+  Kaynak: Sketchfab, "POV Lowpoly Car Free", yapan: danielmoon
+  https://sketchfab.com/3d-models/afcc21a7b7774677a1e1c1a34ffaae1a
+  Lisans: CC Attribution (CC-BY 4.0). Birinci sahis icin yapilmis, tum kapilar ve bagaj acilir.
