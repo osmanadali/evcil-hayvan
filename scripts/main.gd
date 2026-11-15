@@ -108,6 +108,7 @@ var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (script
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var eateries: Node        # lokantalar, ek marketler, Yakinimda (scripts/eateries.gd)
+var everyday: Node        # balik tutma, Sali pazari, Maras dondurmacisi (scripts/everyday.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
@@ -156,6 +157,10 @@ func _ready() -> void:
 	eateries.m = self
 	eateries.state = state
 	add_child(eateries)
+	everyday = preload("res://scripts/everyday.gd").new()
+	everyday.m = self
+	everyday.state = state
+	add_child(everyday)
 	pet_care = preload("res://scripts/pet_care.gd").new()
 	pet_care.m = self
 	pet_care.state = state
@@ -263,6 +268,7 @@ func _ready() -> void:
 	boat.build()
 	loading.set_progress(0.92, "Arayüz kuruluyor…")
 	await get_tree().process_frame
+	everyday.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -1366,6 +1372,8 @@ func _use_item(name: String) -> void:
 				state.add_need(k, "fun", 4.0)
 		"Ayran":
 			ui.toast("Ayran içtin, serinledin!")
+		"Elma", "Mandalina":
+			ui.toast("%s taptaze, pazar malı!" % name)
 		"Çay":
 			ui.toast("Çay içtin, keyfin yerine geldi.")
 			_pet_voice(a.kind)
@@ -1788,6 +1796,8 @@ func _open_phone() -> void:
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
 	if boat.built:
 		apps.append(["Göl Turu", "1f7fb8", "drop", func(): boat.phone_app()])
+	if everyday.has_content():
+		apps.append(["Mahalle", "2a6fa8", "map", func(): everyday.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Yakınımda", "e0743a", "pin", func(): eateries.nearby_app()])
@@ -2118,6 +2128,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd == "atm" or cmd == "bank_app" or cmd == "bills_app":
 		bank.command(cmd)
+		return
+	if cmd.begins_with("ed_"):
+		everyday.command(cmd)
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
@@ -3936,6 +3949,7 @@ func _process(dt: float) -> void:
 	street_food.update(dt)
 	eateries.update(dt)
 	seating.update(dt)
+	everyday.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4435,6 +4449,10 @@ func _update_context() -> void:
 	if not sc.is_empty():
 		ui.set_context(sc[0], sc[1], sc[2])
 		return
+	var ed: Array = everyday.context()
+	if not ed.is_empty():
+		ui.set_context(ed[0], ed[1], ed[2])
+		return
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
 		ui.set_context(sf[0], sf[1], sf[2])
@@ -4808,6 +4826,12 @@ func _debug_shot() -> void:
 		boat.debug_board("pedal", 0.0)
 	if _args.has("lokanta"):
 		eateries.debug_enter(_args["lokanta"] == "order")
+	if _args.has("fish"):
+		everyday.debug("fish", _args["fish"])
+	if _args.has("pazar"):
+		everyday.debug("pazar", _args["pazar"])
+	if _args.has("dondurma"):
+		everyday.debug("dondurma", _args["dondurma"])
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):
