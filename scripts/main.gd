@@ -173,24 +173,16 @@ func _ready() -> void:
 	_weather_seen = weather.kind
 	# Dunya kurulurken yukleniyor ekrani goster
 	var loading := CanvasLayer.new()
-	var bg := ColorRect.new()
-	bg.color = Color("f6e7c8")
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	loading.add_child(bg)
-	var lt := Label.new()
+	loading.layer = 50
 	var zone: String = ParkMap.zone if travel_to != "" else _args.get("zone", state.d.get("zone", ""))
 	if not ParkMap.ZONE_TITLES.has(zone):
 		zone = ""
 	if zone != ParkMap.zone or not ParkMap.loaded:
 		ParkMap.reset(zone)
 	state.d["zone"] = zone
-	lt.text = "Patili Gezinti\n\n%s%s hazırlanıyor…" % ["M4 metrosuyla yoldasın…\n\n" if travel_to != "" else "", ParkMap.ZONE_TITLES[zone]]
-	lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lt.add_theme_font_size_override("font_size", 44)
-	lt.add_theme_color_override("font_color", Color("6b4a2f"))
-	lt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	loading.add_child(lt)
+	# Yukleniyor ekrani: illustrasyon (metroyla gelirken metro sahnesi)
+	Ui.build_loading(loading, "%s hazırlanıyor…" % ParkMap.ZONE_TITLES[zone],
+		"M4 metrosuyla yoldasın…" if travel_to != "" else "", 1 if travel_to != "" else int(_args.get("loadart", "-1")))
 	add_child(loading)
 	cam = Camera3D.new()
 	add_child(cam)
@@ -249,7 +241,10 @@ func _ready() -> void:
 	minimap.tapped.connect(_open_map)
 	map_screen.nav_chosen.connect(func(p: Vector2, n: String): _set_nav(p, n))
 	get_tree().set_auto_accept_quit(false)
-	loading.queue_free()
+	if _args.has("holdload"):    # test: yukleniyor ekranini acik birak (--holdload)
+		get_tree().create_timer(60.0).timeout.connect(loading.queue_free)
+	else:
+		loading.queue_free()
 	_ready_done = true
 	if travel_to != "":
 		# Metroyla gelindi: istasyon girisinden cik, dogrudan oyuna devam

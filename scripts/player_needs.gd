@@ -372,7 +372,7 @@ func _row(need: String, icon: String, title: String, c: Color) -> void:
 	l.text = title
 	l.custom_minimum_size = Vector2(62, 0)
 	l.add_theme_font_override("font", m.ui.F_BODY)
-	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_font_size_override("font_size", 16)
 	l.add_theme_color_override("font_color", Color.WHITE)
 	l.add_theme_constant_override("outline_size", 5)
 	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
@@ -382,9 +382,13 @@ func _row(need: String, icon: String, title: String, c: Color) -> void:
 	bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bs := StyleBoxFlat.new()
-	bs.bg_color = Color(0, 0, 0, 0.55)
-	bs.border_color = Color(0, 0, 0, 0.85)
+	bs.bg_color = Color(0.07, 0.075, 0.095, 0.75)
+	bs.border_color = Color(0.07, 0.075, 0.095, 0.95)
 	bs.set_border_width_all(2)
+	bs.skew = Vector2(-0.3, 0)
+	bs.shadow_color = Color(0, 0, 0, 0.3)
+	bs.shadow_size = 3
+	bs.shadow_offset = Vector2(2, 2)
 	bg.add_theme_stylebox_override("panel", bs)
 	row.add_child(bg)
 	var fill := Panel.new()
@@ -393,6 +397,7 @@ func _row(need: String, icon: String, title: String, c: Color) -> void:
 	fill.size = Vector2(146, 8)
 	var fs := StyleBoxFlat.new()
 	fs.bg_color = c
+	fs.skew = Vector2(-0.3, 0)
 	fill.add_theme_stylebox_override("panel", fs)
 	bg.add_child(fill)
 	_rows[need] = {"fill": fill, "style": fs, "icon": ic, "color": c}
