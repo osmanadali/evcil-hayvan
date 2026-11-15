@@ -94,15 +94,17 @@ func _process(_dt: float) -> void:
 	_ring.size = Vector2(SIZE + 40, SIZE + 40)
 	_ring.visible = visible
 	_ring.queue_redraw()
-	_coin_label.position = position + Vector2(-20, SIZE + 18)
+	# Para ve rota yazisi dairenin ustunde (harita ekranin sag alt kosesinde)
+	var top_y := -20.0 - (66.0 if speed_kmh >= 0.0 else 0.0)
+	_coin_label.position = position + Vector2(-20, top_y - 34.0)
 	_coin_label.size = Vector2(SIZE + 40, 28)
 	_coin_label.visible = visible
 	_speed_label.visible = visible and speed_kmh >= 0.0
-	_speed_label.position = position + Vector2(-20, -62)
+	_speed_label.position = position + Vector2(-20, -66)
 	_speed_label.size = Vector2(SIZE + 40, 44)
 	_speed_label.text = "%d km/s" % int(speed_kmh)
 	_coin_label.text = "₺ %d" % coins
-	_dist_label.position = position + Vector2(-20, SIZE + 46)
+	_dist_label.position = position + Vector2(-20, top_y - 60.0)
 	_dist_label.size = Vector2(SIZE + 40, 24)
 	_dist_label.visible = visible
 	if route.is_empty():

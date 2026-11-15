@@ -91,8 +91,8 @@ func place(p: Vector2) -> void:
 	position = Vector3(p.x, ParkMap.walk_height(p), p.y)
 
 
-func set_selected(on: bool) -> void:
-	_ring.visible = on
+func set_selected(_on: bool) -> void:
+	_ring.visible = false     # bilgisayar surumunde secim halkasi yok
 
 
 ## Fotograf ve dolap modunda isim etiketi ve halka gizlenir.
