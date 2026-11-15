@@ -5,11 +5,3 @@ sedan_ic_mekanli.glb
   Not: Oyunda marka amblemleri kaldirilacak ve araca uydurma bir ad verilecek.
   Parcalar: govde (tek parca, kapilar ayri degil), camlar, tekerler, farlar, ic mekan,
   koltuklar, on panel, gosterge, direksiyon (ayri).
-
-hatchback_kapili.glb
-  Kaynak: Sketchfab, "2016 Volkswagen Polo", yukleyen: BHP3D
-  https://sketchfab.com/3d-models/bab77902c638427bb85e68b6762a481f
-  Lisans: CC Attribution olarak isaretli. UYARI: aciklamasinda baska bir oyundan (GTA SA modu,
-  kaynak Turn10) cikarildigi yaziyor; oyun yayimlanacak/satilacaksa bu model degistirilmeli.
-  Parcalar: govde, 4 kapi (door_lf/rf/lr/rr, mentese noktali), kaput, bagaj, direksiyon,
-  gosterge ibreleri, camlar, farlar, 4 teker, ic mekan.
