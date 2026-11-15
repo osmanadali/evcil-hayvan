@@ -112,6 +112,7 @@ var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
 var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
+var emlak: Node          # EvBul: kiralik / satilik evler (scripts/emlak.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
@@ -185,6 +186,10 @@ func _ready() -> void:
 	hotel.m = self
 	hotel.state = state
 	add_child(hotel)
+	emlak = preload("res://scripts/emlak.gd").new()
+	emlak.m = self
+	emlak.state = state
+	add_child(emlak)
 	if _args.has("weather"):
 		weather.force(_args["weather"])
 	_weather_seen = weather.kind
@@ -489,7 +494,8 @@ func _spawn_cast() -> void:
 	_spawn_buses()
 	owner_model.stepped.connect(func(): _sfx("adim%d" % (randi() % 4 + 1), -9.0, randf_range(0.9, 1.1)))
 	owner_node.add_child(owner_model)
-	_place_owner(ParkMap.spot("baslangic"))
+	var em_spawn: Vector2 = emlak.spawn_point()      # tasinilan ana ev varsa oyun onun kapisinda acilir
+	_place_owner(em_spawn if em_spawn != Vector2.INF else ParkMap.spot("baslangic"))
 	owner_node.rotation.y = PI
 	var pets: Array = state.owned_pets()
 	if pets.is_empty():
@@ -1696,12 +1702,13 @@ func _open_phone() -> void:
 		apps.append(["Otel", "7a1f2b", "moon", func(): hotel.phone_app()])
 	apps.append(["Eğitim", "d9673a", "star", func(): pet_care.open_training()])
 	apps.append(["Mobilya", "8a5a35", "home", func(): home_life.open_shop()])
+	apps.append(["EvBul", "e8375f", "pin", func(): emlak.open_app()])
 	if not pet_care.shelter.is_empty():
 		apps.append(["Barınak", "2f6f4f", "paw", func(): pet_care.command("shelter_nav")])
 	if world.vet_pos != Vector2.INF:
 		apps.append(["Veteriner", "1e9a8a", "plus", func(): _set_nav(world.vet_pos, "Veteriner")])
 	if ParkMap.zone == "":
-		apps.append(["Evim", "f29f4b", "home", func(): _set_nav(HOME_DOOR, "Evim")])
+		apps.append(["Evim", "f29f4b", "home", func(): _set_nav(emlak.main_door(), "Evim")])
 	ui.open_phone(apps, state.pet(state.d["active"])["name"] + " ile")
 
 
@@ -1892,6 +1899,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("htl_"):
 		hotel.command(cmd)
+		return
+	if cmd.begins_with("em_"):
+		emlak.command(cmd)
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
@@ -2198,6 +2208,7 @@ func _spawn_rides() -> void:
 	dealer.build()
 	dealer.spawn_garage()
 	hotel.build()
+	emlak.build()
 
 
 ## Govde boyasini degistirir (lastik ve camlar koyu oldugu icin carpim az etkiler).
@@ -3108,6 +3119,8 @@ func _open_map() -> void:
 	var dyn: Array = []
 	if ParkMap.zone == "":
 		dyn.append(["Evim", HOME_DOOR + HOME_DOOR_OUT * 1.5, "e0703a", "home"])
+		for eh in emlak.owned():
+			dyn.append(["%s · %s" % [eh["title"], eh["street"]], eh["out"], "2f9e4a", "home"])
 	for r in _rides:
 		var kind: String = r.get_meta("kind")
 		var label: String = {"araba": "Arabam", "scooter": "Scooter", "motosiklet": "Motosiklet", "bisiklet": "Bisiklet"}.get(kind, "Aracım")
@@ -3154,6 +3167,8 @@ func _update_minimap(dt: float) -> void:
 	var mk: Array = []
 	if ParkMap.zone == "":
 		mk.append([HOME_DOOR, Color("e0703a"), "ev"])
+		for eh in emlak.owned():
+			mk.append([eh["out"], Color("2f9e4a"), "ev"])
 	for r in _rides:
 		if r != _ride:
 			mk.append([Vector2(r.position.x, r.position.z), Color("2d3440"), "arac"])
@@ -3804,6 +3819,7 @@ func _process(dt: float) -> void:
 	boat.update(dt)
 	radio.update(dt)
 	hotel.update(dt)
+	emlak.update(dt)
 	_update_wet(dt)
 	for k in agents:
 		agents[k].owner_speed = owner_model.speed
@@ -4010,6 +4026,17 @@ func _update_context() -> void:
 	var htc: Array = hotel.context() if _bus_ride == null and _taxi == null else []
 	if not htc.is_empty():
 		ui.set_context(htc[0], htc[1], htc[2])
+		return
+	var emc: Array = emlak.context() if _bus_ride == null and _taxi == null else []
+	if not emc.is_empty():
+		ui.set_context(emc[0], emc[1], emc[2])
+		return
+	if emlak.inside():
+		var ehl: Array = home_life.context()
+		if ehl.is_empty():
+			ui.set_context("", "")
+		else:
+			ui.set_context(ehl[0], ehl[1], ehl[2])
 		return
 	if _bus_ride != null:
 		if _bus_ride.at_stop != "":
@@ -4789,6 +4816,8 @@ func _debug_shot() -> void:
 		print("RADYO ", radio.label(), " · ", radio.sub_label())
 	if _args.has("dealer"):
 		await dealer.debug(_args["dealer"])
+	if _args.has("emlak") or str(_args.get("view", "")).begins_with("listing"):
+		await emlak.debug(str(_args.get("emlak", "")), str(_args.get("view", "")))
 	if _args.has("hotel") or _args.has("hotelroom"):
 		await hotel.debug(_args.get("hotelroom", _args.get("hotel", "1")), _args.has("hotelroom"))
 	if _args.has("police") or _args.has("redlight") or _args.has("parkfine"):

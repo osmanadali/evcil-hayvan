@@ -244,6 +244,9 @@ func _track() -> void:
 	elif ParkMap.home == m._home:
 		d["pos_in"] = "home"
 		d["pos_zone"] = ParkMap.zone
+	elif m.emlak != null and m.emlak.inside_owned():
+		d["pos_in"] = "emlak:" + m.emlak.cur_id()
+		d["pos_zone"] = ParkMap.zone
 	elif lobby != null and ParkMap.home == lobby:
 		d["pos_in"] = "hotel"
 		d["pos_zone"] = ParkMap.zone
@@ -274,6 +277,8 @@ func on_enter_play() -> void:
 				if pos.distance_to(rp) < 1.6:
 					pos = rp + Vector2(cos(r.rotation.y), -sin(r.rotation.y)) * 2.0
 				break
+	if str(d.get("pos_in", "")).begins_with("emlak:") and m.emlak.restore(str(d["pos_in"]).substr(6)):
+		return
 	match str(d.get("pos_in", "")):
 		"home":
 			if ParkMap.zone == "":

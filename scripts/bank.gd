@@ -20,6 +20,7 @@ const BILLS := {
 	"elektrik": ["Elektrik", "Başkent Işık Elektrik", 60, 110],
 	"su": ["Su", "Çubuk Su İdaresi", 30, 60],
 	"dogalgaz": ["Doğalgaz", "Anka Gaz", 45, 130],
+	"kira": ["Kira", "EvBul Emlak", 0, 0],       # scripts/emlak.gd keser (kiralik evler, haftalik)
 }
 
 var m: Node
@@ -158,6 +159,8 @@ func _issue() -> void:
 	var lines: Array = []
 	for k in BILLS:
 		var info: Array = BILLS[k]
+		if int(info[3]) <= 0:
+			continue
 		var exists := false
 		for b in unpaid():
 			if b["k"] == k:
