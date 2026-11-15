@@ -21,8 +21,14 @@ const RECIPES := {
 	"makarna": ["Makarna", {"Makarna": 1}, {"Peynir": 1}, 40, true, "f0d27a"],
 	"tost": ["Kaşarlı Tost", {"Ekmek": 1, "Peynir": 1}, {"Domates": 1}, 35, false, "d9a05a"],
 	"yumurta": ["Haşlanmış Yumurta", {"Yumurta": 1}, {}, 20, true, "f7f3e6"],
+	"f_sazan": ["Fırın Sazan", {"Sazan": 1}, {"Domates": 1}, 55, true, "b88a3e"],
+	"f_levrek": ["Izgara Levrek", {"Levrek": 1}, {"Biber": 1}, 55, true, "c9b48a"],
+	"f_alabalik": ["Tava Alabalık", {"Alabalık": 1}, {"Domates": 1}, 50, true, "d68a6a"],
+	"f_kefal": ["Kefal Tava", {"Kefal": 1}, {}, 40, true, "a8a89a"],
+	"f_gumus": ["Çıtır Gümüş", {"Gümüş": 3}, {}, 30, true, "d8d2b0"],
+	"f_yayin": ["Yayın Buğulama", {"Yayın": 1}, {"Domates": 1, "Biber": 1}, 75, true, "8a8a70"],
 }
-const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir"]
+const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir", "Sazan", "Levrek", "Alabalık", "Kefal", "Gümüş", "Yayın"]
 
 ## Mobilya: kimlik -> [ad, fiyat, yer aciklamasi, yerel konum]
 const FURNITURE := {
@@ -488,6 +494,8 @@ func open_cook_panel() -> void:
 		var r: Array = RECIPES[id]
 		var key: String = id
 		var ok := _has(key)
+		if key.begins_with("f_") and not ok:
+			continue
 		var b: Button = m.ui._panel_item(body, ("%s · %s" % [r[0], _need_text(key)]) if ok else ("%s · eksik: %s" % [r[0], _need_text(key)]), func():
 			if _has(key):
 				m.ui.close_modal()
