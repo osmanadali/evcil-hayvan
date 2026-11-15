@@ -21,8 +21,11 @@ const RECIPES := {
 	"makarna": ["Makarna", {"Makarna": 1}, {"Peynir": 1}, 40, true, "f0d27a"],
 	"tost": ["Kaşarlı Tost", {"Ekmek": 1, "Peynir": 1}, {"Domates": 1}, 35, false, "d9a05a"],
 	"yumurta": ["Haşlanmış Yumurta", {"Yumurta": 1}, {}, 20, true, "f7f3e6"],
+	"kofte": ["Izgara Köfte", {"Kıyma": 1}, {"Ekmek": 1}, 55, false, "7a3f24"],
+	"patates": ["Fırında Patates", {"Patates": 2}, {"Biber": 1}, 40, true, "e0b04a"],
+	"salata": ["Çoban Salata", {"Domates": 1, "Salatalık": 1}, {"Biber": 1}, 22, false, "d94a3a"],
 }
-const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir"]
+const INGREDIENTS := ["Yumurta", "Domates", "Biber", "Makarna", "Peynir", "Kıyma", "Patates", "Salatalık"]
 
 ## Mobilya: kimlik -> [ad, fiyat, yer aciklamasi, yerel konum]
 const FURNITURE := {

@@ -45,6 +45,8 @@ const QUESTS := [
 	["neighbor", "Bir komşuna yardım et", 1, 25],
 	["cook", "Evde yemek pişir", 1, 25],
 	["eat_out", "Dışarıda yemek ye", 1, 25],
+	["esnaf", "Mahalle esnafından alışveriş yap (fırın, kasap, manav)", 2, 15],
+	["kahvehane", "Kahvehanede tavla ya da okey oyna", 1, 20],
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],
 	["furniture", "Evine bir mobilya al", 1, 20],
 ]

@@ -105,6 +105,7 @@ var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (script
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var eateries: Node        # lokantalar, ek marketler, Yakinimda (scripts/eateries.gd)
+var esnaf: Node           # firin, kasap, manav, berber, kahvehane, cuma, dugun konvoyu (scripts/esnaf.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
@@ -151,6 +152,10 @@ func _ready() -> void:
 	eateries.m = self
 	eateries.state = state
 	add_child(eateries)
+	esnaf = preload("res://scripts/esnaf.gd").new()
+	esnaf.m = self
+	esnaf.state = state
+	add_child(esnaf)
 	pet_care = preload("res://scripts/pet_care.gd").new()
 	pet_care.m = self
 	pet_care.state = state
@@ -234,6 +239,7 @@ func _ready() -> void:
 	_spawn_coins()
 	street_food.build()
 	eateries.build()
+	esnaf.build()
 	pet_care.build()
 	bank.build()
 	neighbors.build()
@@ -490,6 +496,10 @@ func _spawn_cast() -> void:
 		owner_model.tint2 = Color(of[2])
 		owner_model.pattern = of[3]
 		owner_model.pants = Color(of[4]) if of[4] != "" else Color(0, 0, 0, 0)
+	var hr: Array = state.d.get("hair", [])
+	if hr.size() >= 2:
+		owner_model.hair_style = int(hr[0])
+		owner_model.hair_color = Color(hr[1]) if String(hr[1]) != "" else Color(0, 0, 0, 0)
 	_ride = null
 	_spawn_rides()
 	_spawn_buses()
@@ -1235,6 +1245,8 @@ func _on_bought(items: Dictionary, total: int) -> void:
 func _use_item(name: String) -> void:
 	if home_life.use_item(name):
 		return
+	if esnaf.use_item(name):
+		return
 	owner_model.act("eat", 2.4)
 	# Eldeki yiyecek/icecek: kisa sure elde gorunur
 	var it := Node3D.new()
@@ -1703,6 +1715,8 @@ func _open_phone() -> void:
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Yakınımda", "e0743a", "pin", func(): eateries.nearby_app()])
+	if not esnaf.shops.is_empty():
+		apps.append(["Esnaf", "c7802b", "bag", func(): esnaf.phone_app()])
 	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
 	apps.append(["Faturalar" + (" (%d)" % bank.unpaid().size() if not bank.unpaid().is_empty() else ""), "d9423a", "list", func(): bank.open_bills(false)])
 	if sports.root != null:
@@ -1931,6 +1945,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("eat_"):
 		eateries.command(cmd)
+		return
+	if cmd.begins_with("esn_"):
+		esnaf.command(cmd)
 		return
 	if cmd.begins_with("boat_"):
 		boat.command(cmd)
@@ -3143,6 +3160,8 @@ func _open_map() -> void:
 		dyn.append(["Veteriner", world.vet_pos, "1e9a8a", "plus"])
 	for fs in world.fuel_stations:
 		dyn.append([fs["name"], fs["entry"], "17694a", "drop"])
+	for es in esnaf.shops:
+		dyn.append([es["name"], es["pos"], es["accent"], "bag"])
 	for pl in eateries.places:
 		dyn.append([pl["name"], pl["pos"], pl["accent"], "star" if pl["kind"] == "lokanta" else "cart"])
 	map_screen.dynamic = dyn
@@ -3799,7 +3818,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated() and not eateries.is_seated() and not needs.busy() and not home_life.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not eateries.is_seated() and not esnaf.is_seated() and not needs.busy() and not home_life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3819,6 +3838,7 @@ func _process(dt: float) -> void:
 	fuel.update(dt)
 	street_food.update(dt)
 	eateries.update(dt)
+	esnaf.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4117,6 +4137,10 @@ func _update_context() -> void:
 	var bt: Array = boat.context()
 	if not bt.is_empty():
 		ui.set_context(bt[0], bt[1], bt[2])
+		return
+	var es: Array = esnaf.context()
+	if not es.is_empty():
+		ui.set_context(es[0], es[1], es[2])
 		return
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
@@ -4492,6 +4516,19 @@ func _debug_shot() -> void:
 		boat.debug_board("pedal", 0.0)
 	if _args.has("lokanta"):
 		eateries.debug_enter(_args["lokanta"] == "order")
+	if _args.has("firin"):
+		esnaf.debug("panel" if _args["firin"] == "panel" else "shop", "firin")
+	for ek in ["kasap", "manav"]:
+		if _args.has(ek):
+			esnaf.debug("panel" if _args[ek] == "panel" else "shop", ek)
+	if _args.has("berber"):
+		esnaf.debug("berber", _args["berber"])
+	if _args.has("kahvehane"):
+		esnaf.debug("kahvehane", _args["kahvehane"])
+	if _args.has("dugun"):
+		esnaf.debug("dugun", "")
+	if _args.has("cuma"):
+		esnaf.debug("cuma", "")
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):
