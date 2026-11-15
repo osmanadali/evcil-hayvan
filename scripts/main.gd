@@ -8,6 +8,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const PetModel = preload("res://scripts/pet_model.gd")
 const PetAgent = preload("res://scripts/pet_agent.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
+const Keybinds = preload("res://scripts/keybinds.gd")
 const UiKit = preload("res://scripts/ui_kit.gd")
 const Bus = preload("res://scripts/bus.gd")
 const Minimap = preload("res://scripts/minimap.gd")
@@ -125,6 +126,7 @@ func _ready() -> void:
 	add_child(state)
 	if _args.has("shot"):
 		state.reset()
+	Keybinds.setup(state.d.get("keys", {}))
 	_build_environment()
 	_setup_audio()
 	weather = Weather.new()
@@ -770,56 +772,55 @@ func _input(e: InputEvent) -> void:
 	if not k.pressed:
 		return
 	if _mode == "play" and not ui.is_blocking() and not map_screen.visible:
-		match k.keycode:
-			KEY_E, KEY_F:
-				if _taxi != null:
-					_leave_taxi(false)
-				elif _ride != null:
-					if ui._context_cmd == "fuel":
-						_on_command("fuel")
-					elif absf(_drive_speed) < 2.0:
-						_exit_ride()
-				elif ui._context_cmd != "":
-					_on_command(ui._context_cmd)
-			KEY_1:
-				_on_command("pet")
-			KEY_2:
-				ui._on_action("food")
-			KEY_3:
-				_on_command("yarn" if state.d["active"] == "kedi" else "throw")
-			KEY_Q:
-				ui._on_action("more")
-			KEY_M:
-				_open_map()
-			KEY_C:
-				_on_photo("enter")
-			KEY_V:
-				_toggle_fps()
-			KEY_P:
-				_open_phone()
-			KEY_G:
-				ui.open_quests()
-			KEY_J:
-				_open_jobs()
-			KEY_R:
-				_on_command("come")
-			KEY_U:
-				_on_command("umbrella")
-			KEY_L:
-				_on_command("leash")
-			KEY_T:
-				_on_command("train")
-			KEY_N:
-				radio.cycle()
-			KEY_K:
-				neighbors.open_messages()
-			KEY_TAB:
-				var pets: Array = state.owned_pets()
-				if pets.size() > 1:
-					_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
-	if k.keycode == KEY_SPACE and _mode == "play" and _ride == null and not needs.busy():
+		if k.is_action_pressed("interact"):
+			if _taxi != null:
+				_leave_taxi(false)
+			elif _ride != null:
+				if ui._context_cmd == "fuel":
+					_on_command("fuel")
+				elif absf(_drive_speed) < 2.0:
+					_exit_ride()
+			elif ui._context_cmd != "":
+				_on_command(ui._context_cmd)
+		elif k.is_action_pressed("pet_love"):
+			_on_command("pet")
+		elif k.is_action_pressed("pet_feed"):
+			ui._on_action("food")
+		elif k.is_action_pressed("pet_play"):
+			_on_command("yarn" if state.d["active"] == "kedi" else "throw")
+		elif k.is_action_pressed("commands"):
+			ui._on_action("more")
+		elif k.is_action_pressed("map"):
+			_open_map()
+		elif k.is_action_pressed("photo"):
+			_on_photo("enter")
+		elif k.is_action_pressed("fps_view"):
+			_toggle_fps()
+		elif k.is_action_pressed("phone"):
+			_open_phone()
+		elif k.is_action_pressed("quests"):
+			ui.open_quests()
+		elif k.is_action_pressed("jobs"):
+			_open_jobs()
+		elif k.is_action_pressed("call_pet"):
+			_on_command("come")
+		elif k.is_action_pressed("umbrella"):
+			_on_command("umbrella")
+		elif k.is_action_pressed("leash"):
+			_on_command("leash")
+		elif k.is_action_pressed("train"):
+			_on_command("train")
+		elif k.is_action_pressed("radio"):
+			radio.cycle()
+		elif k.is_action_pressed("messages"):
+			neighbors.open_messages()
+		elif k.is_action_pressed("switch_pet"):
+			var pets: Array = state.owned_pets()
+			if pets.size() > 1:
+				_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
+	if k.is_action_pressed("jump") and _mode == "play" and _ride == null and not needs.busy():
 		_jump()
-	if _mode == "metro" and _metro and (k.keycode == KEY_SPACE or k.keycode == KEY_ENTER):
+	if _mode == "metro" and _metro and (k.is_action_pressed("jump") or k.keycode == KEY_ENTER):
 		_metro.fast = true
 	if k.keycode == KEY_ESCAPE:
 		if map_screen.visible:
@@ -835,14 +836,13 @@ func _keyboard_stick() -> void:
 	if ui._stick_id != -2:
 		return
 	var v := Vector2(
-		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
-		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+		Input.get_axis("move_left", "move_right"), Input.get_axis("move_forward", "move_back"))
 	if v == Vector2.ZERO:
 		if _kb_stick:
 			ui.stick = Vector2.ZERO
 			_kb_stick = false
 		return
-	var run: bool = (Input.is_physical_key_pressed(KEY_SHIFT) and not needs.tired()) or _ride != null
+	var run: bool = (Input.is_action_pressed("sprint") and not needs.tired()) or _ride != null
 	ui.stick = v.normalized() * (1.0 if run else 0.3)
 	_kb_stick = true
 
@@ -2670,7 +2670,7 @@ func _update_drive(dt: float) -> void:
 	var top: float = cfg["max"]
 	var gas: float = fuel.throttle(_ride.get_meta("kind"), -ui.stick.y, _drive_speed, dt)
 	var steer: float = ui.stick.x
-	var handbrake := Input.is_physical_key_pressed(KEY_SPACE)
+	var handbrake := Input.is_action_pressed("jump")
 	if handbrake:
 		_drive_speed = move_toward(_drive_speed, 0.0, 11.0 * dt)
 	elif gas > 0.12:
@@ -4259,6 +4259,20 @@ func _debug_shot() -> void:
 		await get_tree().create_timer(0.6).timeout
 	if _args.has("msgs"):
 		neighbors.debug_msgs()
+		await get_tree().create_timer(0.6).timeout
+	if _args.has("keytest"):
+		var sw: String = Keybinds.rebind("phone", KEY_B, state.d["keys"] if state.d.has("keys") else {})
+		var ev := InputEventKey.new()
+		ev.physical_keycode = KEY_B
+		ev.keycode = KEY_B
+		ev.pressed = true
+		print("KEYTEST action=", ev.is_action_pressed("phone"), " swapped=", sw, " P_old=", InputEventKey.new().is_action_pressed("phone"))
+		Input.parse_input_event(ev)
+		await get_tree().create_timer(0.6).timeout
+		print("KEYTEST ui_blocking=", ui.is_blocking())
+		ui.close_modal()
+	if _args.has("keys"):
+		ui.open_keys()
 		await get_tree().create_timer(0.6).timeout
 	if _args.has("phone"):
 		_open_phone()
