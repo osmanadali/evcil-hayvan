@@ -706,25 +706,86 @@ func recall() -> void:
 
 # ---------------------------------------------------------------- tasma
 
+var _tie := {}      # tasma takma/cikarma animasyonu: {t, kind, done, prev_follow}
+
+func tying() -> bool:
+	return not _tie.is_empty()
+
+
 func toggle_leash() -> void:
 	if m._ride != null or m._taxi != null:
 		m.ui.toast("Araçtayken tasma takamazsın.")
 		return
+	if tying():
+		return
+	var a: Node3D = m._active()
+	var nm: String = state.pet(a.kind)["name"]
+	if not leashed() and not chase.is_empty():
+		m.ui.toast("Önce %s'i geri çağır (R)." % nm)
+		return
+	var o: Vector2 = m._owner_pos()
+	if a.pos2().distance_to(o) > 5.0:
+		a.place(o + Vector2(1.2, 0.8).rotated(-m.owner_node.rotation.y))
+	_tie = {"t": 0.0, "kind": a.kind, "done": false, "prev_follow": a.mode == PetAgent.Mode.FOLLOW, "act": false}
+	m._moving = false
+	m._queue.clear()
+	a.command("sit")
+
+
+func _update_tie(dt: float) -> void:
+	if _tie.is_empty():
+		return
+	var a: Node3D = m.agents[_tie["kind"]]
+	var om: Node3D = m.owner_model
+	var t: float = _tie["t"] + dt
+	if _tie["act"] and m._args.get("leashanim", "") == "hold" and t > 0.4:
+		t = 0.4      # test: ani ortasinda dondur
+		m.owner_model._act_t = 0.4 / 1.1
+	_tie["t"] = t
+	var o: Vector2 = m._owner_pos()
+	var pp: Vector2 = a.pos2()
+	var dir: Vector2 = pp - o
+	if t < 0.5 and not _tie["act"] and dir.length() > 0.9:
+		# Peti'e yaklas
+		var away: Vector2 = (o - pp).normalized()
+		var goal: Vector2 = pp + away * 0.8
+		var np: Vector2 = m.world.resolve(o.move_toward(goal, 3.6 * dt), 0.3, o)
+		m.owner_node.position = Vector3(np.x, ParkMap.walk_height(np), np.y)
+		om.speed = 1.4
+	else:
+		om.speed = 0.0
+		if not _tie["act"]:
+			_tie["act"] = true
+			_tie["t"] = 0.0
+			t = 0.0
+			om.act("leash", 1.1)
+	if dir.length() > 0.05:
+		m.owner_node.rotation.y = lerp_angle(m.owner_node.rotation.y, atan2(-dir.x, -dir.y), minf(1.0, dt * 10.0))
+	if _tie["act"]:
+		if is_instance_valid(a.model.neck_socket):
+			om.hand_target = a.model.neck_socket.global_position
+		a.model.pose = "sit"
+		if not _tie["done"] and t >= 0.55:
+			_tie["done"] = true
+			_apply_leash()
+		if t >= 1.1:
+			om.hand_target = null
+			if _tie["prev_follow"]:
+				a.command("come")
+			_tie = {}
+
+
+func _apply_leash() -> void:
 	var on := not leashed()
 	state.d["leash"] = on
 	var a: Node3D = m._active()
 	var nm: String = state.pet(a.kind)["name"]
 	if on:
-		if not chase.is_empty():
-			m.ui.toast("Önce %s'i geri çağır (R)." % nm)
-			state.d["leash"] = false
-			return
 		for k in m.agents:
 			var ag: Node3D = m.agents[k]
 			if ag.pos2().distance_to(m._owner_pos()) > 4.0 and ag.mode == PetAgent.Mode.FOLLOW:
 				ag.place(m._owner_pos() + ag.slot.rotated(-m.owner_node.rotation.y))
 		m.ui.toast("Tasma takıldı · %s artık yanından ayrılmaz" % nm)
-		m.owner_model.act("pet", 0.8)
 	else:
 		m.ui.toast("Tasma çıkarıldı · dikkat, güvercin görünce kaçabilir!")
 	m._sfx("tik", -4.0, 0.8)
@@ -1141,6 +1202,7 @@ func update(dt: float) -> void:
 		if _chase_cd <= 0.0:
 			_chase_cd = _rng.randf_range(25.0, 55.0)
 			_try_chase()
+	_update_tie(dt)
 	_update_leash(dt)
 
 
@@ -1175,6 +1237,13 @@ func command(cmd: String) -> void:
 
 
 # ---------------------------------------------------------------- test
+
+func debug_leashanim() -> void:
+	state.d["leash"] = false
+	var a: Node3D = m._active()
+	a.place(m._owner_pos() + Vector2(2.2, 1.0).rotated(-m.owner_node.rotation.y))
+	toggle_leash()
+
 
 func debug_leash() -> void:
 	state.d["leash"] = true
