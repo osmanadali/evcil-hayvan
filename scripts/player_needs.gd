@@ -19,6 +19,8 @@ const BED_HALF := Vector2(0.8, 1.0)
 const ITEM_GAIN := {
 	"Simit": [30, 0], "Ekmek": [25, 0], "Poğaça": [25, 0], "Çikolata": [12, 8], "Dondurma": [10, 3],
 	"Su": [3, 2], "Ayran": [10, 0], "Meyve Suyu": [8, 4], "Çay": [3, 15], "Kahve": [3, 25],
+	"Paket Lahmacun": [30, 0], "Paket Pide": [50, 0], "Paket Dürüm": [45, 0], "Paket Burger": [50, 0], "Paket Yemek": [50, 3],
+	"Gazoz": [3, 8],
 }
 
 var m: Node

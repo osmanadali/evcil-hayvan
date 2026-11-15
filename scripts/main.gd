@@ -104,6 +104,7 @@ var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
 var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
+var eateries: Node        # lokantalar, ek marketler, Yakinimda (scripts/eateries.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
@@ -146,6 +147,10 @@ func _ready() -> void:
 	street_food.m = self
 	street_food.state = state
 	add_child(street_food)
+	eateries = preload("res://scripts/eateries.gd").new()
+	eateries.m = self
+	eateries.state = state
+	add_child(eateries)
 	pet_care = preload("res://scripts/pet_care.gd").new()
 	pet_care.m = self
 	pet_care.state = state
@@ -228,6 +233,7 @@ func _ready() -> void:
 	_spawn_npcs()
 	_spawn_coins()
 	street_food.build()
+	eateries.build()
 	pet_care.build()
 	bank.build()
 	neighbors.build()
@@ -1051,9 +1057,16 @@ var _shop_spot: Dictionary = {}
 func _enter_shop(sp: Dictionary) -> void:
 	if _shop:
 		_shop.queue_free()
-	_shop = ShopInterior.new()
+	if sp["kind"] == "lokanta":
+		_shop = preload("res://scripts/restaurant_interior.gd").new()
+		_shop.style = sp.get("style", "ev")
+		_shop.menu = eateries.menu_of(_shop.style)
+	else:
+		_shop = ShopInterior.new()
 	_shop.kind = sp["kind"]
 	_shop.title = sp["name"]
+	if sp.has("accent"):
+		_shop.accent = sp["accent"]
 	_shop.position = Vector3(0, 300, 0)      # gokyuzunde: kamera arazinin altina dusmesin
 	add_child(_shop)
 	_shop_spot = sp
@@ -1073,9 +1086,13 @@ func _enter_shop(sp: Dictionary) -> void:
 	ui.toast("%s · Hoş geldiniz!" % sp["name"])
 	_sfx("dukkan_zil", -6.0)
 	get_tree().create_timer(0.9).timeout.connect(func(): _sfx("hosgeldiniz", -2.0))
+	if sp["kind"] == "lokanta":
+		eateries.on_enter(sp)
 
 
 func _exit_shop() -> void:
+	if eateries.is_seated():
+		eateries.stand_up()
 	if _basket_node:
 		_basket_node.queue_free()
 		_basket_node = null
@@ -1685,6 +1702,7 @@ func _open_phone() -> void:
 		apps.append(["Göl Turu", "1f7fb8", "drop", func(): boat.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
+	apps.append(["Yakınımda", "e0743a", "pin", func(): eateries.nearby_app()])
 	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
 	apps.append(["Faturalar" + (" (%d)" % bank.unpaid().size() if not bank.unpaid().is_empty() else ""), "d9423a", "list", func(): bank.open_bills(false)])
 	if sports.root != null:
@@ -1910,6 +1928,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
+		return
+	if cmd.begins_with("eat_"):
+		eateries.command(cmd)
 		return
 	if cmd.begins_with("boat_"):
 		boat.command(cmd)
@@ -3122,6 +3143,8 @@ func _open_map() -> void:
 		dyn.append(["Veteriner", world.vet_pos, "1e9a8a", "plus"])
 	for fs in world.fuel_stations:
 		dyn.append([fs["name"], fs["entry"], "17694a", "drop"])
+	for pl in eateries.places:
+		dyn.append([pl["name"], pl["pos"], pl["accent"], "star" if pl["kind"] == "lokanta" else "cart"])
 	map_screen.dynamic = dyn
 	map_screen.open(_owner_pos())
 
@@ -3776,7 +3799,7 @@ func _process(dt: float) -> void:
 	if not _ready_done or _mode == "metro":
 		return
 	_pet_cd -= dt
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not eateries.is_seated() and not needs.busy() and not home_life.busy():
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -3795,6 +3818,7 @@ func _process(dt: float) -> void:
 	pet_care.update(dt)
 	fuel.update(dt)
 	street_food.update(dt)
+	eateries.update(dt)
 	traffic.update(dt)
 	_update_job(dt)
 	_courier_box_tick()
@@ -4028,6 +4052,10 @@ func _update_context() -> void:
 	if _near_home_exit():
 		ui.set_context("Dışarı Çık", "home_out", "come")
 		return
+	if _shop != null and ParkMap.home == _shop and _shop.kind == "lokanta":
+		var ec: Array = eateries.context()
+		ui.set_context(ec[0], ec[1], ec[2])
+		return
 	if _shop != null and ParkMap.home == _shop:
 		var lo: Vector2 = _shop.local2(o)
 		if lo.distance_to(_shop.entrance_local) < 1.1:
@@ -4060,7 +4088,10 @@ func _update_context() -> void:
 	if ParkMap.home == null:
 		for sp in world.shop_spots:
 			if o.distance_to(sp["pos"]) < 2.6 and sp.has("kind"):
-				ui.set_context({"eczane": "Eczaneye Gir", "market": "Markete Gir", "veteriner": "Veterinere Gir"}.get(sp["kind"], "İçeri Gir"), "shop_in", "cart")
+				if sp["kind"] == "lokanta":
+					ui.set_context("%s · İçeri Gir" % sp["name"], "shop_in", "star")
+				else:
+					ui.set_context({"eczane": "Eczaneye Gir", "market": "Markete Gir", "veteriner": "Veterinere Gir"}.get(sp["kind"], "İçeri Gir"), "shop_in", "cart")
 				return
 	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
@@ -4459,6 +4490,8 @@ func _debug_shot() -> void:
 		boat.debug_board("tour", float(_args["boattour"]) if float(_args["boattour"]) > 1.0 else 25.0)
 	if _args.has("pedalo"):
 		boat.debug_board("pedal", 0.0)
+	if _args.has("lokanta"):
+		eateries.debug_enter(_args["lokanta"] == "order")
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):

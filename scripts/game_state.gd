@@ -44,6 +44,7 @@ const QUESTS := [
 	["basket", "Basket sahasında 3 basket at", 3, 25],
 	["neighbor", "Bir komşuna yardım et", 1, 25],
 	["cook", "Evde yemek pişir", 1, 25],
+	["eat_out", "Dışarıda yemek ye", 1, 25],
 	["tidy", "Evde 3 dağınıklığı topla", 3, 15],
 	["furniture", "Evine bir mobilya al", 1, 20],
 ]

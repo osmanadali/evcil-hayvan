@@ -11,6 +11,7 @@ const H := 3.2
 
 var kind := "market"            # "market" | "eczane"
 var title := "Market"
+var accent := "c8322b"          # tabela rengi (marka)
 var entrance_local := Vector2(W * 0.5, D - 0.8)
 var counter_local := Vector2(2.2, D - 2.6)   # kasanin onu (oyuncu burada alisveris yapar)
 var colliders: Array = []        # [Vector2 a, Vector2 b] yerel
@@ -248,7 +249,7 @@ func _build_market() -> void:
 	Kit.box(self, Vector3(0.6, 0.02, 0.4), Vector3(2.6, 1.05, D - 1.6), Kit.mat("2a2c30", 0.3))
 	_staff(Vector2(2.0, D - 2.3), PI, Color("c8322b"), true)
 	counter_local = Vector2(2.6, D - 0.85)
-	_sign(title, Vector3(W * 0.5, H - 0.5, 0.1), "c8322b", Color.WHITE)
+	_sign(title, Vector3(W * 0.5, H - 0.5, 0.1), accent, Color.WHITE)
 	# Alisveris sepetleri (yigin)
 	for k in 4:
 		Kit.box(self, Vector3(0.45, 0.22, 0.32), Vector3(4.0, 0.11 + k * 0.07, D - 0.75), Kit.mat("d0302b", 0.5))
