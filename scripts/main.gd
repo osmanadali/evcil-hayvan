@@ -4172,6 +4172,7 @@ func _debug_shot() -> void:
 			print("F ONCE ipucu=", ui._context_cmd, " arac=", _ride)
 			var ev := InputEventKey.new()
 			ev.keycode = KEY_F
+			ev.physical_keycode = KEY_F
 			ev.pressed = true
 			Input.parse_input_event(ev)
 			await get_tree().process_frame
