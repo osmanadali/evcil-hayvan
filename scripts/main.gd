@@ -108,6 +108,7 @@ var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scrip
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
 var dealer: Node          # oto galeri ve garaj (scripts/dealership.gd)
 var bank: Node            # banka hesabi, ATM ve faturalar (scripts/bank.gd)
+var sports: Node          # hali saha ve basket (scripts/sports.gd)
 var neighbors: Node       # apartman komsulari ve telefon mesajlari (scripts/neighbors.gd)
 var hotel: Node          # Kale Palas Otel ve kayit noktalari (scripts/hotel.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
@@ -167,6 +168,10 @@ func _ready() -> void:
 	neighbors.m = self
 	neighbors.state = state
 	add_child(neighbors)
+	sports = preload("res://scripts/sports.gd").new()
+	sports.m = self
+	sports.state = state
+	add_child(sports)
 	home_life = preload("res://scripts/home_life.gd").new()
 	home_life.m = self
 	home_life.state = state
@@ -221,6 +226,7 @@ func _ready() -> void:
 	pet_care.build()
 	bank.build()
 	neighbors.build()
+	sports.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -1627,6 +1633,8 @@ func _open_phone() -> void:
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
 	apps.append(["Faturalar" + (" (%d)" % bank.unpaid().size() if not bank.unpaid().is_empty() else ""), "d9423a", "list", func(): bank.open_bills(false)])
+	if sports.root != null:
+		apps.append(["Spor", "2f9e4a", "ball", func(): sports.phone_app()])
 	apps.append(["Trafik", "1f4fb8", "lock", func(): traffic.phone_app()])
 	if dealer.center != Vector2.INF:
 		apps.append(["Galeri", "c8322b", "cart", func(): dealer.phone_app()])
@@ -1833,6 +1841,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("fuel"):
 		fuel.command(cmd)
+		return
+	if cmd.begins_with("sp_"):
+		sports.command(cmd)
 		return
 	if cmd.begins_with("nb_"):
 		neighbors.command(cmd)
@@ -3619,6 +3630,7 @@ func _process(dt: float) -> void:
 	_update_street_life(dt)
 	bank.update(dt)
 	neighbors.update(dt)
+	sports.update(dt)
 	home_life.update(dt)
 	pet_care.update(dt)
 	fuel.update(dt)
@@ -3891,6 +3903,10 @@ func _update_context() -> void:
 		return
 	if not _play_ride.is_empty():
 		ui.set_context("İn", "playexit", "come")
+		return
+	var spc: Array = sports.context()
+	if not spc.is_empty():
+		ui.set_context(spc[0], spc[1], spc[2])
 		return
 	var pc: Array = pet_care.context()
 	if not pc.is_empty():
@@ -4268,6 +4284,10 @@ func _debug_shot() -> void:
 			fuel.set_frac(fk, float(_args["fuel"]))
 	if _args.has("atpump"):
 		await fuel.debug_at_pump(_args["atpump"] if _args["atpump"] != "1" else "")
+	if _args.has("football"):
+		await sports.debug("football", _args["football"])
+	if _args.has("basket"):
+		await sports.debug("basket", _args["basket"])
 	if _args.has("atm"):
 		bank.debug_atm()
 		await get_tree().create_timer(0.6).timeout

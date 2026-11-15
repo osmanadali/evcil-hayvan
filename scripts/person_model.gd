@@ -298,6 +298,8 @@ func _anim_pose() -> void:
 		anim.play("Sitting_Idle", 0.35)
 	elif _act_t < 1.0 and (_act == "eat" or _act == "sip"):
 		anim.play("Idle", 0.2)
+	elif _act_t < 1.0 and _act == "kick":
+		anim.play("Idle", 0.12)
 	elif _act_t < 1.0 and ACT_CLIPS.has(_act):
 		anim.play(ACT_CLIPS[_act], 0.15, 1.3)
 	elif speed < 0.15:
@@ -309,6 +311,14 @@ func _anim_pose() -> void:
 	else:
 		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
 	anim.apply()
+	if _act_t < 1.0 and _act == "kick":
+		# Sut: sag bacak geriye acilir, one savrulur; govde hafifce geri yaslanir
+		var t := _act_t
+		var sw := 0.55 * smoothstep(0.0, 0.3, t) - 1.8 * smoothstep(0.3, 0.5, t) + 1.25 * smoothstep(0.55, 1.0, t)
+		_swing("RightUpLeg", sw)
+		_swing("RightLeg", 1.0 * smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.3, 0.48, t)))
+		_swing("Spine", -0.18 * sin(t * PI))
+		_swing("LeftArm", 0.5 * sin(t * PI))
 	if _act_t < 1.0 and (_act == "eat" or _act == "sip"):
 		# Yemek: sol el agiza gider, iki kez isirir; yudum: el yavasca agiza gider, kisa bekler
 		var w := clampf(sin(_act_t * PI) * 1.6, 0.0, 1.0)
@@ -316,6 +326,16 @@ func _anim_pose() -> void:
 		var mouth := head + Vector3(0.0, 0.0, 0.2) * _scale_k() + Vector3(0, 0.02, 0) * (sin(_act_t * 18.0) if _act == "eat" else 0.0)
 		var hand_p := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
 		_arm_ik("Left", hand_p.lerp(mouth, w))
+
+
+## Kemigi iskelet uzayinda X ekseni etrafinda dondurur (+ = geriye).
+func _swing(bone: String, a: float) -> void:
+	if not _bones.has(bone):
+		return
+	var i: int = _bones[bone]
+	var gp := _skel.get_bone_global_pose(_skel.get_bone_parent(i)).basis.orthonormalized()
+	var bg := Basis(Vector3.RIGHT, a) * (gp * Basis(_skel.get_bone_pose_rotation(i)))
+	_skel.set_bone_pose_rotation(i, (gp.inverse() * bg).get_rotation_quaternion())
 
 
 ## Iskelet birimi -> metre (ice aktarilan modelin olcegi).
