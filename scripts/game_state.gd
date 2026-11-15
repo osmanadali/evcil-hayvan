@@ -31,6 +31,7 @@ const QUESTS := [
 	["weather", "Yağmurda ya da karda 1 dakika dışarıda gez", 60, 20],
 	["fuel", "Benzinlikte aracına yakıt al", 1, 20],
 	["tea", "Çay ocağında çay iç", 1, 15],
+	["boat", "Göl turuna çık ya da pedallı bot kirala", 1, 35],
 	["lawful", "Hız sınırına uyarak 1 km araba sür", 1000, 30],
 	["sleep", "Evinde uyu ya da bankta kestir", 1, 15],
 	["hotel", "Kale Palas Otel'de bir oda kirala", 1, 40],

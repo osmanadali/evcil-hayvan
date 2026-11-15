@@ -102,6 +102,7 @@ var _ready_done := false
 var weather: Weather
 var fuel: Node            # yakit ve benzinlikler (scripts/fuel.gd)
 var needs: Node           # oyuncunun aclik / enerji ihtiyaclari ve uyku (scripts/player_needs.gd)
+var boat: Node            # gol turu ve pedalli bot (scripts/boat_tour.gd)
 var street_food: Node     # simitci arabalari ve cay ocagi (scripts/street_food.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
@@ -137,6 +138,10 @@ func _ready() -> void:
 	fuel.m = self
 	fuel.state = state
 	add_child(fuel)
+	boat = preload("res://scripts/boat_tour.gd").new()
+	boat.m = self
+	boat.state = state
+	add_child(boat)
 	street_food = preload("res://scripts/street_food.gd").new()
 	street_food.m = self
 	street_food.state = state
@@ -227,6 +232,7 @@ func _ready() -> void:
 	bank.build()
 	neighbors.build()
 	sports.build()
+	boat.build()
 
 	ui = Ui.new()
 	ui.state = state
@@ -831,7 +837,7 @@ func _input(e: InputEvent) -> void:
 			var pets: Array = state.owned_pets()
 			if pets.size() > 1:
 				_select_pet(pets[(pets.find(state.d["active"]) + 1) % pets.size()])
-	if k.is_action_pressed("jump") and _mode == "play" and _ride == null and not needs.busy():
+	if k.is_action_pressed("jump") and _mode == "play" and _ride == null and not boat.riding() and not needs.busy():
 		_jump()
 	if _mode == "metro" and _metro and (k.is_action_pressed("jump") or k.keycode == KEY_ENTER):
 		_metro.fast = true
@@ -997,7 +1003,7 @@ func _wade_depth(p: Vector2) -> float:
 ## Suya girme / islanma: suda yavaslar, cikinca bir sure su damlar.
 func _update_wet(dt: float) -> void:
 	var p := _owner_pos()
-	var inside := _ride == null and ParkMap.home == null and ParkMap.water_sd(p) < -0.2
+	var inside: bool = _ride == null and not boat.riding() and ParkMap.home == null and ParkMap.water_sd(p) < -0.2
 	if inside and not _in_water:
 		_sfx("su_sicrama" if _sounds.has("su_sicrama") else "firlat", -3.0)
 		ui.toast("Suya girdin! Sırılsıklam oldun!")
@@ -1629,6 +1635,8 @@ func _open_phone() -> void:
 	]
 	if not world.fuel_stations.is_empty():
 		apps.append(["Benzinlik", "17694a", "drop", func(): fuel.phone_app()])
+	if boat.built:
+		apps.append(["Göl Turu", "1f7fb8", "drop", func(): boat.phone_app()])
 	if not street_food.tea.is_empty() or not street_food.carts.is_empty():
 		apps.append(["Çay Ocağı", "b8401a", "drop", func(): street_food.phone_app()])
 	apps.append(["Banka", "1d5fd1", "coin", func(): bank.open_bank_app()])
@@ -1856,6 +1864,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("food_"):
 		street_food.command(cmd)
+		return
+	if cmd.begins_with("boat_"):
+		boat.command(cmd)
 		return
 	if cmd in ["leash", "train", "shelter", "shelter_nav"] or cmd.begins_with("train:") or cmd.begins_with("trick:"):
 		pet_care.command(cmd)
@@ -3640,6 +3651,7 @@ func _process(dt: float) -> void:
 	_update_health(dt)
 	needs.update(dt)
 	_update_play_ride(dt)
+	boat.update(dt)
 	radio.update(dt)
 	hotel.update(dt)
 	_update_wet(dt)
@@ -3706,6 +3718,8 @@ func _update_owner(dt: float) -> void:
 	var to := _target - p
 	var d := to.length()
 	var limit := WALK_SPEED
+	if boat.riding() and _mode == "play":
+		return
 	if _ride != null and _mode == "play":
 		_update_drive(dt)
 		return
@@ -3832,6 +3846,13 @@ func _update_context() -> void:
 		return
 	var o := _owner_pos()
 	var a := _active()
+	if boat.riding():
+		var bc: Array = boat.context()
+		if bc.size() == 3:
+			ui.set_context(bc[0], bc[1], bc[2])
+		else:
+			ui.set_context("", "")
+		return
 	_near_npc = null
 	for n in _npc_pets:
 		if n != _job.get("dog") and Vector2(n.position.x, n.position.z).distance_to(o) < 4.5:
@@ -3911,6 +3932,10 @@ func _update_context() -> void:
 	var pc: Array = pet_care.context()
 	if not pc.is_empty():
 		ui.set_context(pc[0], pc[1], pc[2])
+		return
+	var bt: Array = boat.context()
+	if not bt.is_empty():
+		ui.set_context(bt[0], bt[1], bt[2])
 		return
 	var sf: Array = street_food.context()
 	if not sf.is_empty():
@@ -4261,6 +4286,10 @@ func _debug_shot() -> void:
 			await get_tree().process_frame
 			if f % 5 == 0:
 				print("ZIPLA ", f, " h=", snappedf(_jump_h, 0.01), " model_y=", snappedf(owner_model.position.y, 0.01), " mode=", _mode)
+	if _args.has("boattour"):
+		boat.debug_board("tour", float(_args["boattour"]) if float(_args["boattour"]) > 1.0 else 25.0)
+	if _args.has("pedalo"):
+		boat.debug_board("pedal", 0.0)
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):
