@@ -21,6 +21,8 @@ var basket_local := Vector2(4.0, D - 1.2)   # giristeki sepet yigini
 var ceiling: Node3D
 var front: Node3D
 var _rng := RandomNumberGenerator.new()
+var lamp_hex := "fbfbff"         # tavan lambalarinin rengi (lokanta: sicak)
+var hour := 12.0                 # saat (camdan gorunen disarisi gece karanlik)
 
 
 func _ready() -> void:
@@ -72,6 +74,15 @@ func is_free(p: Vector2, r := 0.4) -> bool:
 	return has_point(p) and resolve(p, r, p).distance_to(p) < 0.05
 
 
+## Kamera konumunu odanin icine sikistirir (duvarlarin ve tavanin icinde kalir; disarisi gorunmez).
+func cam_clamp(p: Vector3) -> Vector3:
+	var l := p - global_position
+	l.x = clampf(l.x, 0.3, W - 0.3)
+	l.z = clampf(l.z, 0.3, D - 0.3)
+	l.y = clampf(l.y, 0.6, H - 0.3)
+	return global_position + l
+
+
 func update_view(cam_pos: Vector3) -> void:
 	if ceiling:
 		ceiling.visible = cam_pos.y < global_position.y + H - 0.05
@@ -119,9 +130,14 @@ func _build_shell() -> void:
 	# Disarisi: parlak gun isigi (camdan gorunsun)
 	var outside := StandardMaterial3D.new()
 	outside.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	outside.albedo_color = Color("dfe9ef")
-	Kit.box(self, Vector3(W + 6, H + 2, 0.1), Vector3(W * 0.5, H * 0.5, D + 3.0), outside)
-	Kit.box(self, Vector3(W + 6, 0.1, 3.0), Vector3(W * 0.5, -0.06, D + 1.5), Kit.mat("b9b4aa", 0.9))
+	var night := hour < 6.5 or hour > 19.5
+	outside.albedo_color = Color("1c2236") if night else (Color("e9cfa8") if hour > 17.5 or hour < 8.0 else Color("cfdde6"))
+	# Genis ve yuksek fon: cam kenarindan yukari bakinca da gokyuzu / bosluk gorunmesin
+	Kit.box(self, Vector3(W + 20, H + 10, 0.1), Vector3(W * 0.5, H * 0.5 + 4.0, D + 3.0), outside)
+	for sx in [-1.0, 1.0]:
+		Kit.box(self, Vector3(0.1, H + 10, 3.2), Vector3(W * 0.5 + sx * (W * 0.5 + 10.0), H * 0.5 + 4.0, D + 1.5), outside)
+	Kit.box(self, Vector3(W + 20, 0.1, 3.2), Vector3(W * 0.5, H + 9.0, D + 1.5), outside)
+	Kit.box(self, Vector3(W + 20, 0.1, 3.0), Vector3(W * 0.5, -0.06, D + 1.5), Kit.mat("b9b4aa", 0.9))
 	# Kapi paspasi
 	Kit.box(self, Vector3(1.6, 0.02, 1.0), Vector3(W * 0.5, 0.01, D - 0.6), Kit.mat("3b3d41", 1.0))
 	# Tavan, aydinlatma
@@ -131,7 +147,7 @@ func _build_shell() -> void:
 	var lamp := StandardMaterial3D.new()
 	lamp.albedo_color = Color.WHITE
 	lamp.emission_enabled = true
-	lamp.emission = Color("fbfbff")
+	lamp.emission = Color(lamp_hex)
 	lamp.emission_energy_multiplier = 2.0
 	for x in [2.5, 5.5, 8.5]:
 		for z in [2.2, 5.2]:
@@ -141,11 +157,13 @@ func _build_shell() -> void:
 		o.position = Vector3(x, H - 0.4, D * 0.45)
 		o.omni_range = 9.0
 		o.light_energy = 0.8
+		o.light_color = Color(lamp_hex)
 		add_child(o)
 	var o2 := OmniLight3D.new()
 	o2.position = Vector3(W * 0.5, H - 0.4, D - 2.0)
 	o2.omni_range = 7.0
 	o2.light_energy = 0.6
+	o2.light_color = Color(lamp_hex)
 	add_child(o2)
 
 

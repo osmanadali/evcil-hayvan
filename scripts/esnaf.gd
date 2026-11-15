@@ -150,6 +150,8 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Dictionary:
 	for x in [-2.4, 0.0, 2.4]:
 		Kit.box(r, Vector3(1.2, 1.1, 0.06), Vector3(x, 4.15, HZ + 0.02), Kit.mat("3d4a55", 0.15))
 		Kit.box(r, Vector3(1.35, 0.08, 0.15), Vector3(x, 3.55, HZ + 0.06), Kit.mat("d9d4c8", 0.6))
+	# Arka ve yan cepheler (lokantalarla ayni: pencereler, silme, yan levha, cati ekipmani; duz kutu kalmasin)
+	m.eateries._back_and_sides(r, HX, HZ, body, Kit.mat("3d4a55", 0.15), Kit.mat("d9d4c8", 0.6), accent, pl)
 	# Tabela
 	Kit.box(r, Vector3(HX * 2.0 - 0.6, 0.85, 0.14), Vector3(0, 3.05, HZ + 0.08), Kit.mat(accent, 0.45))
 	var nl: Label3D = w._text(r, pl[1], Vector3(0, 3.13, HZ + 0.16), Color.WHITE, 0.32)

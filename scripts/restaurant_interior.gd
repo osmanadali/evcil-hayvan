@@ -18,8 +18,10 @@ var _spit: Node3D
 
 func _ready() -> void:
 	_rng.seed = hash(title)
+	lamp_hex = "ffdcae"
 	_build_shell()
 	_build_restaurant()
+	_build_decor()
 
 
 func _process(dt: float) -> void:
@@ -133,16 +135,12 @@ func _build_restaurant() -> void:
 		Kit.cyl(self, 0.22, 0.17, 0.4, Vector3(p.x, 0.2, p.y), Kit.mat("8a4a2b", 0.8), 10)
 		Kit.ball(self, 0.42, Vector3(p.x, 0.8, p.y), Kit.mat("3f7a3a", 0.9), Vector3(1, 1.2, 1), 8)
 		_solid(p, Vector2(0.3, 0.3))
-	for k in 3:
-		var z := 3.2 + k * 2.0
-		Kit.box(self, Vector3(0.04, 0.6, 0.8), Vector3(W - 0.04, 1.75, z), Kit.mat("3a2a1e", 0.6))
-		Kit.box(self, Vector3(0.05, 0.5, 0.7), Vector3(W - 0.05, 1.75, z), Kit.mat(["c9962e", "3f6f78", "b8401a"][k], 0.8))
-	# Sicak isik
+	# Mutfak ustunde sicak isik (duvar susleri, masa lambalari: _build_decor)
 	var o := OmniLight3D.new()
 	o.position = Vector3(W * 0.5, H - 0.5, 1.2)
 	o.light_color = Color("ffd9a8")
 	o.omni_range = 6.0
-	o.light_energy = 0.9
+	o.light_energy = 1.0
 	add_child(o)
 
 
@@ -237,3 +235,161 @@ func _build_doner() -> void:
 		Kit.box(self, Vector3(0.12, 0.08, 0.05), Vector3(7.8 + k * 0.2, 1.2, 2.12), Kit.mat("2a2a2e", 0.4))
 	for k in 2:
 		Kit.box(self, Vector3(0.45, 0.02, 0.32), Vector3(5.0 + k * 0.6, 1.05, 1.9), Kit.mat("d9302b", 0.5))
+
+
+# ---------------------------------------------------------------- dekor (lokanta turune gore)
+
+## Tavan kirisleri, masa ustu sarkit lambalar, masada tabak-bardak, icecek dolabi, perdeler, duvar susleri.
+func _build_decor() -> void:
+	var c := _style_col()
+	var steel := Kit.mat("c9ccd0", 0.25)
+	# Tavan: sicak renk; kebap / ev yemeklerinde ahsap kirisler (tavan dugumunde)
+	if ceiling:
+		Kit.box(ceiling, Vector3(W, 0.02, D), Vector3(W * 0.5, H - 0.005, D * 0.5), Kit.mat("f3e6d0" if style != "fast" else "f4f4f0", 0.9))
+		if style != "fast":
+			for k in 5:
+				Kit.box(ceiling, Vector3(0.18, 0.16, D), Vector3(1.1 + k * 2.2, H - 0.09, D * 0.5), Kit.mat("6b4226", 0.7))
+	# Masalarin ustunde sarkit lambalar (yalniz parlayan malzeme; GL uyumlulukta nesne basina 8 isik siniri)
+	var shade := Kit.mat(c["wood"] if style != "fast" else "2a2a2e", 0.5)
+	var bulb := Kit.glow("ffd59a", 2.2)
+	for t in tables:
+		var tc: Vector2 = t["c"]
+		# Tavana yapisik kubbe lamba (sarkit lamba kamera tavanin altinda dolasirken gorusu kapatiyordu)
+		Kit.cyl(self, 0.3, 0.3, 0.04, Vector3(tc.x, H - 0.03, tc.y), shade, 16)
+		Kit.ball(self, 0.24, Vector3(tc.x, H - 0.05, tc.y), bulb, Vector3(1, 0.32, 1), 12)
+	for z in [4.0, 6.5]:
+		var ol := OmniLight3D.new()
+		ol.position = Vector3(6.5, H - 1.2, z)
+		ol.light_color = Color("ffcf94")
+		ol.omni_range = 5.5
+		ol.light_energy = 0.9
+		add_child(ol)
+	# Masada tabak, bardak, catal-bicak, baharat
+	var plate := Kit.mat("f7f5ef", 0.25)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.85, 0.92, 0.95, 0.45)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.1
+	for t in tables:
+		var tn := Node3D.new()
+		var tc: Vector2 = t["c"]
+		tn.position = Vector3(tc.x, 0, tc.y)
+		add_child(tn)
+		for sz in [-1.0, 1.0]:
+			var z: float = sz * 0.27
+			if style == "fast":
+				Kit.box(tn, Vector3(0.36, 0.012, 0.26), Vector3(-0.08, 0.773, z), Kit.mat(accent, 0.5))
+				Kit.cyl(tn, 0.035, 0.03, 0.13, Vector3(0.24, 0.835, z), Kit.mat("d9302b", 0.4), 10)
+				Kit.cyl(tn, 0.004, 0.004, 0.08, Vector3(0.245, 0.93, z), Kit.mat("f4f4f0", 0.4), 4)
+			else:
+				Kit.cyl(tn, 0.13, 0.11, 0.015, Vector3(-0.05, 0.79, z), plate, 18)
+				Kit.box(tn, Vector3(0.015, 0.005, 0.17), Vector3(-0.23, 0.785, z), steel)
+				Kit.box(tn, Vector3(0.015, 0.005, 0.17), Vector3(0.13, 0.785, z), steel)
+				Kit.cyl(tn, 0.035, 0.03, 0.11, Vector3(0.25, 0.835, z * 0.8), glass, 10)
+		if style == "kebap":
+			# Pul biber, sumak; ortada sogan-maydanoz tabagi
+			Kit.cyl(tn, 0.03, 0.03, 0.07, Vector3(-0.32, 0.815, -0.02), Kit.mat("b8401a", 0.5), 8)
+			Kit.cyl(tn, 0.03, 0.03, 0.07, Vector3(-0.32, 0.815, 0.06), Kit.mat("6b1f2a", 0.5), 8)
+			Kit.cyl(tn, 0.08, 0.07, 0.03, Vector3(0.0, 0.795, 0.0), plate, 14)
+			Kit.ball(tn, 0.06, Vector3(0.0, 0.82, 0.0), Kit.mat("6a9a3a", 0.8), Vector3(1, 0.45, 1), 8)
+		elif style == "ev":
+			# Ekmek sepeti, su surahisi
+			Kit.cyl(tn, 0.11, 0.09, 0.06, Vector3(0.0, 0.81, 0.0), Kit.mat("a8774a", 0.9), 12)
+			Kit.ball(tn, 0.07, Vector3(0.0, 0.86, 0.0), Kit.mat("e0b070", 0.8), Vector3(1.3, 0.5, 0.8), 8)
+			Kit.cyl(tn, 0.045, 0.055, 0.2, Vector3(-0.3, 0.88, 0.0), glass, 12)
+		else:
+			# Ketcap, mayonez
+			Kit.cyl(tn, 0.025, 0.03, 0.14, Vector3(-0.33, 0.85, -0.03), Kit.mat("c8221b", 0.4), 8)
+			Kit.cyl(tn, 0.025, 0.03, 0.14, Vector3(-0.33, 0.85, 0.05), Kit.mat("f2e6a0", 0.4), 8)
+	# Icecek dolabi (sol duvar, kasanin arkasinda): isikli, sise sira sira
+	Kit.box(self, Vector3(0.6, 2.0, 0.9), Vector3(0.35, 1.0, 3.3), Kit.mat("e8eaec", 0.3))
+	Kit.box(self, Vector3(0.02, 1.8, 0.8), Vector3(0.66, 1.05, 3.3), Kit.glow("eaf6ff", 0.5))
+	for y in [0.4, 0.85, 1.3, 1.75]:
+		for k in 5:
+			var col: String = ["e0322b", "f4f4f0", "2f8a3a", "f2c230", "1f5aa8"][(k + int(y * 3.0)) % 5]
+			Kit.cyl(self, 0.035, 0.035, 0.24, Vector3(0.6, y + 0.12, 2.98 + k * 0.15), Kit.mat(col, 0.3), 8)
+	var fglass := StandardMaterial3D.new()
+	fglass.albedo_color = Color(0.85, 0.95, 1.0, 0.2)
+	fglass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	Kit.box(self, Vector3(0.02, 1.8, 0.82), Vector3(0.68, 1.05, 3.3), fglass)
+	_solid(Vector2(0.35, 3.3), Vector2(0.35, 0.45))
+	# Vitrin perdeleri (camin alt yarisi): kebap ve ev yemeklerinde
+	if style != "fast":
+		var cur := Kit.mat("f2e6cc" if style == "ev" else "c9a46a", 0.9)
+		var span: float = W * 0.5 - 1.0
+		for side in [-1.0, 1.0]:
+			var cx: float = W * 0.5 + side * (W * 0.25 + 0.5)
+			Kit.cyl(self, 0.012, 0.012, span, Vector3(cx, 1.55, D - 0.06), Kit.mat("6b4226", 0.5), 6, Vector3(0, 0, PI * 0.5))
+			for k in 8:
+				var px: float = cx - span * 0.5 + (k + 0.5) * span / 8.0
+				Kit.box(self, Vector3(span / 8.0 - 0.02, 0.85, 0.02), Vector3(px, 1.1, D - 0.07 - (k % 2) * 0.03), cur)
+	# Duvar susleri
+	match style:
+		"kebap":
+			# Sag duvarda bakir tepsiler, kurutulmus biber dizileri, nazar boncugu; solda kilim; tezgahta ayran gugumu
+			var copper := Kit.mat("b87333", 0.3)
+			copper.metallic = 0.6
+			for k in 4:
+				var z := 3.0 + k * 1.5
+				var y := 1.9 + (k % 2) * 0.35
+				Kit.cyl(self, 0.32, 0.32, 0.03, Vector3(W - 0.04, y, z), copper, 20, Vector3(0, 0, PI * 0.5))
+				Kit.cyl(self, 0.22, 0.22, 0.032, Vector3(W - 0.045, y, z), Kit.mat("8a4a1e", 0.4), 20, Vector3(0, 0, PI * 0.5))
+			for k in 3:
+				var z := 3.75 + k * 1.5
+				for b in 6:
+					Kit.capsule(self, 0.025, 0.12, Vector3(W - 0.06, 2.45 - b * 0.1, z), Kit.mat("a8201a", 0.6), Vector3(0, 0, 0.3 * (b % 2)))
+			for r in [[0.16, "1f5aa8"], [0.11, "f4f4f0"], [0.055, "6fb1e0"]]:
+				Kit.cyl(self, r[0], r[0], 0.02 + r[0] * 0.02, Vector3(W - 0.04 - (0.16 - r[0]) * 0.05, 2.7, 7.8), Kit.mat(r[1], 0.3), 18, Vector3(0, 0, PI * 0.5))
+			_rug_wall(Vector3(0.03, 1.85, 6.6), 1.4, 1.0, ["8a2a1a", "c9962e", "2f4a6b", "f2e6c8"])
+			Kit.cyl(self, 0.16, 0.2, 0.45, Vector3(2.9, 1.27, 1.9), copper, 14)
+			Kit.cyl(self, 0.05, 0.09, 0.15, Vector3(2.9, 1.57, 1.9), copper, 10)
+		"ev":
+			# Sag duvarda eski fotograflar ve "Afiyet Olsun" levhasi; solda kavanoz rafi; tezgahta semaver
+			for k in 3:
+				var z := 3.0 + k * 1.9
+				Kit.box(self, Vector3(0.04, 0.62, 0.5), Vector3(W - 0.04, 1.8, z), Kit.mat("6b4226", 0.6))
+				Kit.box(self, Vector3(0.05, 0.5, 0.38), Vector3(W - 0.05, 1.8, z), Kit.mat(["c9b48a", "a89a7a", "b8a080"][k], 0.9))
+				Kit.ball(self, 0.08, Vector3(W - 0.07, 1.86, z), Kit.mat("6b5a48", 0.9), Vector3(0.3, 1.2, 1), 8)
+			Kit.box(self, Vector3(0.04, 0.45, 2.0), Vector3(W - 0.04, 2.6, 5.0), Kit.mat("3f7a4a", 0.6))
+			_wall_text("Afiyet Olsun", Vector3(W - 0.07, 2.6, 5.0), -PI * 0.5, 0.005, Color("fff3d6"))
+			Kit.box(self, Vector3(0.28, 0.03, 1.6), Vector3(0.16, 1.9, 6.6), Kit.mat("8a5a35", 0.6))
+			for k in 6:
+				Kit.cyl(self, 0.07, 0.07, 0.2, Vector3(0.16, 2.02, 5.95 + k * 0.26), Kit.mat(["c8322b", "e8c86a", "3f7a3a"][k % 3], 0.3), 10)
+				Kit.cyl(self, 0.072, 0.072, 0.03, Vector3(0.16, 2.13, 5.95 + k * 0.26), Kit.mat("d9d4c8", 0.4), 10)
+			Kit.cyl(self, 0.16, 0.2, 0.42, Vector3(8.6, 1.25, 1.9), steel, 14)
+			Kit.cyl(self, 0.09, 0.09, 0.16, Vector3(8.6, 1.54, 1.9), steel, 12)
+			for k in 4:
+				Kit.cyl(self, 0.025, 0.02, 0.07, Vector3(8.15 - k * 0.1, 1.08, 2.08), Kit.mat("b8401a", 0.3), 8)
+		_:
+			# Fast food: neon seritler, menu posterleri, sos istasyonu
+			Kit.box(self, Vector3(0.03, 0.06, D - 1.5), Vector3(W - 0.03, 2.75, D * 0.5 + 0.4), Kit.glow(accent, 2.0))
+			Kit.box(self, Vector3(0.03, 0.06, D - 1.5), Vector3(0.03, 2.75, D * 0.5 + 0.4), Kit.glow("f2c230", 1.6))
+			for k in 3:
+				var z := 3.0 + k * 2.0
+				Kit.box(self, Vector3(0.04, 0.9, 0.7), Vector3(W - 0.04, 1.8, z), Kit.mat("f2c230" if k % 2 == 0 else accent, 0.5))
+				Kit.ball(self, 0.2, Vector3(W - 0.08, 1.72, z), Kit.mat(["c98a3a", "a8682e", "d9a040"][k], 0.7), Vector3(0.3, 0.6, 1), 10)
+				_wall_text(["MENÜ 1", "DÖNER", "PATATES"][k], Vector3(W - 0.07, 2.1, z), -PI * 0.5, 0.004, Color.WHITE)
+			Kit.box(self, Vector3(0.5, 0.95, 1.0), Vector3(0.3, 0.48, 7.2), Kit.mat("3a3a3e", 0.4))
+			for k in 3:
+				Kit.cyl(self, 0.05, 0.05, 0.2, Vector3(0.3, 1.05, 6.85 + k * 0.33), Kit.mat(["c8221b", "f2e6a0", "e0a020"][k], 0.4), 10)
+			_solid(Vector2(0.3, 7.2), Vector2(0.3, 0.5))
+
+
+func _wall_text(text: String, at: Vector3, yaw: float, px: float, col: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 64
+	l.pixel_size = px
+	l.modulate = col
+	l.position = at
+	l.rotation.y = yaw
+	add_child(l)
+
+
+## Duvar kilimi (sol duvara, +X'e bakar): ic ice renkli cerceveler ve baklava motifleri.
+func _rug_wall(at: Vector3, w: float, h: float, cols: Array) -> void:
+	Kit.box(self, Vector3(0.02, h, w), at, Kit.mat(cols[0], 0.95))
+	Kit.box(self, Vector3(0.022, h - 0.16, w - 0.16), at + Vector3(0.002, 0, 0), Kit.mat(cols[1], 0.95))
+	Kit.box(self, Vector3(0.024, h - 0.32, w - 0.32), at + Vector3(0.004, 0, 0), Kit.mat(cols[2], 0.95))
+	for k in 3:
+		Kit.box(self, Vector3(0.026, 0.12, 0.12), at + Vector3(0.006, 0, -0.3 + k * 0.3), Kit.mat(cols[3], 0.9), Vector3(PI * 0.25, 0, 0))
