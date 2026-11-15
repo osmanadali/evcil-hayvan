@@ -4172,6 +4172,8 @@ func _update_owner(dt: float) -> void:
 	var limit := WALK_SPEED
 	if boat.riding() and _mode == "play":
 		return
+	if pet_care != null and pet_care.tying():
+		return
 	if _ride != null and _mode == "play":
 		_update_drive(dt)
 		return
@@ -4963,7 +4965,9 @@ func _debug_shot() -> void:
 			for f in 3:
 				await get_tree().process_frame
 			pet_care.open_shelter()
-	if _args.has("leash"):
+	if _args.has("leashanim"):
+		pet_care.debug_leashanim()
+	elif _args.has("leash"):
 		pet_care.debug_leash()
 	if _args.has("petchase"):
 		pet_care.debug_chase()

@@ -46,7 +46,8 @@ var _seat_t := 0.0             # oturali beri gecen sure (Sitting_Enter gecisi)
 var _lod_i := randi() % 4          # ziplarken (main ayarlar)
 var _anim_wait := 2            # ilk karelerde kodla notr poz kurulur, sonra animasyona gecilir
 const ACT_CLIPS := {"pet": "PickUp_Table", "feed": "PickUp_Table", "wave": "Interact", "throw": "Interact",
-	"eat": "Interact", "sit": "Sitting_Idle", "cook": "Interact", "door": "Interact"}
+	"eat": "Interact", "sit": "Sitting_Idle", "cook": "Interact", "door": "Interact", "leash": "Crouch_Idle"}
+var hand_target = null            # Vector3 (dunya): "leash" eyleminde sol el buraya uzanir
 var tint := Color.WHITE   # tisort rengi
 var tint2 := Color.WHITE  # desen ikinci rengi
 var pattern := 0          # 0 duz, 1 cizgili, 2 kareli
@@ -519,6 +520,12 @@ func _anim_pose() -> void:
 		var mouth := head + Vector3(0.0, 0.0, 0.2) * _scale_k() + Vector3(0, 0.02, 0) * (sin(_act_t * 18.0) if _act == "eat" else 0.0)
 		var hand_p := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
 		_arm_ik("Left", hand_p.lerp(mouth, w))
+	elif _act_t < 1.0 and _act == "leash" and hand_target != null:
+		# Tasma: cokme sirasinda sol el petin boynuna uzanir, sonra geri doner
+		var w2 := clampf(sin(smoothstep(0.1, 0.95, _act_t) * PI) * 1.8, 0.0, 1.0)
+		var tgt: Vector3 = _skel.global_transform.affine_inverse() * (hand_target as Vector3)
+		var hp := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
+		_arm_ik("Left", hp.lerp(tgt, w2))
 
 
 ## Kemigi iskelet uzayinda X ekseni etrafinda dondurur (+ = geriye).
