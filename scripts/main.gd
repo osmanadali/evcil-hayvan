@@ -5475,6 +5475,10 @@ func _debug_shot() -> void:
 		await life.debug(_args)
 	if _args.has("vtour"):
 		await life.debug_tour(_args)
+	if _args.has("trafficdbg"):
+		# Trafik olcumu: --trafficdbg[=sn] (varsayilan 60 sn); sayilari "TRAFIK ..." satirlariyla yazar
+		var tsecs := float(_args["trafficdbg"])
+		await preload("res://scripts/traffic_debug.gd").run(self, tsecs if tsecs > 1.5 else 60.0)
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("police"):
