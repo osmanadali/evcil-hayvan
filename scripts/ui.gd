@@ -1568,11 +1568,28 @@ func open_settings() -> void:
 	else:
 		var tl := _fx_label(body, "WASD ile yürü, fareyle etrafına bak.\nHayvanının yanında F: sev, besle, oyna.", F_BODY, 22, Color(1, 1, 1, 0.85))
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_menu_item(body, "EMEĞİ GEÇENLER  >", func(): open_credits())
 	_menu_item(body, "GERİ", func():
 		if menu.visible:
 			close_modal()
 		else:
 			open_pause())
+	_focus_first(body)
+
+
+## Emegi gecenler: CC-BY lisansli 3B modellerin yapimcilari (modeller/KAYNAK.txt).
+func open_credits() -> void:
+	var body := _open_page("EMEĞİ GEÇENLER", "Oyunda kullanılan 3B araç modelleri")
+	var txt := "BORA GT (oyuncunun arabası)\nModel: \"Ariel_ hatchback V2\" — yapan: gandoplyas (Sketchfab)\n" + \
+		"Lisans: CC Attribution 4.0 (CC BY 4.0)\n\n" + \
+		"DERYA 1.6 SEDAN\nModel: \"2014 Toyota Corolla E180 EU (with interior)\" — yapan: Armored Wave (Sketchfab)\n" + \
+		"Lisans: CC Attribution 4.0 (CC BY 4.0)\n\n" + \
+		"Modeller oyuna uyarlandı: parçalara ayrıldı, ölçeklendi, marka amblemleri kaldırıldı,\n" + \
+		"araçlara uydurma adlar verildi.  creativecommons.org/licenses/by/4.0"
+	var l := _fx_label(body, txt, F_BODY, 22, Color(1, 1, 1, 0.9))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_constant_override("line_spacing", 6)
+	_menu_item(body, "GERİ", func(): open_settings())
 	_focus_first(body)
 
 

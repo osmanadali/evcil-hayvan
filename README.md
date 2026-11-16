@@ -87,6 +87,7 @@ Köpek (sarı Labrador) ve kedi (turuncu tekir; ikisi de gerçekçi tarzda, `doc
 | `decimate_glb.py` | Üçgen sayısını düşürür (çok kullanılan ağaç, ev, lamba, bank için) |
 | `rig_pet.py` + `rig_pets.json` | Modele iskelet takar: kemikler elle yerleştirilir, ağırlıklar mesafeye göre hesaplanır |
 | `osm_build.py` | OpenStreetMap verisini oyun haritasına çevirir |
+| `build_vehicles.py` | Oyuncunun arabalarını hazırlar: `modeller/` altındaki kaynak modelleri parçalara (gövde, kapılar, tekerler, direksiyon, aynalar) ayırır, ölçekler, sedandaki marka amblemlerini atar → `assets/vehicles/` |
 
 **Ağaçlar** `tools/make_tree.py` ile üretilir: Poly Haven'ın CC0 yaprak ve kabuk taramalarından dal kümesi dokusu
 oluşturur, gövde ve dalların üstüne yüzlerce yaprak kartı dizer (`agac_lod.glb`, `cam_lod.glb`).
@@ -130,6 +131,18 @@ Yeni bir hayvan türü eklemek için: Tripo'da düz duran, bacakları ayrık bir
 | `scripts/game_state.gd` | Kalıcı durum: para, mama, aksesuar, ihtiyaçlar, görevler, kayıt |
 | `scripts/ui.gd`, `map_screen.gd`, `ui_kit.gd`, `icon.gd` | Arayüz, harita uygulaması, kodla çizilen simgeler |
 | `scripts/accessories.gd` | Aksesuar kataloğu ve modelleri |
+| `scripts/car_rig.gd` | Oyuncunun ayrıntılı arabaları (Bora GT: kapıları açılır; Derya Sedan: iç mekânlı): kapı, teker, direksiyon, aynalar, gösterge ve navigasyon ekranı |
+
+## Oyuncunun arabaları (CC BY 4.0)
+
+Oyuncunun sürdüğü iki araba Sketchfab'den alınan CC Attribution 4.0 lisanslı modellerdir (kaynak dosyalar ve notlar
+`modeller/KAYNAK.txt`); oyunda Ayarlar → Emeği Geçenler ekranında da yazar:
+
+- **Bora GT** (varsayılan araba; kapıları menteşesinden açılır): "Ariel_ hatchback V2", yapan **gandoplyas**.
+- **Derya 1.6 Sedan** (evin ilerisinde park halinde, galeriden de alınır): "2014 Toyota Corolla E180 EU (with interior)",
+  yapan **Armored Wave**. Marka amblemleri kaldırıldı, araca uydurma ad verildi.
+
+Bu modeller yalnızca oyuncunun araçlarında kullanılır; trafik ve park halindeki arabalar düşük ayrıntılı modellerdir.
 
 ## Bilinen eksikler
 
