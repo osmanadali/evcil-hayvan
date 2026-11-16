@@ -24,6 +24,7 @@ const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
 const CarCabin = preload("res://scripts/car_cabin.gd")
+const CarRig = preload("res://scripts/car_rig.gd")
 
 const WALK_SPEED := 5.0
 const CAM_DIST := 7.2
@@ -2020,7 +2021,7 @@ func _summon_my_car() -> void:
 		return
 	var car: Node3D = null
 	for r in _rides:
-		if r.get_meta("kind") == "araba":
+		if r.get_meta("kind") == "araba" and (car == null or r.has_meta("ana")):
 			car = r
 	var c := _curb_near(_owner_pos())
 	if car == null or c.is_empty():
@@ -2505,19 +2506,31 @@ func _spawn_rides() -> void:
 		var dir := (b - a).normalized()
 		var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
 		var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
-		# Oyuncunun arabasi: 2015 Polo (kendi modeli); yoksa boyali hatchback
-		var car: Node3D = world.vehicle("res://assets/models/polo.glb", 3.97, bool(VEHICLE_FLIP.get("polo", false)))
+		# Oyuncunun arabasi: kapilari acilan ayrintili hatchback (scripts/car_rig.gd); yoksa eski Polo / boyali hatchback
+		var car: Node3D = CarRig.make("hatchback")
+		var rigged := car != null
+		if car == null:
+			car = world.vehicle("res://assets/models/polo.glb", 3.97, bool(VEHICLE_FLIP.get("polo", false)))
 		if car == null:
 			car = world.vehicle("res://assets/models/hatchback.glb", 4.1)
 			if car:
 				_paint(car, Color("b8322c"))
 		if car == null:
 			car = world.make_car(Color("c23b32"))
-		else:
+		elif not rigged:
 			_dress_polo(car)
 		car.set_meta("kind", "araba")
-		car.set_meta("blinkers", Car.add_blinkers(car))
+		car.set_meta("ana", true)
+		if not rigged:
+			car.set_meta("blinkers", Car.add_blinkers(car))
 		_place_ride(car, p, atan2(-dir.x, -dir.y))
+		# Ikinci surulebilir araba: ic mekanli sedan, evin ilerisinde yol kenarinda park halinde
+		var sedan: Node3D = CarRig.make("sedan")
+		if sedan:
+			var sc: Array = _curb_near(start + Vector2(-34.0, 26.0))
+			if sc.is_empty() or (sc[0] as Vector2).distance_to(p) < 7.0:
+				sc = [p - dir * 7.5, atan2(-dir.x, -dir.y)]
+			_place_ride(sedan, sc[0], float(sc[1]))
 	# Bahce kapisinin onunde bisiklet ve scooter
 	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.6)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(2.2, 3.6)],
 			["motosiklet", "res://assets/models/motosiklet.glb", 2.05, Vector2(2.2, 6.4)]]:
@@ -2685,15 +2698,16 @@ func _enter_ride_now(r: Node3D, quiet := false) -> void:
 	owner_model.speed = 0.0
 	var glass := _ride.has_meta("glass")
 	# Saydam camli arabada hayvan on yolcu koltugunda gorunur
-	_board_pets(not cfg["hide"] or glass, cfg.get("pet", Vector3(0.36, 1.18, 0.12)) if not glass else Vector3(0.36, 1.18, 0.12))
+	_board_pets(not cfg["hide"] or glass, cfg.get("pet", Vector3(0.36, 1.18, 0.12)) if not glass else _ride.get_meta("pet_seat", Vector3(0.36, 1.18, 0.12)))
 	if cfg["hide"] and not quiet:
 		_sfx("araba_kapi", -6.0)
 	if cfg["hide"]:
 		# Surucu koltugunda oturan karakter (camli arabada disaridan, her arabada iceriden bakista gorunur)
 		owner_model.visible = glass
 		owner_model.riding = "araba"
+		owner_model.car_feet = _ride.get_meta("feet", [])
 		owner_model.grips = []
-		owner_model.position = CAR_SEAT
+		owner_model.position = _ride.get_meta("seat", CAR_SEAT)
 	if cfg["hide"] and glass:
 		# Ic mekan (camdan gorunur)
 		if _cockpit == null:
@@ -2871,7 +2885,7 @@ func _wheel_grips() -> void:
 	var nrm := xf.basis.y
 	if wheel.has_meta("model"):
 		rot = Basis(Vector3.BACK, clampf(-_steer * 2.6, -0.9, 0.9))
-		r = WHEEL_R
+		r = wheel.get_meta("r", WHEEL_R)
 		nrm = xf.basis.z
 	# Saat 9 ve 3'un biraz ustu (simidin yatay kollarinin hemen ustunden kavrar)
 	var pl: Vector3 = rot * Basis(Vector3.BACK, -0.22) * Vector3.LEFT
@@ -2901,7 +2915,7 @@ func _toggle_fps() -> void:
 		owner_model.set_head_hidden(false)
 		if RIDES[_ride.get_meta("kind")]["hide"]:
 			owner_model.visible = _ride.has_meta("glass")
-			owner_model.position = CAR_SEAT
+			owner_model.position = _ride.get_meta("seat", CAR_SEAT)
 		cam.near = 0.05
 		cam.fov = 60.0
 
@@ -2925,7 +2939,7 @@ func _cockpit_camera() -> void:
 		# Surucunun govdesi ve kollari gorunur (eller direksiyonda); yalniz bas gizlenir
 		owner_model.visible = true
 		owner_model.set_head_hidden(true)
-		owner_model.position = CAR_SEAT
+		owner_model.position = _ride.get_meta("seat", CAR_SEAT)
 		if _rider_pet:
 			_rider_pet.visible = true
 		# Polo: gercek govde iceriden gorunur (kaput, direkler, tavan); digerlerinde govde gizlenir
@@ -2948,7 +2962,8 @@ func _cockpit_camera() -> void:
 		cpn.radio_color = radio.color()
 		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
 			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
-		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.26))
+		var eye: Transform3D = _ride.get_meta("eye", Transform3D(Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.26)))
+		cam.global_transform = _ride.global_transform * Transform3D(look * eye.basis, eye.origin)
 		cam.near = 0.05
 		cam.fov = 72.0
 	else:
@@ -3044,6 +3059,8 @@ func _update_drive(dt: float) -> void:
 	var pitch_to := slope + clampf(accel * 0.004, -0.03, 0.02) * (1.0 if hide else 0.5)
 	_ride.rotation.x = lerpf(_ride.rotation.x, pitch_to, minf(1.0, dt * 6.0))
 	World.spin_wheels(_ride, _drive_speed * dt, _steer * float(cfg["lock"]))
+	if _ride.has_meta("rig"):
+		_ride.drive(_steer * float(cfg["lock"]), _steer)
 	_blink_t += dt
 	var turn := (1 if _steer > 0.0 else -1) if absf(_steer) > 0.3 and absf(_drive_speed) < 14.0 else 0
 	if _ride.has_meta("blinkers"):
@@ -5297,6 +5314,7 @@ func _debug_shot() -> void:
 				"closet": ui.open_closet()
 				"pause": ui.open_pause()
 				"settings": ui.open_settings()
+				"credits": ui.open_credits()
 				"map": map_screen.open(_owner_pos())
 				"photo": _on_photo("enter")
 			if _args.has("cmd"):
@@ -5532,6 +5550,8 @@ func _debug_shot() -> void:
 		cam.look_at(ct)
 		await get_tree().process_frame
 		await get_tree().process_frame
+	if _args.has("rigshots"):
+		await CarRig.debug_shots(self, _args)
 	if _args.has("posedbg"):
 		_pose_debug()
 	if _args.has("lokanta") and _shop != null and "waiter" in _shop and _shop.waiter:
