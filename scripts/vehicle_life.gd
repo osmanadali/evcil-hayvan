@@ -9,6 +9,8 @@ extends Node
 const Kit = preload("res://scripts/kit.gd")
 const ParkMap = preload("res://scripts/park_map.gd")
 const CarCabin = preload("res://scripts/car_cabin.gd")
+const CarBody = preload("res://scripts/car_body.gd")
+const Keybinds = preload("res://scripts/keybinds.gd")
 
 const LEAN := 0.17            # park halinde sola yatma (radyan, ~10 derece)
 const STAND_UP := -1.4
@@ -39,6 +41,7 @@ var _anim_ride: Node3D        # hareketi suren arac (yan ayak / yatma bu sirada 
 var _pet := {}                # {a, mode: wait / fly / seat, spot, hold, t, next, from, k}
 var _flights: Array = []      # inen hayvanlar: [ajan, nereden, nereye, t]
 var _gauge: Control
+var _hints: Control
 var _mirror_i := 0
 var _frame := 0
 var _door: Node3D
@@ -118,6 +121,58 @@ class Gauge extends Control:
 
 func busy() -> bool:
 	return _busy
+
+
+## Surerken ekranin sag ortasinda tus ipuclari: [F] Aractan in, [H] Farlar.
+class Hints extends Control:
+	var rows: Array = []      # [tus, yazi]
+	var font: Font
+
+	func _draw() -> void:
+		var y := 0.0
+		for r in rows:
+			var key: String = r[0]
+			var kw := maxf(font.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 18.0, 34.0)
+			var tw := font.get_string_size(r[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+			var w := kw + tw + 30.0
+			var x := size.x - w
+			var bg := StyleBoxFlat.new()
+			bg.bg_color = Color(0.05, 0.06, 0.08, 0.62)
+			bg.set_corner_radius_all(9)
+			draw_style_box(bg, Rect2(x, y, w, 40))
+			var cap := StyleBoxFlat.new()
+			cap.bg_color = Color("ffd23c")
+			cap.set_corner_radius_all(6)
+			draw_style_box(cap, Rect2(x + 7, y + 6, kw, 28))
+			var ks := font.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+			draw_string(font, Vector2(x + 7 + (kw - ks) * 0.5, y + 28), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("15171a"))
+			draw_string(font, Vector2(x + kw + 17, y + 28), r[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+			y += 48.0
+
+
+func _update_hints() -> void:
+	var ride: Node3D = m._ride
+	var on: bool = ride != null and m._mode == "play" and not _busy and m.minimap != null and m.minimap.visible \
+		and not DisplayServer.is_touchscreen_available()
+	if _hints == null:
+		if not on:
+			return
+		_hints = Hints.new()
+		_hints.font = m.ui.F_BODY
+		_hints.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hints.size = Vector2(300, 100)
+		m.minimap.get_parent().add_child(_hints)
+	_hints.visible = on
+	if not on:
+		return
+	var rows: Array = [[Keybinds.primary("interact"), "Araçtan in"]]
+	if ride.get_meta("kind") != "bisiklet":
+		rows.append([Keybinds.primary("headlights"), "Farlar" + (" (açık)" if m.lights_on() else "")])
+	var vps: Vector2 = get_viewport().get_visible_rect().size
+	_hints.position = Vector2(vps.x - 300.0 - 24.0, vps.y * 0.5 - 44.0)
+	if rows != _hints.rows:
+		_hints.rows = rows
+		_hints.queue_redraw()
 
 
 func _ready() -> void:
@@ -321,7 +376,7 @@ func _mount_car(r: Node3D, _cfg: Dictionary, side_l: Vector3) -> void:
 	om.visible = true
 	on.position = r.position
 	on.rotation = r.rotation
-	var seat_p: Vector3 = m.CAR_SEAT
+	var seat_p: Vector3 = m.car_seat(r)
 	_pet_wait()
 	await _run(0.62, func(k: float):
 		var e := _ease(k)
@@ -332,6 +387,7 @@ func _mount_car(r: Node3D, _cfg: Dictionary, side_l: Vector3) -> void:
 		m._wheel_grips())
 	om.position = seat_p
 	om.rotation.y = 0.0
+	om.car_feet = m.car_feet(r)
 	om.visible = glass or m._fps
 	# Kapi kapanir; hayvan arkadan atlar
 	_pet_board()
@@ -435,7 +491,7 @@ func _dismount_car(r: Node3D) -> void:
 	var pet_from := pet.global_position if pet else Vector3.ZERO
 	m._exit_ride_now(Vector2(out.x, out.z), true)
 	on.rotation = Vector3(0, r.rotation.y - (PI / 2 if left else -PI / 2), 0)       # arabaya sirtini doner
-	var start := on.global_transform.affine_inverse() * (r.global_transform * (m.CAR_SEAT as Vector3))
+	var start := on.global_transform.affine_inverse() * (r.global_transform * (m.car_seat(r) as Vector3))
 	start.y = 0.0
 	om.position = start
 	if pet and pet.visible:
@@ -501,31 +557,23 @@ func _dismount_two(r: Node3D, cfg: Dictionary) -> void:
 
 # ---------------------------------------------------------------- kapi (Polo)
 
-func _door_show(r: Node3D, glass: bool) -> void:
+## Gercek kapi: Polonun govdesinden piksel basina ayrilan surucu kapisi mentesesinden acilir
+## (scripts/car_body.gd). Kapisi ayrilmamis araclarda kapi hareketi yoktur (karakter egilip biner).
+func _door_show(r: Node3D, _glass: bool) -> void:
 	_door_hide()
-	if not glass:
-		return
-	_door = Node3D.new()
-	_door.position = Vector3(-0.85, 0.0, -0.78)
-	r.add_child(_door)
-	_door_ride = r
-	var paint := Kit.mat("f1f1ee", 0.3)
-	paint.metallic = 0.2
-	var p := Kit.box(_door, Vector3(0.035, 0.5, 0.96), Vector3(-0.012, 0.66, 0.49), paint)
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	Kit.box(_door, Vector3(0.03, 0.46, 0.9), Vector3(0.02, 0.66, 0.49), Kit.mat("34363a", 0.95))
-	Kit.capsule(_door, 0.012, 0.12, Vector3(-0.034, 0.83, 0.82), Kit.mat("d8d8d4", 0.3), Vector3(PI / 2, 0, 0))
+	if CarBody.has_door(r):
+		_door_ride = r
 
 
 func _door_angle(k: float) -> void:
-	if _door and is_instance_valid(_door):
-		_door.rotation.y = -1.12 * k
+	if _door_ride != null:
+		CarBody.door_angle(_door_ride, k)
 
 
 func _door_hide() -> void:
-	if _door and is_instance_valid(_door):
-		_door.queue_free()
-	_door = null
+	if _door_ride != null:
+		CarBody.door_angle(_door_ride, 0.0)
+	_door_ride = null
 
 
 # ---------------------------------------------------------------- hayvan
@@ -817,10 +865,14 @@ func _update_gauge() -> void:
 		_gauge.size = Vector2(mm.SIZE, 150)
 		mm.get_parent().add_child(_gauge)
 	_gauge.visible = on
-	mm.gauge_h = 158.0 if on else 0.0
+	mm.gauge_h = 158.0 if on and not mm.side_gauge else 0.0
+	_update_hints()
 	if not on:
 		return
 	_gauge.position = mm.position + Vector2(0, -174)
+	if mm.side_gauge:
+		var vps: Vector2 = get_viewport().get_visible_rect().size
+		_gauge.position = Vector2(vps.x - mm.SIZE - 34.0, vps.y - 150.0 - 30.0)
 	var ride: Node3D = m._ride
 	var top := 15.0
 	var fuel := -1.0
@@ -987,6 +1039,136 @@ func debug_tour(args: Dictionary) -> void:
 		m._exit_ride_now()
 		for i in 3:
 			await get_tree().process_frame
+
+
+## --carshots[=liste]: tek calistirmada araba goruntuleri (<shot>_<ad>.png): yan, sag, kapi, ic (ileri / sol / sag),
+## gece on (farlar), gece arka (fren), gece ic. Liste verilirse yalniz o adlar (virgulle).
+func debug_shots(args: Dictionary) -> void:
+	var only: Array = [] if String(args["carshots"]) == "1" else Array(String(args["carshots"]).split(","))
+	var target: Node3D = null
+	for r in m._rides:
+		if r.get_meta("kind") == "araba" and not r.has_meta("garage"):
+			target = r
+			break
+	if target == null:
+		return
+	var p := _flat(target) * Vector3(-1.6, 0, 0.9)
+	m._place_owner(Vector2(p.x, p.z))
+	for k in m.agents:
+		m.agents[k].place(Vector2(p.x, p.z) + Vector2(0.8, 0.6))
+	await get_tree().process_frame
+	var b := _flat(target)
+	var cam: Camera3D = m.cam
+	if only.is_empty() or "bin" in only:
+		# Binme hareketinin ortasi (kapi acik, karakter koltuga kayiyor); zaman yavaslatilir ki kare atlamasin
+		instant = false
+		m.ui.visible = false
+		_dbg_cam = [b * Vector3(-3.3, 1.6, 2.3), b * Vector3(-0.7, 0.8, -0.1)]
+		Engine.time_scale = 0.08
+		m._enter_ride()
+		var t := 0.0
+		while t < float(args.get("bint", "0.95")) and _busy:
+			await get_tree().process_frame
+			t += get_process_delta_time()
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(String(args["shot"]).replace(".png", "_bin.png"))
+		Engine.time_scale = 1.0
+		while _busy:
+			await get_tree().process_frame
+		_dbg_cam = []
+		instant = true
+		m.ui.visible = true
+	else:
+		m._enter_ride_now(target)
+	for i in 20:
+		await get_tree().process_frame
+	var bref: Array = [b]       # lambda yerel degiskeni degerle yakalar; guncellenebilsin diye dizi
+	var snap := func(nm: String) -> void:
+		for i in 4:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(String(args["shot"]).replace(".png", "_%s.png" % nm))
+	var outside := func(nm: String, eye: Vector3, look: Vector3, fov := 50.0) -> void:
+		if not only.is_empty() and not nm in only:
+			return
+		m._mode = "debug"
+		m.ui.visible = false
+		cam.fov = fov
+		cam.global_position = (bref[0] as Transform3D) * eye
+		cam.look_at((bref[0] as Transform3D) * look)
+		await snap.call(nm)
+	var inside := func(nm: String, yaw: float) -> void:
+		if not only.is_empty() and not nm in only:
+			return
+		m._mode = "play"
+		m.ui.visible = true
+		m._fps = true
+		for i in 30:
+			m._fps_yaw = yaw
+			await get_tree().process_frame
+		m._fps_yaw = yaw
+		await snap.call(nm)
+		m._toggle_fps()
+	await outside.call("yan", Vector3(-3.6, 1.45, 0.2), Vector3(0, 0.85, 0.1))
+	await outside.call("sag", Vector3(3.0, 1.5, -2.6), Vector3(0, 0.85, 0.0))
+	CarBody.door_angle(target, 1.0)
+	await outside.call("kapi", Vector3(-3.1, 1.6, 2.0), Vector3(-0.7, 0.8, -0.2))
+	await outside.call("kapi2", Vector3(-3.3, 1.3, -1.6), Vector3(-0.6, 0.8, 0.0))
+	CarBody.door_angle(target, 0.0)
+	await inside.call("ic", 0.0)
+	await inside.call("ic_sol", 1.1)
+	await inside.call("ic_sag", -1.1)
+	m.clock = float(args.get("nightclock", "22.5"))
+	for i in 20:
+		await get_tree().process_frame
+	await outside.call("gece_on", Vector3(-2.6, 1.6, -7.0), Vector3(0, 0.5, -3.0), 60.0)
+	await outside.call("gece_arka", Vector3(1.6, 1.3, 5.0), Vector3(0, 0.7, 0.0))
+	m._args["brake"] = "1"
+	await outside.call("gece_fren", Vector3(1.6, 1.3, 5.0), Vector3(0, 0.7, 0.0))
+	m._args.erase("brake")
+	m._args["reverse"] = "1"
+	await outside.call("gece_geri", Vector3(1.6, 1.3, 5.0), Vector3(0, 0.7, 0.0))
+	m._args.erase("reverse")
+	await inside.call("gece_ic", 0.0)
+	m._mode = "play"
+	m._exit_ride_now()
+	# Iki tekerliler: gece far ve stop
+	for kind in ["motosiklet", "scooter"]:
+		if not only.is_empty() and not kind in only:
+			continue
+		var two: Node3D = null
+		for r in m._rides:
+			if r.get_meta("kind") == kind and not r.has_meta("garage"):
+				two = r
+				break
+		if two == null:
+			continue
+		var tp := _flat(two) * Vector3(-1.4, 0, 0.9)
+		m._place_owner(Vector2(tp.x, tp.z))
+		await get_tree().process_frame
+		m._enter_ride_now(two)
+		for i in 12:
+			await get_tree().process_frame
+		bref[0] = _flat(two)
+		await outside.call(kind, Vector3(-1.8, 1.3, -3.4), Vector3(0, 0.8, -0.6), 55.0)
+		await outside.call(kind + "_arka", Vector3(-1.5, 1.2, 3.0), Vector3(0, 0.8, 0.0), 55.0)
+		m._mode = "play"
+		m._exit_ride_now()
+	# Trafik araci: yalniz isikli far / stop camlari
+	if (only.is_empty() or "trafik" in only) and not m._cars.is_empty():
+		var tc: Node3D = m._cars[0]
+		for q: Node3D in m._cars:
+			if m._car_model(q) == "hatchback":
+				tc = q
+		for i in 6:
+			await get_tree().process_frame
+		tc.set_process(false)
+		bref[0] = tc.global_transform
+		await outside.call("trafik", Vector3(-2.4, 1.5, -5.5), Vector3(0, 0.7, 0.0), 55.0)
+		await outside.call("trafik_arka", Vector3(2.0, 1.4, 5.5), Vector3(0, 0.7, 0.0), 55.0)
+		tc.set_process(true)
+	m._mode = "play"
+	m.ui.visible = true
 
 
 func _debug_cycle(stay: float) -> void:

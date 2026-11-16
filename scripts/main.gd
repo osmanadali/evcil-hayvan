@@ -24,6 +24,9 @@ const Ui = preload("res://scripts/ui.gd")
 const MapScreen = preload("res://scripts/map_screen.gd")
 const Accessories = preload("res://scripts/accessories.gd")
 const CarCabin = preload("res://scripts/car_cabin.gd")
+const CarBody = preload("res://scripts/car_body.gd")
+const VLights = preload("res://scripts/vehicle_lights.gd")
+const CustomCar = preload("res://scripts/custom_car.gd")
 
 const WALK_SPEED := 5.0
 const CAM_DIST := 7.2
@@ -985,6 +988,8 @@ func _input(e: InputEvent) -> void:
 			_on_command("train")
 		elif k.is_action_pressed("radio"):
 			radio.cycle()
+		elif k.is_action_pressed("headlights"):
+			_toggle_lights()
 		elif k.is_action_pressed("messages"):
 			neighbors.open_messages()
 		elif k.is_action_pressed("switch_pet"):
@@ -2427,8 +2432,31 @@ var _blink_t := 0.0
 var _cam_dist_s := 6.0
 var _cam_block_t := 0.0
 const WHEEL_R := 0.185      # direksiyon simidinin yaricapi (tutma noktalari)
-const CAR_SEAT_Y := 0.02      # surus pozunda karakterin arac icindeki yuksekligi
-const CAR_SEAT := Vector3(-0.36, CAR_SEAT_Y, -0.02)   # surucunun arac icindeki yeri (kalca minderin ustunde, eller simide yetisir)
+const CAR_SEAT_Y := 0.11      # surus pozunda karakterin arac icindeki yuksekligi (kalca minderin ustunde, ~0.64 m)
+const CAR_SEAT := Vector3(-0.36, CAR_SEAT_Y, 0.02)   # surucunun arac icindeki yeri (kalca minderin ustunde, eller simide yetisir)
+## Surucunun ayak bilekleri (arac uzayi): sol ayak dayamada, sag ayak gaz pedalinda. Kabin zemini 0.40 m'de;
+## bacaklar govdenin altina sarkmaz.
+const CAR_FEET := [Vector3(-0.52, 0.5, -0.5), Vector3(-0.27, 0.5, -0.56)]
+const CAR_EYE := Vector3(-0.36, 1.27, 0.2)     # arac ici kamera: surucunun goz hizasi
+
+
+## Surucunun yeri, ayaklari ve gozu: Polo olculeri; kullanicinin modeli (scripts/custom_car.gd) varsa
+## direksiyonunun yerine gore kayar ya da modeldeki isaret dugumlerinden (Surucu_Koltuk, Surucu_Goz) alinir.
+func car_seat(r: Node3D) -> Vector3:
+	if r != null and r.has_meta("koltuk"):
+		return (r.get_meta("koltuk") as Vector3) + Vector3(0, CAR_SEAT_Y - 0.64, -0.2)
+	return CAR_SEAT + (r.get_meta("seat_off", Vector3.ZERO) as Vector3 if r != null else Vector3.ZERO)
+
+
+func car_feet(r: Node3D) -> Array:
+	var off: Vector3 = car_seat(r) - CAR_SEAT
+	return [CAR_FEET[0] + off, CAR_FEET[1] + off]
+
+
+func car_eye(r: Node3D) -> Vector3:
+	if r != null and r.has_meta("goz"):
+		return r.get_meta("goz")
+	return CAR_EYE + (car_seat(r) - CAR_SEAT)
 var _cyclists: Array = []
 var _in_water := false
 var _play_ride: Dictionary = {}
@@ -2506,14 +2534,18 @@ func _spawn_rides() -> void:
 		var w := ParkMap.road_width(best, ParkMap.road_next[best][0])
 		var p := a + dir * 6.0 + Vector2(-dir.y, dir.x) * maxf(w * 0.5 - 1.0, 0.0)
 		# Oyuncunun arabasi: 2015 Polo (kendi modeli); yoksa boyali hatchback
-		var car: Node3D = world.vehicle("res://assets/models/polo.glb", 3.97, bool(VEHICLE_FLIP.get("polo", false)))
+		# Kullanicinin kendi ic mekanli modeli varsa (assets/vehicles/araba.glb) o kullanilir
+		var custom: Node3D = CustomCar.build(CarCabin) if CustomCar.exists() else null
+		var car: Node3D = custom
+		if car == null:
+			car = world.vehicle("res://assets/models/polo.glb", 3.97, bool(VEHICLE_FLIP.get("polo", false)))
 		if car == null:
 			car = world.vehicle("res://assets/models/hatchback.glb", 4.1)
 			if car:
 				_paint(car, Color("b8322c"))
 		if car == null:
 			car = world.make_car(Color("c23b32"))
-		else:
+		elif custom == null:
 			_dress_polo(car)
 		car.set_meta("kind", "araba")
 		car.set_meta("blinkers", Car.add_blinkers(car))
@@ -2557,19 +2589,8 @@ func _dress_polo(car: Node3D) -> void:
 	if body == null:
 		return
 	const U := 1.0 / 3.97                  # 1 metre, model biriminde
-	# Saydam camlar: govde malzemesi cam bolgelerini yari saydam yapan shader ile degisir
-	var src_mat: BaseMaterial3D = (body as MeshInstance3D).get_active_material(0)
-	if src_mat and src_mat.albedo_texture:
-		var gm := ShaderMaterial.new()
-		gm.shader = load("res://shaders/car_body.gdshader")
-		gm.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
-		# Ikinci gecis: govdenin ic yuzu (direkler, tavan) iceriden ve camlardan gorunur
-		var inner := ShaderMaterial.new()
-		inner.shader = load("res://shaders/car_body_inner.gdshader")
-		inner.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
-		gm.next_pass = inner
-		(body as MeshInstance3D).material_override = gm
-		car.set_meta("glass", true)
+	# Saydam camlar, acilan surucu kapisi, far / stop isimasi (scripts/car_body.gd)
+	if CarBody.dress(car, body as MeshInstance3D):
 		# Kalici ic mekan: koltuklar, on panel, direksiyon, kapi dosemeleri camdan disaridan da gorunur
 		var cab := _make_cockpit()
 		cab.name = "Kabin"
@@ -2654,6 +2675,11 @@ func _take_traffic_car(c: Node3D) -> void:
 	for dr in c.find_children("Surucu", "", true, false):
 		dr.queue_free()
 	_cars.erase(c)
+	# Trafik mercekleri kalkar: oyuncu binince farlar vehicle_lights.gd ile yeniden kurulur
+	if c.get("_lamps") is Array and (c.get("_lamps") as Array).size() >= 2:
+		for b: Node in (c.get("_lamps")[0] as Array) + (c.get("_lamps")[1] as Array):
+			b.queue_free()
+		c.set("_lamps", [])
 	c.set_meta("kind", "araba")
 	if c.get_child_count() > 0 and c.get_child(0).has_meta("wheels"):
 		c.set_meta("wheels", c.get_child(0).get_meta("wheels"))
@@ -2693,7 +2719,8 @@ func _enter_ride_now(r: Node3D, quiet := false) -> void:
 		owner_model.visible = glass
 		owner_model.riding = "araba"
 		owner_model.grips = []
-		owner_model.position = CAR_SEAT
+		owner_model.position = car_seat(_ride)
+		owner_model.car_feet = [] if quiet else car_feet(_ride)      # binme hareketinde koltuga oturunca ayarlanir
 	if cfg["hide"] and glass:
 		# Ic mekan (camdan gorunur)
 		if _cockpit == null:
@@ -2743,7 +2770,8 @@ func _enter_ride_now(r: Node3D, quiet := false) -> void:
 	if touch:
 		ui.toast("Çubuk: gaz, fren, direksiyon · kamera düğmesi: içeriden sür" + (" · nota düğmesi: radyo" if cfg["hide"] else ""))
 	else:
-		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · E in" + radio_hint)
+		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · %s in%s" % [Keybinds.primary("interact"),
+			(" · %s farlar" % Keybinds.primary("headlights")) if _ride.get_meta("kind") != "bisiklet" else ""] + radio_hint)
 
 
 ## Hayvanlar araca biner: arabada iceride (gorunmez), iki tekerlide aktif hayvan arkada oturur.
@@ -2813,6 +2841,7 @@ func _exit_ride_now(at := Vector2.INF, quiet := false) -> void:
 			_cockpit.queue_free()
 		_cockpit = null
 	_set_body_visible(_ride, true)
+	CarBody.set_inside(_ride, false)
 	if RIDES[_ride.get_meta("kind")]["hide"] and not quiet:
 		_sfx("araba_kapi", -6.0, 1.05)
 	_ride.rotation.z = 0.0
@@ -2826,6 +2855,7 @@ func _exit_ride_now(at := Vector2.INF, quiet := false) -> void:
 	owner_model.riding = ""
 	owner_model.grips = []
 	owner_model.grip_palms = []
+	owner_model.car_feet = []
 	owner_model.position = Vector3.ZERO
 	_unboard_pets(out)
 	_cam_blend = 0.6
@@ -2873,9 +2903,9 @@ func _wheel_grips() -> void:
 		rot = Basis(Vector3.BACK, clampf(-_steer * 2.6, -0.9, 0.9))
 		r = WHEEL_R
 		nrm = xf.basis.z
-	# Saat 9 ve 3'un biraz ustu (simidin yatay kollarinin hemen ustunden kavrar)
-	var pl: Vector3 = rot * Basis(Vector3.BACK, -0.22) * Vector3.LEFT
-	var pr: Vector3 = rot * Basis(Vector3.BACK, 0.22) * Vector3.RIGHT
+	# Saat 10 ve 2: eller simidin ust yarisinda (iceriden bakarken iki el ve on kollar gorunur)
+	var pl: Vector3 = rot * Basis(Vector3.BACK, -0.5) * Vector3.LEFT
+	var pr: Vector3 = rot * Basis(Vector3.BACK, 0.5) * Vector3.RIGHT
 	if not wheel.has_meta("model"):
 		pl = Vector3.LEFT
 		pr = Vector3.RIGHT
@@ -2894,6 +2924,7 @@ func _toggle_fps() -> void:
 	_cam_blend = 0.5
 	if not _fps:
 		_set_body_visible(_ride, true)
+		CarBody.set_inside(_ride, false)
 		if _cockpit:
 			_cockpit.visible = _ride.has_meta("glass")
 			_cockpit.get_node("Dis").visible = false
@@ -2901,7 +2932,7 @@ func _toggle_fps() -> void:
 		owner_model.set_head_hidden(false)
 		if RIDES[_ride.get_meta("kind")]["hide"]:
 			owner_model.visible = _ride.has_meta("glass")
-			owner_model.position = CAR_SEAT
+			owner_model.position = car_seat(_ride)
 		cam.near = 0.05
 		cam.fov = 60.0
 
@@ -2925,11 +2956,24 @@ func _cockpit_camera() -> void:
 		# Surucunun govdesi ve kollari gorunur (eller direksiyonda); yalniz bas gizlenir
 		owner_model.visible = true
 		owner_model.set_head_hidden(true)
-		owner_model.position = CAR_SEAT
+		owner_model.position = car_seat(_ride)
+		if _ride.has_meta("custom"):
+			# Kullanicinin birinci sahis kol modeli (assets/vehicles/kollar.glb) varsa karakter yerine o gorunur
+			var arms := _cockpit.get_node_or_null("Ust/Kollar") as Node3D
+			if arms == null and not _cockpit.has_meta("kol_yok"):
+				arms = CustomCar.arms()
+				if arms == null:
+					_cockpit.set_meta("kol_yok", true)
+				else:
+					(_cockpit.get_node("Ust") as Node3D).add_child(arms)
+			if arms != null:
+				arms.position = car_eye(_ride)
+				owner_model.visible = false
 		if _rider_pet:
 			_rider_pet.visible = true
 		# Polo: gercek govde iceriden gorunur (kaput, direkler, tavan); digerlerinde govde gizlenir
 		_set_body_visible(_ride, _ride.has_meta("glass"))
+		CarBody.set_inside(_ride, true)       # camlar iceriden gorusu kapatmasin
 		var wheel: Node3D = _cockpit.get_node("Direksiyon")
 		# Simit kendi ekseninde (kolon ekseni) doner: saga kirinca saat yonunde
 		if wheel.has_meta("model"):
@@ -2948,7 +2992,8 @@ func _cockpit_camera() -> void:
 		cpn.radio_color = radio.color()
 		if _args.has("cpdump") and Engine.get_process_frames() % 60 == 0:
 			_cockpit.get_node("CarPlayVP").get_texture().get_image().save_png(_args["cpdump"])
-		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.16), Vector3(-0.36, 1.32, 0.26))
+		# Surucunun goz hizasi (bas kemigi ~1.17 m; gozler biraz yukarida ve onde)
+		cam.global_transform = _ride.global_transform * Transform3D(look * Basis(Vector3.RIGHT, -0.13), car_eye(_ride))
 		cam.near = 0.05
 		cam.fov = 72.0
 	else:
@@ -3028,7 +3073,18 @@ func _update_drive(dt: float) -> void:
 	var p := Vector2(_ride.position.x, _ride.position.z)
 	var fwd := Vector2(-sin(yaw + _slip), -cos(yaw + _slip))     # gidis yonu (kayarken burundan farkli)
 	var want := p + fwd * _drive_speed * dt
-	var np: Vector2 = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
+	var np: Vector2 = want
+	if bool(cfg["hide"]):
+		# Araba: burun, orta ve arka icin uc daire (govde boyunca). Tek daireyle burun duvarlarin icine giriyordu.
+		var nose := Vector2(-sin(yaw), -cos(yaw))
+		for it in 2:
+			for off: float in [1.15, -1.15, 0.0]:
+				var q: Vector2 = np + nose * off
+				var q2: Vector2 = world.resolve(q, 0.85, p + nose * off)
+				np += q2 - q
+		np = ParkMap.clamp_bounds(np)
+	else:
+		np = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
 	np = _push_from_vehicles(np, float(cfg["r"]) + 0.2, _ride)
 	if np.distance_to(want) > 0.02:
 		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # carpti: yavasla
@@ -3077,6 +3133,47 @@ func _update_drive(dt: float) -> void:
 	if _engine and float(cfg["engine"]) > 0.0:
 		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
 		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+
+
+# ---------------------------------------------------------------- farlar
+
+var _lights_manual := -1      # -1 otomatik (aksam / gece / yagmur), 0 elle kapali, 1 elle acik
+var _lights_ride: Node3D
+
+
+func _lights_auto() -> bool:
+	return night > 0.45 or (weather != null and (weather.rain > 0.25 or weather.fog > 0.5 or weather.snow > 0.3))
+
+
+func lights_on() -> bool:
+	return _lights_manual == 1 or (_lights_manual < 0 and _lights_auto())
+
+
+## H tusu: farlari elle ac / kapa (aractan inince yeniden otomatik).
+func _toggle_lights() -> void:
+	if _ride == null or _mode != "play":
+		return
+	if _ride.get_meta("kind") == "bisiklet":
+		ui.toast("Bisiklette far yok")
+		return
+	_lights_manual = 0 if lights_on() else 1
+	_sfx("clack", -10.0, 1.3)
+	ui.toast("Farlar açık" if _lights_manual == 1 else "Farlar kapalı")
+
+
+func _update_lights() -> void:
+	Car.lamps_on = _lights_auto()
+	if _ride != _lights_ride:
+		if _lights_ride != null and is_instance_valid(_lights_ride):
+			VLights.update(_lights_ride, false, false, false)
+		_lights_ride = _ride
+		_lights_manual = int(_args["lights"]) if _args.has("lights") else -1
+	if _ride == null or not VLights.attach(_ride, _ride.get_meta("kind")):
+		return
+	var gas: float = -ui.stick.y
+	var brake := (gas < -0.12 and _drive_speed > 0.3) or Input.is_action_pressed("jump") or _args.has("brake")
+	var rev := _drive_speed < -0.3 or (absf(_drive_speed) <= 0.3 and gas < -0.12) or _args.has("reverse")
+	VLights.update(_ride, lights_on(), brake, rev)
 
 
 ## Hareketli araclarin (trafik, park etmis kendi araclarimiz, otobus) icinden gecilmez.
@@ -3395,10 +3492,12 @@ func _set_nav(p: Vector2, label := "") -> void:
 
 
 func _update_minimap(dt: float) -> void:
-	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null and not (_fps and _ride != null and _ride.get_meta("kind") == "araba")
-	# Tam sag alt kose (yaylar icin ~20 px pay); para ve rota yazisi haritanin ustunde
+	minimap.visible = _mode == "play" and not map_screen.visible and ParkMap.home == null
+	# Tam sag alt kose (yaylar icin ~20 px pay); para ve rota yazisi haritanin ustunde.
+	# Araba ici kamerada: harita sol altta, hiz kadrani + vites sag altta (vehicle_life.gd).
 	var vp := get_viewport().get_visible_rect().size
-	minimap.position = Vector2(vp.x - minimap.SIZE - 34.0, vp.y - minimap.SIZE - 34.0)
+	minimap.side_gauge = _fps and _ride != null and _ride.get_meta("kind") == "araba"
+	minimap.position = Vector2(34.0 if minimap.side_gauge else vp.x - minimap.SIZE - 34.0, vp.y - minimap.SIZE - 34.0)
 	minimap.player = _owner_pos()
 	minimap.heading = _cam_yaw
 	minimap.coins = int(state.d["coins"])
@@ -4081,6 +4180,7 @@ func _process(dt: float) -> void:
 	_update_play_ride(dt)
 	pview.update(dt)
 	life.update(dt)
+	_update_lights()
 	boat.update(dt)
 	radio.update(dt)
 	hotel.update(dt)
@@ -5491,6 +5591,42 @@ func _debug_shot() -> void:
 		await life.debug(_args)
 	if _args.has("vtour"):
 		await life.debug_tour(_args)
+	if _args.has("carshots"):
+		await life.debug_shots(_args)
+	if _args.has("crashtest"):
+		# Arabayi lokanta / market binalarina dort yonden surer; govdenin binaya ne kadar girdigini yazar (--crashtest)
+		var car_r: Node3D = null
+		for r in _rides:
+			if r.get_meta("kind") == "araba" and not r.has_meta("garage"):
+				car_r = r
+		for sp in eateries.places:
+			var c0: Vector2 = sp["center"]
+			var tw: Vector2 = sp["tw"]
+			var sd := Vector2(-tw.y, tw.x)
+			for ap in [["on", tw], ["yan", sd], ["arka", -tw], ["capraz", (tw + sd).normalized()]]:
+				var dirv: Vector2 = ap[1]
+				var from: Vector2 = c0 + dirv * 13.0
+				car_r.position = Vector3(from.x, ParkMap.terrain_height(from), from.y)
+				car_r.rotation = Vector3(0, atan2(dirv.x, dirv.y), 0)       # burun binaya bakar
+				owner_node.position = car_r.position
+				if _ride == null:
+					_enter_ride_now(car_r, true)
+				_drive_speed = 0.0
+				var worst := 9.0
+				for i in 420:
+					ui.stick = Vector2(0.35 if i % 120 > 80 else 0.0, -1.0)
+					_update_drive(1.0 / 60.0)
+					var fw := Vector2(-sin(car_r.rotation.y), -cos(car_r.rotation.y))
+					for off in [1.98, 0.0, -1.98]:
+						for lat in [-0.8, 0.0, 0.8]:
+							var q: Vector2 = Vector2(car_r.position.x, car_r.position.z) + fw * off + Vector2(-fw.y, fw.x) * lat
+							var l := Vector2((q - c0).dot(sd), (q - c0).dot(tw))
+							# govde dikdortgeni: |x| <= 4.5, z -3.8 .. 3.08; disarida uzaklik > 0
+							var dx := absf(l.x) - 4.5
+							var dz := maxf(-3.8 - l.y, l.y - 3.08)
+							worst = minf(worst, maxf(dx, dz))
+				ui.stick = Vector2.ZERO
+				print("CARPMA %s %s en_derin=%.2f m (eksi = binanin icinde) hiz=%.1f" % [sp["name"], ap[0], worst, _drive_speed])
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("police"):

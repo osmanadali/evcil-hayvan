@@ -1,0 +1,2 @@
+Kendi arac modellerini buraya koy: araba.glb (ic mekanli araba), kollar.glb (birinci sahis kol / el).
+Ayrinti: docs/arac-modeli-istegi.md
