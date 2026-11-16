@@ -7,6 +7,7 @@ extends RefCounted
 
 const Kit = preload("res://scripts/kit.gd")
 const CarPlay = preload("res://scripts/carplay.gd")
+const DOOR_HINGE := Vector3(-0.85, 0.0, -0.671)     # surucu kapisi mentesesi (arac uzayi; car_body.gd HINGE ile ayni yer)
 
 
 ## Gosterge paneli (SubViewport icinde cizilir): devir saati, hiz saati, ortada sayisal hiz, vites, yakit.
@@ -349,25 +350,34 @@ static func build() -> Node3D:
 	# ---- Kapi dosemeleri: yuvarlak kesitli panel (kol dayama cikintisi, cep), kapi kolu, cam dugmeleri, hoparlor
 	var dp := [Vector2(0.775, 0.40), Vector2(0.775, 0.86), Vector2(0.735, 0.955), Vector2(0.705, 0.955), Vector2(0.715, 0.875),
 		Vector2(0.668, 0.82), Vector2(0.663, 0.765), Vector2(0.725, 0.72), Vector2(0.735, 0.57), Vector2(0.70, 0.51), Vector2(0.70, 0.40)]
+	# Surucu kapisinin dosemesi mentese dugumunde (KapiIc): kapi acilinca govdedeki kapiyla birlikte doner
+	var kd := Node3D.new()
+	kd.name = "KapiIc"
+	kd.position = DOOR_HINGE
+	c.add_child(kd)
+	var kin := Node3D.new()
+	kin.position = -DOOR_HINGE
+	kd.add_child(kin)
 	for sx in [-1.0, 1.0]:
+		var fd: Node3D = kin if sx < 0.0 else c      # on kapi parcalari
 		var prof := rounded(_mirror_x(dp, sx), 0.022, 3)
-		extrude(c, prof, -0.93, 0.5, 2, soft, 0.04)
+		extrude(fd, prof, -0.93, 0.5, 2, soft, 0.04)
 		extrude(c, prof, 0.56, 1.02, 2, soft, 0.04)
 		# Kol dayama yastigi (kumas), kapi cekme kolu, kapi acma kolu
-		var padd := Kit.capsule(c, 0.024, 0.5, Vector3(sx * 0.672, 0.812, -0.02), fabric2, Vector3(PI / 2, 0, 0))
+		var padd := Kit.capsule(fd, 0.024, 0.5, Vector3(sx * 0.672, 0.812, -0.02), fabric2, Vector3(PI / 2, 0, 0))
 		padd.scale = Vector3(1.0, 0.6, 1.0)
 		var padr := Kit.capsule(c, 0.024, 0.3, Vector3(sx * 0.672, 0.812, 0.8), fabric2, Vector3(PI / 2, 0, 0))
 		padr.scale = Vector3(1.0, 0.6, 1.0)
-		Kit.capsule(c, 0.011, 0.11, Vector3(sx * 0.706, 0.9, -0.42), silver, Vector3(PI / 2, 0, 0))
+		Kit.capsule(fd, 0.011, 0.11, Vector3(sx * 0.706, 0.9, -0.42), silver, Vector3(PI / 2, 0, 0))
 		Kit.capsule(c, 0.011, 0.1, Vector3(sx * 0.706, 0.9, 0.7), silver, Vector3(PI / 2, 0, 0))
-		Kit.box(c, Vector3(0.05, 0.012, 0.13), Vector3(sx * 0.675, 0.826, -0.26), gloss)
+		Kit.box(fd, Vector3(0.05, 0.012, 0.13), Vector3(sx * 0.675, 0.826, -0.26), gloss)
 		for k in 3:
-			Kit.box(c, Vector3(0.022, 0.006, 0.018), Vector3(sx * 0.675, 0.834, -0.3 + 0.04 * k), silver)
+			Kit.box(fd, Vector3(0.022, 0.006, 0.018), Vector3(sx * 0.675, 0.834, -0.3 + 0.04 * k), silver)
 		# Hoparlor izgarasi
-		Kit.cyl(c, 0.075, 0.075, 0.012, Vector3(sx * 0.727, 0.55, -0.6), black, 20, Vector3(0, 0, PI / 2))
-		Kit.torus(c, 0.07, 0.08, Vector3(sx * 0.722, 0.55, -0.6), trim, Vector3(0, 0, PI / 2))
+		Kit.cyl(fd, 0.075, 0.075, 0.012, Vector3(sx * 0.727, 0.55, -0.6), black, 20, Vector3(0, 0, PI / 2))
+		Kit.torus(fd, 0.07, 0.08, Vector3(sx * 0.722, 0.55, -0.6), trim, Vector3(0, 0, PI / 2))
 		# Kapi cebi
-		var pocket := Kit.capsule(c, 0.03, 0.5, Vector3(sx * 0.705, 0.47, -0.05), trim, Vector3(PI / 2, 0, 0))
+		var pocket := Kit.capsule(fd, 0.03, 0.5, Vector3(sx * 0.705, 0.47, -0.05), trim, Vector3(PI / 2, 0, 0))
 		pocket.scale = Vector3(0.6, 1.0, 1.0)
 		# Arka yan doseme (tekerlek kemerinin ustu)
 		Kit.box(c, Vector3(0.03, 0.42, 0.44), Vector3(sx * 0.735, 0.72, 1.25), soft, Vector3(0, 0, sx * 0.06))
@@ -375,9 +385,10 @@ static func build() -> Node3D:
 	# ---- Gunes siperlikleri ve ic dikiz aynasi (tavanin hemen altinda, govdenin icinde)
 	var liner := Kit.mat("c9c6bf", 0.98)
 	for sx in [-1.0, 1.0]:
-		var visor := Kit.capsule(c, 0.012, 0.34, Vector3(sx * 0.34, 1.415, -0.25), liner, Vector3(0, 0, PI / 2))
+		# Tavana katlanmis (iceriden bakista gorusu kapatmaz)
+		var visor := Kit.capsule(c, 0.01, 0.34, Vector3(sx * 0.34, 1.468, -0.17), liner, Vector3(0, 0, PI / 2))
 		visor.scale = Vector3(1.0, 1.0, 6.0)
-		visor.rotation.x = 0.16
+		visor.rotation.x = 0.07
 	var mir := Node3D.new()
 	mir.name = "DikizAynasi"
 	mir.position = Vector3(0.0, 1.355, -0.37)
@@ -407,6 +418,147 @@ static func build() -> Node3D:
 	dis.name = "Dis"
 	c.add_child(dis)
 	return c
+
+
+## Kullanicinin ic mekanli modeli (assets/vehicles/araba.glb; scripts/custom_car.gd) icin kabin dugumu:
+## geometri modelden gelir; burada yalniz oyunun bekledigi dugumler kurulur (gosterge ve navigasyon
+## ekranlari, direksiyon ekseni, dikiz aynasi cami). holder: arac dugumu, inst: model.
+static func build_custom(holder: Node3D, inst: Node3D) -> Node3D:
+	var CC: GDScript = load("res://scripts/custom_car.gd")
+	var c := Node3D.new()
+	c.set_meta("gosterge", true)
+	c.set_meta("custom", true)
+	var gvp := SubViewport.new()
+	gvp.name = "GostergeVP"
+	gvp.size = Vector2i(512, 192)
+	gvp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var cl := Cluster.new()
+	cl.name = "G"
+	gvp.add_child(cl)
+	c.add_child(gvp)
+	var vp := SubViewport.new()
+	vp.name = "CarPlayVP"
+	vp.size = Vector2i(640, 300)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var cp := CarPlay.new()
+	cp.name = "CP"
+	vp.add_child(cp)
+	c.add_child(vp)
+	for spec in [[["ekran_gosterge", "gosterge", "cluster"], gvp], [["ekran_nav", "navigasyon", "ekran_orta", "screen"], vp]]:
+		var sn: Node3D = CC.call("find", inst, spec[0])
+		if sn != null:
+			_face_quad(holder, sn, (spec[1] as SubViewport).get_texture(), c)
+	# Direksiyon: merkezinde, ekseni simidin ince yonu (surucuye dogru) olan dugum; model simidi icinde doner
+	var wheel := Node3D.new()
+	wheel.name = "Direksiyon"
+	wheel.position = Vector3(-0.36, 0.9, -0.32)
+	wheel.rotation.x = -0.35
+	c.add_child(wheel)
+	var spin := Node3D.new()
+	spin.name = "Simit"
+	wheel.add_child(spin)
+	wheel.set_meta("model", true)
+	var wn: Node3D = CC.call("find", inst, ["direksiyon", "steering", "simit"])
+	if wn != null:
+		var wb: AABB = CC.call("box_in", holder, wn)
+		var axis := Vector3(0, 0.35, 0.94)
+		var mis: Array = wn.find_children("*", "MeshInstance3D", true, false)
+		if wn is MeshInstance3D:
+			mis.push_front(wn)
+		if not mis.is_empty() and (mis[0] as MeshInstance3D).mesh != null:
+			# Simidin ince yonu (dugum olcegi hesaba katilir)
+			var wxf: Transform3D = CC.call("_rel", holder, mis[0])
+			var la: Vector3 = (mis[0] as MeshInstance3D).mesh.get_aabb().size * wxf.basis.get_scale()
+			var ev := Vector3.RIGHT if la.x <= la.y and la.x <= la.z else (Vector3.UP if la.y <= la.z else Vector3.BACK)
+			axis = (wxf.basis * ev).normalized()
+			if axis.z < 0.0:
+				axis = -axis
+		var up := (Vector3.UP - axis * axis.dot(Vector3.UP)).normalized()
+		wheel.transform = Transform3D(Basis(up.cross(axis).normalized(), up, axis), wb.get_center())
+		holder.add_child(c)       # gecici: _move arac uzayindaki yolu izler
+		CC.call("_move", holder, wn, spin)
+		holder.remove_child(c)
+	# Ic dikiz aynasi ve yan aynalar: parcanin ustune arkayi gosteren cam
+	var mir := Node3D.new()
+	mir.name = "DikizAynasi"
+	mir.position = Vector3(0.0, 1.355, -0.37)
+	c.add_child(mir)
+	var msize := Vector2(0.225, 0.058)
+	var mn: Node3D = CC.call("find", inst, ["ayna_ic", "dikiz", "mirror_in", "rearview"])
+	if mn != null:
+		var mb: AABB = CC.call("box_in", holder, mn)
+		mir.position = Vector3(mb.get_center().x, mb.get_center().y, mb.end.z + 0.004)
+		msize = Vector2(maxf(mb.size.x * 0.85, 0.12), maxf(mb.size.y * 0.8, 0.04))
+	var mq := QuadMesh.new()
+	mq.size = msize
+	var mglass := Kit.add(mir, mq, Kit.mat("8fa0b0", 0.05))
+	mglass.name = "Cam"
+	var side: Array = []
+	for keys in [["ayna_sol", "mirror_l"], ["ayna_sag", "mirror_r"]]:
+		var an: Node3D = CC.call("find", inst, keys)
+		if an == null:
+			side.append([])
+			continue
+		var ab: AABB = CC.call("box_in", holder, an)
+		side.append([Vector3(ab.get_center().x, ab.get_center().y, ab.end.z + 0.004), Vector2(ab.size.x * 0.8, ab.size.y * 0.75)])
+	c.set_meta("yan_ayna", side)
+	var il := OmniLight3D.new()
+	il.position = Vector3(0, 1.3, 0.0)
+	il.omni_range = 1.8
+	il.light_energy = 0.45
+	il.light_color = Color("fff1dc")
+	c.add_child(il)
+	for nm in ["Ust", "Dis"]:
+		var n := Node3D.new()
+		n.name = nm
+		c.add_child(n)
+	return c
+
+
+## Parcanin (ince, duz) yuzune oturan isikli ekran: doku 'tex'.
+static func _face_quad(holder: Node3D, n: Node3D, tex: Texture2D, c: Node3D) -> void:
+	var CC: GDScript = load("res://scripts/custom_car.gd")
+	var mis: Array = n.find_children("*", "MeshInstance3D", true, false)
+	if n is MeshInstance3D:
+		mis.push_front(n)
+	if mis.is_empty() or (mis[0] as MeshInstance3D).mesh == null:
+		return
+	var mi: MeshInstance3D = mis[0]
+	var la: AABB = mi.mesh.get_aabb()
+	var xf: Transform3D = CC.call("_rel", holder, mi)
+	var axes := [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
+	var bsc: Vector3 = xf.basis.get_scale()
+	var sz := [la.size.x, la.size.y, la.size.z]
+	var ni := 0
+	var real := [la.size.x * bsc.x, la.size.y * bsc.y, la.size.z * bsc.z]
+	for i in 3:
+		if real[i] < real[ni]:
+			ni = i
+	var nrm: Vector3 = (xf.basis * axes[ni]).normalized()
+	if nrm.z < 0.0:
+		nrm = -nrm
+	# Diger iki eksenden yukariya en yakin olan ekranin dikeyi
+	var a: int = (ni + 1) % 3
+	var b: int = (ni + 2) % 3
+	var va: Vector3 = xf.basis * axes[a]
+	var vb: Vector3 = xf.basis * axes[b]
+	var up_i := a if absf(va.normalized().y) >= absf(vb.normalized().y) else b
+	var w_i := b if up_i == a else a
+	var up: Vector3 = (xf.basis * axes[up_i])
+	var h: float = sz[up_i] * up.length()
+	var w: float = sz[w_i] * (xf.basis * axes[w_i]).length()
+	up = up.normalized() * (1.0 if up.y >= 0.0 else -1.0)
+	var q := QuadMesh.new()
+	q.size = Vector2(w, h) * 0.96
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_texture = tex
+	m.albedo_color = Color(1.3, 1.3, 1.3)
+	var qi := MeshInstance3D.new()
+	qi.mesh = q
+	qi.material_override = m
+	qi.transform = Transform3D(Basis(up.cross(nrm).normalized(), up, nrm), xf * la.get_center() + nrm * (sz[ni] * 0.5 * (xf.basis * axes[ni]).length() + 0.003))
+	c.add_child(qi)
 
 
 ## Aynalar: uc dusuk cozunurluklu kamera (ic dikiz, sol, sag). Yalniz birinci sahista guncellenir.
@@ -446,7 +598,15 @@ static func add_mirrors(c: Node3D) -> void:
 			var sx := -1.0 if i == 1 else 1.0
 			var q := QuadMesh.new()
 			q.size = Vector2(0.105, 0.095)
-			var mi := Kit.add(c.get_node("Dis"), q, mat, Vector3(sx * 0.965, 1.07, -0.402), Vector3(0, 0.3 if i == 1 else -0.45, 0))
+			var at := Vector3(sx * 0.965, 1.07, -0.402)
+			var custom: Array = c.get_meta("yan_ayna", [])
+			if c.has_meta("custom"):
+				# Kullanici modeli: ayna parcasinin ustune (parca yoksa yan ayna yok)
+				if custom.size() <= i - 1 or (custom[i - 1] as Array).is_empty():
+					continue
+				at = custom[i - 1][0]
+				q.size = custom[i - 1][1]
+			var mi := Kit.add(c.get_node("Dis"), q, mat, at, Vector3(0, (0.3 if i == 1 else -0.45) if not c.has_meta("custom") else 0.0, 0))
 			mi.name = "YanAyna%d" % i
 
 

@@ -26,6 +26,7 @@ const ACTIONS := [
 	["leash", "TASMA", [KEY_L]],
 	["train", "NUMARA EĞİTİMİ", [KEY_T]],
 	["radio", "RADYO", [KEY_N]],
+	["headlights", "FARLAR", [KEY_H]],
 	["messages", "MESAJLAR", [KEY_K]],
 	["snowball", "KARTOPU", [KEY_Y]],
 ]

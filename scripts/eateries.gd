@@ -111,7 +111,7 @@ func build() -> void:
 		var door := _building(lot[0], lot[1], pl)
 		taken.append(lot[0])
 		var kind: String = "market" if pl[0] == "market" else "lokanta"
-		var sp := {"name": pl[1], "kind": kind, "style": pl[0], "pos": door, "accent": pl[3]}
+		var sp := {"name": pl[1], "kind": kind, "style": pl[0], "pos": door, "accent": pl[3], "center": lot[0], "tw": lot[1]}
 		w.shop_spots.append(sp)
 		places.append(sp)
 		print("LOKANTA ", pl[1], " @ ", door.round())
@@ -190,6 +190,13 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Vector2:
 	if pl[2] != "":
 		var sub: Label3D = w._text(r, pl[2], Vector3(0, 2.8, HZ + 0.16), Color("fff3d6"), 0.15)
 		sub.visibility_range_end = 60.0
+	# Carpisma: govdenin dort kenari (arac ve yaya binanin icine giremez; vitrin girintisi acik)
+	var bs := Basis(Vector3.UP, rot)
+	var fz := HZ - 0.72
+	for e in [[-HX, -HZ, HX, -HZ], [HX, -HZ, HX, fz], [HX, fz, -HX, fz], [-HX, fz, -HX, -HZ]]:
+		var va := bs * Vector3(e[0], 0, e[1])
+		var vb := bs * Vector3(e[2], 0, e[3])
+		w._add_segment(c + Vector2(va.x, va.z), c + Vector2(vb.x, vb.z))
 	if pl[0] == "market":
 		w._shopfront(c + tw * (HZ - 0.12), tw, accent, "market")
 		return c + tw * (HZ + 1.0)

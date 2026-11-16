@@ -21,6 +21,7 @@ var ride_lean := -1.0      # surucunun one egilmesi (radyan); -1 = varsayilan
 var grips: Array = []     # [sol, sag] gidon tutaclarinin dunya konumu (surerken)
 var grip_palms: Array = []   # araba: [sol, sag] avuc icinin bakacagi dunya yonu (simidin merkezine dogru)
 var grip_fwd := Vector3.ZERO # araba: direksiyon ekseninin surucuden uzaga bakan dunya yonu
+var car_feet: Array = []         # araba: [sol, sag] ayak bileginin arac uzayindaki yeri (bos = klipteki poz)
 var ride_feet := Vector3.ZERO    # ayak bileginin arac uzayindaki yeri (x = yarim aciklik); sifir = serbest poz
 var ride_crank := Vector3.ZERO   # bisiklet: (pedal yarim acikligi, orta gobek y, orta gobek z); pedal dairesi
 var ride_crank_r := 0.16
@@ -273,6 +274,11 @@ func _process(dt: float) -> void:
 			_swing("Spine", 0.2)
 			_swing("Neck", -0.14)
 			_wheel_hands()
+			# Ayaklar kabin zemininde / pedallarda (klipteki bacaklar govdenin altina sarkiyordu)
+			if car_feet.size() == 2:
+				var to_skel := _skel.global_transform.affine_inverse() * (get_parent() as Node3D).global_transform
+				_leg_ik("Left", to_skel * (car_feet[0] as Vector3), 0.0, 0.1)
+				_leg_ik("Right", to_skel * (car_feet[1] as Vector3), 0.0, 0.1)
 			return
 		_ride_pose(dt)
 		return

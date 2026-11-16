@@ -27,6 +27,8 @@ var _pos := Vector2.INF       # gercek konum: serit noktasini yumusakca izler (k
 var obey_lights := true       # trafik isiklarina uyar (polis kovalamada uymaz)
 static var lights := {}       # isikli kavsak dugumu -> {axis: Vector2, off: float, r: float, ped: bool} (traffic_law.gd doldurur)
 static var light_clock := 0.0
+static var lamps_on := false   # aksam / gece / yagmur: trafik araclarinin far ve stop camlari isikli (isik kaynagi yok)
+var _lamps: Array = []
 
 const CYCLE := 31.0           # isik dongusu (sn): A yesil 11, sari 3, hepsi kirmizi 1.5, B yesil 11, sari 3, hepsi kirmizi 1.5
 
@@ -238,6 +240,68 @@ static func add_blinkers(holder: Node3D) -> Array:
 	return out
 
 
+## Far ve stop camlari: on koselerde beyaz, arka koselerde kirmizi isikli mercekler (yalniz isikli malzeme;
+## isik kaynagi degil). two: iki tekerli (ortada tek far, tek stop). Donus: [on dugumler, arka dugumler, on malzeme,
+## arka malzeme]. Baslangicta gizlidir.
+static func add_lamps(holder: Node3D, two := false) -> Array:
+	var pts := PackedVector3Array()
+	var box := AABB()
+	var first := true
+	for mi: MeshInstance3D in holder.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or String(mi.name).begins_with("wheel") or not (mi.mesh is ArrayMesh):
+			continue
+		var xf := _rel(holder, mi)
+		var a := xf * mi.mesh.get_aabb()
+		box = a if first else box.merge(a)
+		first = false
+		for si in mi.mesh.get_surface_count():
+			var verts: PackedVector3Array = mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]
+			var step := maxi(1, verts.size() / 6000)
+			for k in range(0, verts.size(), step):
+				pts.append(xf * verts[k])
+	var mats: Array = []
+	for hex in ["fff6dc", "ff2010"]:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(hex)
+		m.emission_enabled = true
+		m.emission = Color(hex)
+		m.emission_energy_multiplier = 3.0
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mats.append(m)
+	var out: Array = [[], [], mats[0], mats[1]]
+	if first:
+		return out
+	var w := box.size.x
+	var hgt := box.size.y
+	for front in [true, false]:
+		for side in ([0] if two else [-1, 1]):
+			var target := Vector3(box.get_center().x + side * w * 0.27,
+				box.position.y + hgt * ((0.66 if front else 0.5) if two else (0.5 if front else 0.58)),
+				box.position.z if front else box.end.z)
+			var best := target
+			var bd := 1e9
+			for q in pts:
+				var d := (q - target).length_squared() + absf(q.y - target.y) * 2.0
+				if d < bd:
+					bd = d
+					best = q
+			var b := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.5
+			sm.height = 1.0
+			sm.radial_segments = 12
+			sm.rings = 6
+			b.mesh = sm
+			b.scale = Vector3(0.12, 0.1, 0.05) if two else Vector3(0.2, 0.09, 0.05)
+			b.material_override = mats[0 if front else 1]
+			b.position = best + Vector3(0, 0, -0.012 if front else 0.012)
+			b.visible = false
+			b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			holder.add_child(b)
+			out[0 if front else 1].append(b)
+	return out
+
+
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 	var xf := Transform3D()
 	var cur: Node = n
@@ -271,3 +335,9 @@ func _update_signals(dt: float) -> void:
 	if _blinkers.is_empty() and get_child_count() > 0:
 		_blinkers = add_blinkers(get_child(0))
 	blink(_blinkers, turn_sign, _blink_t)
+	# Aksam / gece / yagmurda far ve stop camlari isikli (yalniz malzeme)
+	if lamps_on and _lamps.is_empty() and get_child_count() > 0:
+		_lamps = add_lamps(get_child(0))
+	if not _lamps.is_empty() and not _lamps[0].is_empty() and (_lamps[0][0] as Node3D).visible != lamps_on:
+		for b: Node3D in _lamps[0] + _lamps[1]:
+			b.visible = lamps_on
