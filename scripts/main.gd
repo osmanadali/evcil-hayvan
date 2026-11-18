@@ -2706,6 +2706,7 @@ func _enter_ride_now(r: Node3D, quiet := false) -> void:
 		owner_model.visible = glass
 		owner_model.riding = "araba"
 		owner_model.car_feet = _ride.get_meta("feet", [])
+		owner_model.car_lean = _ride.get_meta("lean", 0.2)
 		owner_model.grips = []
 		owner_model.position = _ride.get_meta("seat", CAR_SEAT)
 	if cfg["hide"] and glass:

@@ -14,6 +14,7 @@ const CarCabin = preload("res://scripts/car_cabin.gd")
 const Car = preload("res://scripts/car.gd")
 
 ## seat: surus pozundaki karakterin arac icindeki yeri; eye: iceriden bakis (surucunun goz hizasi);
+## lean: govdenin simide dogru egilmesi (radyan; kollar simide yetissin);
 ## feet: ayak bileklerinin yeri [sol, sag] (pedal bolgesi, tabanin ustu);
 ## door_spot: binerken durulan yer (kapinin acilma yayinin disinda); exit_spots: inilen yerler;
 ## pet: hayvanin arka koltuktaki yerleri [konum, sapma, poz, pati kaldirma, burun kaldirma];
@@ -22,7 +23,7 @@ const Car = preload("res://scripts/car.gd")
 const SPECS := {
 	"hatchback": {
 		"ad": "Bora GT", "path": "res://assets/vehicles/hatchback.glb", "doors": true,
-		"seat": Vector3(-0.455, -0.11, 0.03), "eye": Vector3(-0.455, 1.08, 0.2), "eye_pitch": -0.1,
+		"seat": Vector3(-0.455, -0.11, -0.01), "lean": 0.38, "eye": Vector3(-0.455, 1.08, 0.2), "eye_pitch": -0.1,
 		"feet": [Vector3(-0.56, 0.36, -0.42), Vector3(-0.34, 0.36, -0.45)],
 		"door_spot": Vector3(-1.75, 0, 0.8), "exit_spots": [Vector3(-1.75, 0, 0.8), Vector3(1.75, 0, 0.8)],
 		"pet": {"on": [Vector3(0.2, 0.55, 0.98), 0.0, "sit", 0.0, 0.0], "cam": [Vector3(0.42, 0.55, 0.95), -PI / 2, "stand", 0.0, 0.0],
@@ -40,7 +41,7 @@ const SPECS := {
 	},
 	"sedan": {
 		"ad": "Derya 1.6 Sedan", "path": "res://assets/vehicles/sedan.glb", "doors": false,
-		"seat": Vector3(-0.376, 0.07, -0.2), "eye": Vector3(-0.376, 1.22, -0.03), "eye_pitch": -0.1,
+		"seat": Vector3(-0.376, 0.07, -0.26), "lean": 0.42, "eye": Vector3(-0.376, 1.22, -0.03), "eye_pitch": -0.1,
 		"feet": [Vector3(-0.49, 0.38, -0.6), Vector3(-0.25, 0.38, -0.64)],
 		"door_spot": Vector3(-1.4, 0, 0.1), "exit_spots": [Vector3(-1.4, 0, 0.1), Vector3(1.4, 0, 0.1), Vector3(-1.8, 0, 0.1), Vector3(1.8, 0, 0.1)],
 		"pet": {"on": [Vector3(0.36, 0.56, 0.72), 0.0, "sit", 0.0, 0.0], "cam": [Vector3(0.42, 0.56, 0.7), -PI / 2, "stand", 1.0, 0.5],
@@ -104,6 +105,7 @@ func _build(rig_id: String) -> void:
 	set_meta("seat", spec["seat"])
 	set_meta("eye", Transform3D(Basis(Vector3.RIGHT, float(spec["eye_pitch"])), spec["eye"]))
 	set_meta("feet", spec["feet"])
+	set_meta("lean", spec["lean"])
 	set_meta("door_spot", spec["door_spot"])
 	set_meta("exit_spots", spec["exit_spots"])
 	set_meta("pet_spots", spec["pet"])
@@ -473,6 +475,17 @@ static func debug_shots(m: Node, args: Dictionary) -> void:
 		m._enter_ride_now(r)
 		for i in 40:
 			await tree.process_frame
+		# Ellerin simide uzakligi (0.09 dolayi = avuc simitte; buyukse kol yetismiyor)
+		var sk: Skeleton3D = m.owner_model.find_children("*", "Skeleton3D", true, false)[0]
+		for hs: String in ["Left", "Right"]:
+			var hb := sk.find_bone(hs + "Hand")
+			var ab := sk.find_bone(hs + "Arm")
+			if hb < 0 or ab < 0 or m.owner_model.grips.size() != 2:
+				continue
+			var hp: Vector3 = sk.global_transform * sk.get_bone_global_pose(hb).origin
+			var sp: Vector3 = sk.global_transform * sk.get_bone_global_pose(ab).origin
+			var gpos: Vector3 = m.owner_model.grips[0 if hs == "Left" else 1]
+			print("RIG el ", rid, " ", hs, " bilek-simit=%.3f omuz-simit=%.3f omuz-bilek=%.3f omuz=%s" % [hp.distance_to(gpos), sp.distance_to(gpos), sp.distance_to(hp), (r.global_transform.affine_inverse() * sp).snappedf(0.01)])
 		m._mode = "debug"
 		var cam: Camera3D = m.cam
 		for v: Array in [] if not "dis" in parts else [["yan", Vector3(-4.2, 1.35, 0.1), Vector3(0, 0.85, 0.1), 42.0], ["on", Vector3(-2.3, 1.5, -4.2), Vector3(0, 0.8, 0), 45.0],
