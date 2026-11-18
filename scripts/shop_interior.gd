@@ -12,7 +12,12 @@ const H := 3.2
 var kind := "market"            # "market" | "eczane"
 var title := "Market"
 var accent := "c8322b"          # tabela rengi (marka)
-var entrance_local := Vector2(W * 0.5, D - 0.8)
+var entrance_local := Vector2(W * 0.5, D - 1.3)
+## Otomatik cam kayar kapi (on cephede, ortada): oyuncu yaklasinca kanatlar iki yana kayar
+var door_open := 0.0
+var _door_l: Node3D
+var _door_r: Node3D
+var _armed := false             # oyuncu iceri bir adim girdikten sonra kapidan cikis gecerli
 var counter_local := Vector2(2.2, D - 2.6)   # kasanin onu (oyuncu burada alisveris yapar)
 var colliders: Array = []        # [Vector2 a, Vector2 b] yerel
 ## Raftaki urun noktalari: [kimlik, yerel durma noktasi (Vector2)]; oyuncu onune gelince sepete koyar
@@ -91,6 +96,32 @@ func update_view(cam_pos: Vector3) -> void:
 		front.visible = cam_pos.z - global_position.z < D
 
 
+func _set_door(t: float) -> void:
+	door_open = t
+	var e := t * t * (3.0 - 2.0 * t)
+	if _door_l:
+		_door_l.position = Vector3(W * 0.5 - 0.5 - e * 0.95, 0.0, D - 0.02)
+		_door_r.position = Vector3(W * 0.5 + 0.5 + e * 0.95, 0.0, D - 0.02)
+
+
+## Her kare: oyuncu kapiya yaklasinca kanatlar acilir; acik kapidan disari yurudugunde true doner.
+## allow = false (or. odenmemis sepet) iken kapi acilmaz.
+func update_door(player_world: Vector2, dt: float, allow := true) -> bool:
+	var l := local2(player_world)
+	var dx := absf(l.x - W * 0.5)
+	if l.y < D - 1.9 or dx > 2.2:
+		_armed = true
+	var near := allow and dx < 1.7 and l.y > D - 2.3
+	_set_door(move_toward(door_open, 1.0 if near else 0.0, dt * (2.6 if near else 1.6)))
+	return _armed and allow and door_open > 0.75 and dx < 0.85 and l.y > D - 0.62
+
+
+## Kapinin onunde mi (izin verilmeyen cikis uyarisi icin)
+func at_door(player_world: Vector2) -> bool:
+	var l := local2(player_world)
+	return _armed and absf(l.x - W * 0.5) < 0.9 and l.y > D - 0.9
+
+
 # ---------------------------------------------------------------- yapim
 
 func _solid(c: Vector2, half: Vector2) -> void:
@@ -127,6 +158,28 @@ func _build_shell() -> void:
 		var cx: float = W * 0.5 + side * (W * 0.25 + 0.5)
 		Kit.box(front, Vector3(W * 0.5 - 1.0, H - 1.1, 0.04), Vector3(cx, 0.5 + (H - 1.1) * 0.5, D + 0.06), glass)
 		Kit.box(front, Vector3(0.1, H, 0.14), Vector3(W * 0.5 + side * 1.0, H * 0.5, D + 0.06), frame)
+	# Otomatik kayar kapi: iki cam kanat, kapali iken bosluk (2 m) tamamen kapali
+	var dglass := StandardMaterial3D.new()
+	dglass.albedo_color = Color(0.7, 0.84, 0.92, 0.3)
+	dglass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dglass.roughness = 0.05
+	var steel := Kit.mat("b8bcc2", 0.3)
+	steel.metallic = 0.6
+	var kanat := []
+	for side in [-1.0, 1.0]:
+		var k := Node3D.new()
+		front.add_child(k)
+		Kit.box(k, Vector3(0.98, H - 0.65, 0.03), Vector3(0, (H - 0.65) * 0.5, 0), dglass)
+		Kit.box(k, Vector3(0.98, 0.06, 0.05), Vector3(0, H - 0.68, 0), steel)
+		Kit.box(k, Vector3(0.98, 0.06, 0.05), Vector3(0, 0.03, 0), steel)
+		Kit.box(k, Vector3(0.05, H - 0.65, 0.05), Vector3(-side * 0.47, (H - 0.65) * 0.5, 0), steel)
+		Kit.box(k, Vector3(0.03, 0.5, 0.04), Vector3(-side * 0.38, 1.05, 0.03), steel)
+		kanat.append(k)
+	_door_l = kanat[0]
+	_door_r = kanat[1]
+	# Kapi ustunde motor kutusu ve isik
+	Kit.box(front, Vector3(2.2, 0.16, 0.18), Vector3(W * 0.5, H - 0.62, D - 0.06), Kit.mat("2b2d31", 0.4))
+	_set_door(0.0)
 	# Disarisi: parlak gun isigi (camdan gorunsun)
 	var outside := StandardMaterial3D.new()
 	outside.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -194,6 +247,7 @@ func _counter(c: Vector2, length: float, top_hex: String) -> void:
 	_solid(c, Vector2(length * 0.5, 0.35))
 
 
+## face_y: PersonModel dugumu rotation 0 iken -Z'ye bakar; PI = +Z (kapiya, musteriye dogru).
 func _staff(at: Vector2, face_y: float, shirt: Color, female: bool) -> void:
 	var v := PersonModel.new()
 	v.kind = "kadin" if female else "erkek"
@@ -339,7 +393,7 @@ func _build_pharmacy() -> void:
 	# Uzun tezgah ve eczaci
 	_counter(Vector2(W * 0.5, 2.4), 6.0, "f4f4f0")
 	Kit.box(self, Vector3(0.45, 0.32, 0.06), Vector3(W * 0.5 - 1.5, 1.25, 2.3), Kit.mat("1d1e21", 0.3))
-	_staff(Vector2(W * 0.5 - 0.5, 1.4), 0.0, Color("f4f4f0"), false)
+	_staff(Vector2(W * 0.5 - 0.5, 1.4), PI, Color("f4f4f0"), false)
 	counter_local = Vector2(W * 0.5 - 0.5, 3.3)
 	# Yesil hac, adi
 	var green := StandardMaterial3D.new()
@@ -380,7 +434,7 @@ func _build_vet() -> void:
 	# Resepsiyon (giris solu) ve gorevli
 	_counter(Vector2(2.4, D - 2.4), 2.6, "f4f6f5")
 	Kit.box(self, Vector3(2.6, 0.3, 0.05), Vector3(2.4, 0.75, D - 2.04), teal)
-	_staff(Vector2(2.2, D - 3.2), 0.0, Color("1e9a8a"), true)
+	_staff(Vector2(2.2, D - 3.2), PI, Color("1e9a8a"), true)
 	counter_local = Vector2(2.4, D - 1.4)
 	# Bekleme koltuklari (sag duvar)
 	for k in 4:
@@ -409,7 +463,7 @@ func _build_vet() -> void:
 			Kit.box(self, Vector3(0.12, 0.18, 0.1), Vector3(7.5 + k * 0.22, 0.65 + row * 0.5, 0.35), Kit.mat(["ffffff", "d9ecf7", "fde7e7", "e6f4e6"][(k + row) % 4], 0.4))
 	Kit.box(self, Vector3(2.3, 1.6, 0.02), Vector3(8.4, 1.05, 0.54), glass)
 	_solid(Vector2(8.4, 0.3), Vector2(1.2, 0.3))
-	_staff(Vector2(table_local.x + 0.2, table_local.y - 1.0), 0.0, Color("f4f6f5"), false)
+	_staff(Vector2(table_local.x + 0.2, table_local.y - 1.0), PI, Color("f4f6f5"), false)
 	# Kafesler (sol arka)
 	for k in 3:
 		var c := Vector3(1.0 + k * 1.1, 0.5, 0.6)
