@@ -1277,7 +1277,22 @@ func _build_details() -> void:
 			var placed := _shop_model(p, SHOP_MODEL[po["k"]], po["name"], st)
 			if placed:
 				continue
-		_sign(p, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
+		# Dukkan tabelasi / girisi yol ya da bos arazi ustunde kalmasin: en yakin binanin yola bakan cephesine yapistir;
+		# uygun bina yoksa kucuk bir dukkan binasi kur.
+		var face_n := Vector2.ZERO
+		if not NO_SNAP.has(po["k"]) and (not wall or _wall_normal(p) == Vector2.ZERO):
+			var fs := _facade_spot(p)
+			if fs.is_empty():
+				fs = _small_shop(p)
+			if not fs.is_empty():
+				if OS.get_cmdline_user_args().has("--poidbg"):
+					print("POI ", po["name"], " ", p, " -> ", fs[0], " n=", fs[1])
+				p = fs[0]
+				face_n = fs[1]
+				wall = true
+		var sg := _sign(p + face_n * 0.15, po["name"], st[0], st[1], 3.4 if wall else 2.9, not wall, 0.3, st[2])
+		if face_n != Vector2.ZERO:
+			sg.rotation.y = atan2(face_n.x, face_n.y)
 		if po["k"] == "yemek":
 			var rp := _road_point(p)
 			if rp.distance_to(p) > 1.0:
@@ -1286,11 +1301,13 @@ func _build_details() -> void:
 			# Zemin kattaki dukkan: kapisi tabelanin altinda, kaldirim tarafinda
 			var tr := _road_point(p) - p
 			var door := p + (tr.normalized() * minf(1.6, tr.length() * 0.5) if tr.length() > 0.3 else Vector2.ZERO)
+			if face_n != Vector2.ZERO:
+				door = p + face_n * 1.4       # cephenin tam onu (kaldirim)
 			shop_spots.append({"name": po["name"], "kind": po["k"], "pos": door})
 			if po["k"] == "veteriner":
 				vet_pos = door
 		if wall and tr_ok(p):
-			var wn := _wall_normal(p)
+			var wn := face_n if face_n != Vector2.ZERO else _wall_normal(p)
 			if wn != Vector2.ZERO:
 				_shopfront(p, wn, st[0], po["k"])
 		if po["k"] == "durak" and not FileAccess.file_exists(ParkMap.asset("transit.json")):
@@ -1579,6 +1596,74 @@ func _metro_entrance(p: Vector2, toward: Vector2, station: String, line: String,
 
 const SHOP_MODEL := {"eczane": "eczane", "market": "market"}
 const SHOP_TURN := {"eczane": 0.0, "market": 0.0, "firin": 0.0}   # modelin vitrini +Z'ye bakacak ek donus
+
+
+## Bina cephesine yapistirilmayan (sokak ustunde olmasi dogal) noktalar
+const NO_SNAP := ["durak", "taksi", "metro", "akaryakit"]
+
+
+## En yakin binanin yola bakan cephesi: [cephedeki nokta, disari birim normal]; 45 m icinde yoksa bos.
+func _facade_spot(p: Vector2) -> Array:
+	_inside_building(p)
+	var best := 1e9
+	var out: Array = []
+	for bp in _bpolys:
+		if not (bp[0] as Rect2).grow(45.0).has_point(p):
+			continue
+		var poly: PackedVector2Array = bp[1]
+		for i in poly.size():
+			var a := poly[i]
+			var b := poly[(i + 1) % poly.size()]
+			var ln := a.distance_to(b)
+			if ln < 4.5:
+				continue        # vitrin sigmaz
+			var e := (b - a) / ln
+			var n := Vector2(-e.y, e.x)
+			var mid := (a + b) * 0.5
+			if Geometry2D.is_point_in_polygon(mid + n * 0.4, poly):
+				n = -n
+			# Kosede degil, kenarin ortasina yakin dursun
+			var q := Geometry2D.get_closest_point_to_segment(p, a + e * 2.2, b - e * 2.2)
+			var d := q.distance_to(p)
+			if d > 45.0:
+				continue
+			var rp := _road_point(q)
+			var score := d
+			if (rp - q).dot(n) <= 0.0:
+				score += 25.0       # arka cephe: yola bakmiyor
+			var front := q + n * 1.4
+			if _inside_building(front) or _mask(front)[0] > 0.5 or rp.distance_to(q) < 3.0:
+				score += 40.0       # onu kapali ya da yol cok yakin
+			if score < best:
+				best = score
+				out = [q, n]
+	if best > 60.0:
+		return []
+	return out
+
+
+## Uygun bina yoksa: yoldan geride bos arsaya kucuk tek katli dukkan binasi; [cephe noktasi, normal] ya da bos.
+func _small_shop(p: Vector2) -> Array:
+	var rp := _road_point(p)
+	var toward := (rp - p).normalized() if rp.distance_to(p) > 0.1 else Vector2(0, 1)
+	var c := rp - toward * 9.0
+	for i in 10:
+		if _clear_lot(c, 4.0):
+			var rot := atan2(toward.x, toward.y)
+			var r := _root(c, rot)
+			var hx := 3.5
+			var hz := 3.0
+			Kit.box(r, Vector3(hx * 2.0, 4.2, hz * 2.0), Vector3(0, 2.1, 0), Kit.mat("d8cfc0", 0.85))
+			Kit.box(r, Vector3(hx * 2.0 + 0.3, 0.25, hz * 2.0 + 0.3), Vector3(0, 4.3, 0), Kit.mat("6a6460", 0.8))
+			var bs := Basis(Vector3.UP, rot)
+			var corner := func(x: float, z: float) -> Vector2:
+				var v := bs * Vector3(x, 0, z)
+				return c + Vector2(v.x, v.z)
+			for e in [[-hx, -hz, hx, -hz], [hx, -hz, hx, hz], [hx, hz, -hx, hz], [-hx, hz, -hx, -hz]]:
+				_add_segment(corner.call(e[0], e[1]), corner.call(e[2], e[3]))
+			return [c + toward * hz, toward]
+		c -= toward * 1.5
+	return []
 
 
 func _clear_lot(c: Vector2, half: float) -> bool:
