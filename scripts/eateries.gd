@@ -112,6 +112,7 @@ func build() -> void:
 		taken.append(lot[0])
 		var kind: String = "market" if pl[0] == "market" else "lokanta"
 		var sp := {"name": pl[1], "kind": kind, "style": pl[0], "pos": door, "accent": pl[3], "dir": lot[1]}
+		w.auto_door(sp, door - (lot[1] as Vector2).normalized() * 1.0, (lot[1] as Vector2).normalized(), 2.0)
 		w.shop_spots.append(sp)
 		places.append(sp)
 		print("LOKANTA ", pl[1], " @ ", door.round())

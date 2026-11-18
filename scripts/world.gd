@@ -1141,10 +1141,14 @@ func _sign(p: Vector2, text: String, plate: String, ink: String, height := 2.7, 
 
 
 ## En yakin bina duvari: [duvar uzerindeki nokta yerine] disari bakan birim normal (bulunamazsa ZERO).
+var _wall_q := Vector2.ZERO      # _wall_normal'in buldugu duvar noktasi
+
+
 func _wall_normal(p: Vector2) -> Vector2:
 	_inside_building(p)      # cokgen onbellegini doldurur
 	var best := 4.0
 	var nrm := Vector2.ZERO
+	_wall_q = p
 	for bp in _bpolys:
 		if not (bp[0] as Rect2).grow(4.0).has_point(p):
 			continue
@@ -1164,6 +1168,7 @@ func _wall_normal(p: Vector2) -> Vector2:
 				if Geometry2D.is_point_in_polygon(mid + n * 0.4, poly):
 					n = -n
 				nrm = n
+				_wall_q = q
 	return nrm
 
 
@@ -1303,7 +1308,14 @@ func _build_details() -> void:
 			var door := p + (tr.normalized() * minf(1.6, tr.length() * 0.5) if tr.length() > 0.3 else Vector2.ZERO)
 			if face_n != Vector2.ZERO:
 				door = p + face_n * 1.4       # cephenin tam onu (kaldirim)
-			shop_spots.append({"name": po["name"], "kind": po["k"], "pos": door})
+			var spd := {"name": po["name"], "kind": po["k"], "pos": door}
+			var dn := face_n if face_n != Vector2.ZERO else (_wall_normal(p) if wall else Vector2.ZERO)
+			if dn != Vector2.ZERO:
+				var fq := p if face_n != Vector2.ZERO else _wall_q
+				if OS.get_cmdline_user_args().has("--poidbg"):
+					print("KAPI POI ", po["name"], " p=", p, " duvar=", fq, " fark=", p.distance_to(fq))
+				auto_door(spd, fq, dn, 1.3)
+			shop_spots.append(spd)
 			if po["k"] == "veteriner":
 				vet_pos = door
 		if wall and tr_ok(p):
@@ -1598,6 +1610,62 @@ const SHOP_MODEL := {"eczane": "eczane", "market": "market"}
 const SHOP_TURN := {"eczane": 0.0, "market": 0.0, "firin": 0.0}   # modelin vitrini +Z'ye bakacak ek donus
 
 
+## Disaridaki otomatik cam kayar kapi: cephe noktasinda, yuzu n yonune bakar. sp'ye "door", "facade", "n" yazar.
+func auto_door(sp: Dictionary, facade: Vector2, n: Vector2, width := 1.3) -> void:
+	var r := _root(facade + n * 0.17, atan2(n.x, n.y))
+	var steel := Kit.mat("9aa0a8", 0.3)
+	steel.metallic = 0.6
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.55, 0.68, 0.76, 0.38)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.06
+	var hh := 2.35
+	Kit.box(r, Vector3(width + 0.3, 0.2, 0.2), Vector3(0, hh + 0.1, 0), Kit.mat("2b2d31", 0.4))
+	for sx in [-1.0, 1.0]:
+		Kit.box(r, Vector3(0.07, hh, 0.12), Vector3(sx * (width * 0.5 + 0.04), hh * 0.5, 0), steel)
+	var pw := width * 0.5
+	var kan: Array = []
+	for sx in [-1.0, 1.0]:
+		var k := Node3D.new()
+		r.add_child(k)
+		Kit.box(k, Vector3(pw - 0.02, hh - 0.05, 0.03), Vector3(0, hh * 0.5, 0), glass)
+		Kit.box(k, Vector3(pw - 0.02, 0.05, 0.05), Vector3(0, hh - 0.04, 0), steel)
+		Kit.box(k, Vector3(pw - 0.02, 0.05, 0.05), Vector3(0, 0.04, 0), steel)
+		Kit.box(k, Vector3(0.04, hh - 0.05, 0.05), Vector3(-sx * (pw * 0.5 - 0.03), hh * 0.5, 0), steel)
+		Kit.box(k, Vector3(0.03, 0.45, 0.04), Vector3(-sx * (pw * 0.5 - 0.12), 1.05, 0.03), steel)
+		k.position = Vector3(sx * pw * 0.5, 0, 0.03 * sx)
+		kan.append(k)
+	sp["door"] = {"root": r, "l": kan[0], "r": kan[1], "pw": pw, "open": 0.0}
+	sp["facade"] = facade
+	sp["n"] = n
+
+
+## Disaridaki kapilar: oyuncu yaklasinca acilir. Acik kapidan iceri yuruyen oyuncu icin o noktayi doner.
+func update_doors(o: Vector2, dt: float) -> Dictionary:
+	var hit := {}
+	for sp in shop_spots:
+		if not sp.has("door"):
+			continue
+		var f: Vector2 = sp["facade"]
+		if absf(f.x - o.x) > 12.0 or absf(f.y - o.y) > 12.0:
+			continue
+		var dr: Dictionary = sp["door"]
+		var n: Vector2 = sp["n"]
+		var rel := o - f
+		var along := absf(rel.dot(Vector2(n.y, -n.x)))
+		var out := rel.dot(n)
+		var pw: float = dr["pw"]
+		var near := along < pw + 0.9 and out > -0.6 and out < 2.6
+		var t := move_toward(float(dr["open"]), 1.0 if near else 0.0, dt * (2.6 if near else 1.6))
+		dr["open"] = t
+		var e := t * t * (3.0 - 2.0 * t)
+		(dr["l"] as Node3D).position.x = -pw * 0.5 - e * (pw - 0.06)
+		(dr["r"] as Node3D).position.x = pw * 0.5 + e * (pw - 0.06)
+		if t > 0.75 and along < pw * 0.8 and out < 0.75:
+			hit = sp
+	return hit
+
+
 ## Bina cephesine yapistirilmayan (sokak ustunde olmasi dogal) noktalar
 const NO_SNAP := ["durak", "taksi", "metro", "akaryakit"]
 
@@ -1726,7 +1794,9 @@ func _shop_model(p: Vector2, model: String, title: String, st: Array) -> bool:
 	var plate := _text(r, title, Vector3(0, top * 0.78, hz / 0.9 + 0.08), Color(st[1]), 0.34)
 	plate.rotation.y = 0.0
 	Kit.box(r, Vector3(minf(title.length() * 0.24 + 0.6, hx * 2.0), 0.55, 0.06), Vector3(0, top * 0.78, hz / 0.9 + 0.04), Kit.mat(st[0], 0.5))
-	shop_spots.append({"name": title, "kind": model, "pos": at_p + toward * (hz / 0.9 + 1.5)})
+	var spm := {"name": title, "kind": model, "pos": at_p + toward * (hz / 0.9 + 1.5)}
+	auto_door(spm, at_p + toward * (hz / 0.9), toward, 2.0)
+	shop_spots.append(spm)
 	return true
 
 

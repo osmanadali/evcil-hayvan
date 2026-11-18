@@ -1254,6 +1254,14 @@ func _exit_shop() -> void:
 		_shop = null
 	var out: Vector2 = _shop_spot["pos"]
 	_place_owner(out)
+	if world.is_free(out, 0.4) and not world.inside_building_poly(out):
+		# Kapinin tam onu: hucre tabanli bina testi cephe onunu yanlislikla bina sayabiliyor
+		owner_node.position = Vector3(out.x, owner_node.position.y, out.y)
+		_focus = owner_node.position
+	_door_cool = 1.5
+	if _shop_spot.has("n"):
+		var nn: Vector2 = _shop_spot["n"]
+		owner_node.rotation.y = atan2(-nn.x, -nn.y)      # model -Z'ye bakar: yuzu sokaga
 	var i := 0
 	for k in agents:
 		agents[k].place(out + Vector2(1.0 + 0.6 * i, 0.5).rotated(i * 2.0))
@@ -1262,6 +1270,7 @@ func _exit_shop() -> void:
 
 
 var _door_warn_t := 0.0
+var _door_cool := 0.0
 
 
 ## Test: --shop=tur --doortest : oyuncu kapiya yurur; kapi acilirken / acikken / disarida goruntu alir.
@@ -1277,7 +1286,7 @@ func _door_test() -> void:
 	var saved := {}
 	var out: String = _args["shot"]
 	for f in 400:
-		var dt := 1.0 / 60.0
+		var dt := clampf(get_process_delta_time(), 0.005, 0.1)
 		lp.y = minf(lp.y + 1.3 * dt, D - 0.3)
 		owner_node.position = Vector3(sh.w2(lp).x, owner_node.position.y, sh.w2(lp).y)
 		if _shop == null:
@@ -1301,11 +1310,54 @@ func _door_test() -> void:
 	await get_tree().create_timer(1.5).timeout
 	if DisplayServer.get_name() != "headless":
 		get_viewport().get_texture().get_image().save_png(out.replace(".png", "_c.png"))
+	# Disaridan geri gir: kapi kayarak acilsin
+	if not _shop_spot.has("n"):
+		print("KAPI disarida kapi yok")
+		return
+	var f: Vector2 = _shop_spot["facade"]
+	var n: Vector2 = _shop_spot["n"]
+	var side := Vector2(n.y, -n.x)
+	_mode = "debug"
+	ui.visible = false
+	var d := 4.5
+	var shots := {}
+	for fr in 500:
+		var dt := clampf(get_process_delta_time(), 0.005, 0.1)
+		if fr > 6 and shots.has("d"):
+			d = maxf(d - maxf(1.3 * dt, 0.12), 0.2)
+		var pp := f + n * d
+		if world.is_free(pp, 0.3):
+			owner_node.position = Vector3(pp.x, world.gy(pp), pp.y)
+		owner_node.rotation.y = atan2(n.x, n.y)
+		var c2 := f + n * 6.0 + side * 2.5
+		cam.global_position = Vector3(c2.x, world.gy(c2) + 2.4, c2.y)
+		cam.look_at(Vector3(f.x, world.gy(f) + 1.2, f.y))
+		await get_tree().process_frame
+		if _shop != null and ParkMap.home == _shop:
+			print("KAPI disaridan girildi: ", _shop.title)
+			break
+		var dd: Dictionary = _shop_spot["door"]
+		if fr % 10 == 0:
+			print("KAPI iz ride=", _ride, " n=", n, " d=", snappedf(d, 0.1), " oyuncu=", _owner_pos(), " cephe=", f, " acik=", dd["open"], " mod=", _mode, " ev=", ParkMap.home)
+		for key in ["d", "e"]:
+			var ok: bool = (fr > 3 and float(dd["open"]) < 0.02) if key == "d" else (shots.has("d") and float(dd["open"]) > 0.9)
+			if ok and not shots.has(key):
+				shots[key] = true
+				print("KAPI ", key, " dis_acik=", snappedf(float(dd["open"]), 0.01), " uzaklik=", snappedf(d, 0.01))
+				if DisplayServer.get_name() != "headless":
+					get_viewport().get_texture().get_image().save_png(out.replace(".png", "_%s.png" % key))
 
 
 ## Otomatik kayar kapilar: dukkan / lokanta icindeyken kapiya yuruyunce disari cikilir.
 func _shop_doors(dt: float) -> void:
 	_door_warn_t = maxf(0.0, _door_warn_t - dt)
+	_door_cool = maxf(0.0, _door_cool - dt)
+	if ParkMap.home == null and (_mode == "play" or _mode == "debug") and _ride == null and world:
+		var sp: Dictionary = world.update_doors(_owner_pos(), dt)
+		if not sp.is_empty() and _door_cool <= 0.0:
+			_door_cool = 2.0
+			_enter_shop(sp)
+		return
 	if _shop == null or ParkMap.home != _shop or not _shop.has_method("update_door") or not (_mode == "play" or _mode == "debug"):
 		return
 	var o := _owner_pos()
