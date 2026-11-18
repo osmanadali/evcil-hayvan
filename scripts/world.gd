@@ -2442,6 +2442,35 @@ func _inside_building(p: Vector2) -> bool:
 	return _inside_building_cell(p)
 
 
+## Oyuncuyu yerlestirirken: nokta gercekten kapali bir engelin (bina cokgeni ya da dort duvarli blok) icinde mi?
+## _inside_building_cell yalnizca noktanin kendi hucresindeki dogrulari saydigi icin bir duvarin onundeki acik
+## alani da "bina ici" sanabiliyor (ev kapisinin onu gibi); burada isin iki yone, hucreler boyunca atilir ve
+## ancak iki yonde de tek sayida kesisme varsa icerisi sayilir.
+func inside_solid(p: Vector2) -> bool:
+	if inside_building_poly(p):
+		return true
+	var cy := floori(p.y / CELL)
+	var cx := floori(p.x / CELL)
+	for dir in [1, -1]:
+		var seen := {}
+		var hits := 0
+		for step in 8:
+			for e in _hash.get(Vector2i(cx + dir * step, cy), []):
+				if e.x != 1 or seen.has(e.y):
+					continue
+				seen[e.y] = true
+				var sg: Array = _segments[e.y]
+				var a: Vector2 = sg[0]
+				var b: Vector2 = sg[1]
+				if (a.y > p.y) != (b.y > p.y):
+					var ix: float = (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x
+					if (dir == 1 and ix > p.x) or (dir == -1 and ix < p.x):
+						hits += 1
+		if hits % 2 == 0:
+			return false
+	return true
+
+
 ## Kamera icin: yalnizca gercek bina cokgenleri (cit, araba gibi engeller sayilmaz).
 func inside_building_poly(p: Vector2) -> bool:
 	if _bpolys.is_empty():

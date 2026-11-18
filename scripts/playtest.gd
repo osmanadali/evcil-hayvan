@@ -14,12 +14,14 @@ var _bad := ""
 var _start := Vector2.ZERO
 var _verbose := false
 var _token := 0
+var _only := ""        # --ptonly=metin: yalnizca adinda bu gecen adimlar
 
 
 func run(main: Node, args: Dictionary) -> void:
 	m = main
 	main.add_child(self)
 	_verbose = args.has("ptlog")
+	_only = String(args.get("ptonly", ""))
 	_start = m._owner_pos()
 	m.state.d["coins"] = 50000
 	m.life.instant = true
@@ -68,6 +70,8 @@ func bad(why: String) -> void:
 
 
 func step(name: String, c: Callable, timeout := 25.0) -> void:
+	if _only != "" and not name.contains(_only):
+		return
 	steps += 1
 	_done = false
 	_bad = ""
@@ -146,7 +150,7 @@ func press(b: Button, real := false) -> void:
 	if _verbose:
 		print("    tik: ", b.text.replace("\n", " / ").left(60))
 	var vr: Rect2 = get_viewport().get_visible_rect()
-	if real and vr.has_point(b.get_global_rect().get_center()) and b.is_visible_in_tree():
+	if real and DisplayServer.get_name() != "headless" and vr.has_point(b.get_global_rect().get_center()) and b.is_visible_in_tree():
 		await click_at(b.get_global_rect().get_center())
 	else:
 		b.pressed.emit()
@@ -503,7 +507,7 @@ func _g_mouse() -> void:
 			await wait(1.0)
 			print("    rota dugum=", m.minimap.route.size(), " hedef=", m.minimap.dest_name), 400.0)
 	await step("fare: telefon simgeleri (ilk 6) tiklaninca acilir", func():
-		for app in ["Mesajlar", "İş Bul", "Sosyal", "Banka", "EvBul", "Otel"]:
+		for app in ["Mesajlar", "İş Bul", "Sosyal", "Görevler", "Patigram", "Hava"]:     # ilk sayfadakiler
 			m._open_phone()
 			await wait(0.9)
 			var b: Button = m.ui.phone_app_button(app)
@@ -574,7 +578,7 @@ func _g_vehicles() -> void:
 				await fr(3)
 			m.life.instant = true
 			if m._ride != null:
-				bad("F ile inilmedi")
+				bad("F ile inilmedi: hiz=%.2f baglam=%s pencere=%s mesgul=%s mod=%s" % [m._drive_speed, ctx(), m.ui.is_blocking(), m.life.busy(), m._mode])
 			if not m.owner_model.visible:
 				bad("inince karakter gorunmuyor"), 40.0)
 	await step("arac: trafik arabasina bin / in", func():
@@ -1092,10 +1096,11 @@ func _g_places() -> void:
 			print("    bu bolgede ev yok (atlandi)")
 			return
 		await goto(m.HOME_DOOR + m.HOME_DOOR_OUT * 1.2)
-		print("    kapi baglam=", ctx())
-		if ctx() != "":
+		print("    kapi baglam=", ctx(), " kapiya uzaklik=%.1f" % m._owner_pos().distance_to(m.HOME_DOOR + m.HOME_DOOR_OUT * 1.2), " ev=", ParkMap.home != null)
+		if ctx() == "home_in":
 			await key("interact")
 		else:
+			bad("ev kapisinda 'Eve Gir' cikmadi (baglam=%s)" % ctx())
 			m._enter_home()
 		await fr(15)
 		if ParkMap.home == null:

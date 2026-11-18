@@ -605,12 +605,12 @@ func _owner_pos() -> Vector2:
 
 func _place_owner(p: Vector2) -> void:
 	# Bina icine dusmesin: en yakin acik noktaya kay
-	if ParkMap.home == null and world and (world._inside_building(p) or not world.is_free(p, 0.4)):
+	if ParkMap.home == null and world and (world.inside_solid(p) or not world.is_free(p, 0.4)):
 		var found := false
 		for r in range(2, 60, 2):
 			for k in 16:
 				var q := p + Vector2.from_angle(k * TAU / 16.0) * float(r)
-				if world.is_free(q, 0.6) and not world._inside_building(q):
+				if world.is_free(q, 0.6) and not world.inside_solid(q):
 					p = q
 					found = true
 					break
@@ -4001,12 +4001,12 @@ func _metro_arrived(station: String) -> void:
 func _spawn_at_gate(g: Dictionary) -> void:
 	var out: Vector2 = g["pos"] - g["toward"] * 4.8
 	# Bina ya da duvar icine dusmesin: cevrede bos bir kaldirim ara
-	if not world.is_free(out, 0.6) or world._inside_building(out):
+	if not world.is_free(out, 0.6) or world.inside_solid(out):
 		var found := false
 		for r in range(2, 40, 2):
 			for k in 16:
 				var q: Vector2 = g["pos"] + Vector2.from_angle(k * TAU / 16.0) * float(r)
-				if world.is_free(q, 0.8) and not world._inside_building(q):
+				if world.is_free(q, 0.8) and not world.inside_solid(q):
 					out = q
 					found = true
 					break

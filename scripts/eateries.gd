@@ -1041,13 +1041,15 @@ func debug_enter(order_too: bool, mode := "", want_style := "") -> void:
 		m.cam.look_at(Vector3(c.x, gy + 2.6, c.y))
 		return
 	m._enter_shop(sp)
-	if mode == "sit":
-		sit(0, 1)
-		return
-	if not order_too:
-		return
 	var s := shop()
-	sit(0, 1)
+	if mode == "sit" or order_too:
+		# Bos bir tabure bul (0. masa doluysa sonrakiler)
+		for ti in s.tables.size():
+			for si in s.tables[ti]["seats"].size():
+				if not is_seated():
+					sit(ti, (si + 1) % s.tables[ti]["seats"].size())
+	if mode == "sit" or not order_too or not is_seated():
+		return
 	_walk.clear()
 	s.waiter.position = Vector3(_table_side(s).x, 0, _table_side(s).y)
 	for row in menu_of(s.style).slice(0, 3):
