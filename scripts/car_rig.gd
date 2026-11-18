@@ -40,7 +40,7 @@ const SPECS := {
 	},
 	"sedan": {
 		"ad": "Derya 1.6 Sedan", "path": "res://assets/vehicles/sedan.glb", "doors": false,
-		"seat": Vector3(-0.376, 0.07, -0.13), "eye": Vector3(-0.376, 1.22, 0.03), "eye_pitch": -0.1,
+		"seat": Vector3(-0.376, 0.07, -0.2), "eye": Vector3(-0.376, 1.22, -0.03), "eye_pitch": -0.1,
 		"feet": [Vector3(-0.49, 0.38, -0.6), Vector3(-0.25, 0.38, -0.64)],
 		"door_spot": Vector3(-1.4, 0, 0.1), "exit_spots": [Vector3(-1.4, 0, 0.1), Vector3(1.4, 0, 0.1), Vector3(-1.8, 0, 0.1), Vector3(1.8, 0, 0.1)],
 		"pet": {"on": [Vector3(0.36, 0.56, 0.72), 0.0, "sit", 0.0, 0.0], "cam": [Vector3(0.42, 0.56, 0.7), -PI / 2, "stand", 1.0, 0.5],
@@ -443,6 +443,9 @@ static func debug_shots(m: Node, args: Dictionary) -> void:
 	var tree := m.get_tree()
 	var parts: Array = Array(String(args.get("rigpart", "dis,ic,bin")).split(","))
 	m.state.d["tips"] = false
+	if m.tutorial._card:
+		m.tutorial._showing = ""
+		m.tutorial._card.visible = false
 	var vp := m.get_viewport()
 	var out := String(args["shot"])
 	var save := func(tag: String) -> void:
