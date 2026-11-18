@@ -2493,15 +2493,15 @@ var _taxi_fare := 0
 ## carpisma yaricapi, surucu gizlenir mi, sele (yukseklik, arac merkezine gore arkada), one egilme,
 ## gidon tutaclari, arkadaki hayvanin yeri, motor sesi perdesi.
 const RIDES := {
-	"araba": {"max": 15.0, "acc": 3.4, "brake": 9.0, "steer": 1.6, "lock": 0.55, "base": 2.6, "r": 1.15, "hide": true,
+	"araba": {"max": 38.9, "acc": 7.2, "brake": 11.5, "steer": 2.4, "lock": 0.55, "base": 2.6, "r": 1.15, "hide": true,
 		"seat": Vector3.ZERO, "engine": 1.0, "ad": "Arabaya Bin"},
 	# seat: sele ust yuzeyi (arac merkezine gore); grip: gidon tutacagi (x = yarim aciklik); foot: basamakta
 	# ayak bilegi; crank: bisiklet orta gobegi (x = pedal yarim acikligi). Hepsi modelden olculdu
 	# (tools/pose_test.gd --ride=... --measure). lean: en az one egilme (eller yetisene kadar artar).
-	"scooter": {"max": 11.0, "acc": 2.2, "brake": 7.0, "steer": 1.2, "lock": 0.45, "base": 1.3, "r": 0.5, "hide": false,
+	"scooter": {"max": 19.5, "acc": 4.2, "brake": 8.5, "steer": 1.8, "lock": 0.45, "base": 1.3, "r": 0.5, "hide": false,
 		"seat": Vector3(0, 0.95, 0.4), "lean": 0.06, "engine": 1.6, "ad": "Scooter'a Bin",
 		"grip": Vector3(0.36, 1.25, -0.07), "foot": Vector3(0.13, 0.5, -0.02), "pet": Vector3(0, 0.84, 0.66)},
-	"motosiklet": {"max": 16.0, "acc": 2.8, "brake": 8.0, "steer": 1.0, "lock": 0.4, "base": 1.45, "r": 0.55, "hide": false,
+	"motosiklet": {"max": 44.5, "acc": 8.6, "brake": 10.5, "steer": 1.7, "lock": 0.4, "base": 1.45, "r": 0.55, "hide": false,
 		"seat": Vector3(0, 0.8, 0.3), "lean": 0.25, "engine": 1.35, "ad": "Motosiklete Bin",
 		"grip": Vector3(0.40, 1.01, -0.36), "foot": Vector3(0.24, 0.37, 0.18), "pet": Vector3(0, 0.9, 0.72)},
 	"bisiklet": {"max": 6.5, "acc": 1.5, "brake": 6.0, "steer": 1.3, "lock": 0.5, "base": 1.1, "r": 0.45, "hide": false,
@@ -2921,8 +2921,9 @@ func _toggle_fps() -> void:
 	_fps = not _fps
 	_fps_pitch = 0.0
 	_fps_yaw = 0.0
-	_cam_blend = 0.5
+	_cam_blend = 0.25
 	if not _fps:
+		_snap_chase_camera()
 		_set_body_visible(_ride, true)
 		CarBody.set_inside(_ride, false)
 		if _cockpit:
@@ -2937,9 +2938,25 @@ func _toggle_fps() -> void:
 		cam.fov = 60.0
 
 
+## Dis kamerayi suzulmeden aracin arkasindaki yerine koyar (ic kameradan cikis, araca binis).
+func _snap_chase_camera() -> void:
+	_cam_blend = 0.0
+	_focus = owner_node.position
+	if _ride != null:
+		_cam_yaw = _ride.rotation.y + (PI if _drive_speed < -1.0 else 0.0)
+	_cam_pitch = clampf(_cam_pitch, 0.18, 0.5)
+	_cam_dist_s = CAM_DIST * _zoom
+	_cam_block_t = 0.0
+	cam.near = 0.05
+	cam.fov = 60.0
+	_update_camera_raw(0.0)
+	_cam_last = cam.global_transform
+
+
 ## Birinci sahis: arabada surucu koltugundan (on panel, direksiyon), iki tekerlikte surucunun gozunden.
 func _cockpit_camera() -> void:
 	var kind: String = _ride.get_meta("kind")
+	_focus = owner_node.position        # dis kamera hedefi geride kalmasin
 	if not _looking():
 		_fps_yaw = lerpf(_fps_yaw, 0.0, minf(1.0, get_process_delta_time() * 1.5))
 	var look := Basis(Vector3.UP, _fps_yaw) * Basis(Vector3.RIGHT, _fps_pitch)
@@ -3030,95 +3047,228 @@ func _make_cockpit() -> Node3D:
 	return CarCabin.build()
 
 
+## Vites kademeleri: [ust hiz orani (azami hizin kesri), cekis carpani]. Dusuk viteste guclu, yuksekte zayif.
+const GEARS := [[0.2, 1.0], [0.36, 0.74], [0.55, 0.5], [0.76, 0.33], [1.0, 0.22]]
+const GRIP_ROAD := 11.0       # kuru asfaltta lastiklerin kaldirdigi yanal ivme (m/sn2)
+var gear_no := 1              # 1..5 (ileri); gosterge icin (scripts/vehicle_life.gd)
+var rpm_frac := 0.0           # 0..1: vitesin icindeki devir
+var _shift_t := 0.0           # vites degisirken kisa cekis kesintisi
+var _understeer := 0.0        # 0..1: on tekerler kayiyor
+var _accel_s := 0.0           # yumusatilmis ivme (agirlik aktarimi)
+var _surf := 1.0              # zemin: 1 asfalt, 0.8 kaldirim / parke, 0.45 cim / toprak
+var _surf_t := 0.0
+var _crash_t := 0.0
+var _skid: AudioStreamPlayer
+var _bump := 0.0              # kaldirima cikarken kisa sarsinti
+
+
+## Zemin tutunmasi: asfalt 1, kaldirim / sehir zemini / patika 0.8, cim ve toprak 0.45.
+func _surface_at(p: Vector2) -> float:
+	if ParkMap.home != null or world == null or world._img_a == null:
+		return 1.0
+	var mk: Array = world._mask(p)
+	if mk[2] > 0.45:
+		return 1.0
+	if mk[3] > 0.45 or mk[4] > 0.45 or mk[0] > 0.45:
+		return 0.8
+	return 0.45
+
+
 func _update_drive(dt: float) -> void:
 	if not _ride in Car.traffic:
 		Car.traffic.append(_ride)
-	var cfg: Dictionary = RIDES[_ride.get_meta("kind")]
+	var kind: String = _ride.get_meta("kind")
+	var cfg: Dictionary = RIDES[kind]
 	var top: float = cfg["max"]
-	var gas: float = fuel.throttle(_ride.get_meta("kind"), -ui.stick.y, _drive_speed, dt)
+	var gas: float = fuel.throttle(kind, -ui.stick.y, _drive_speed, dt)
 	var steer: float = ui.stick.x
-	var handbrake := Input.is_action_pressed("jump")
-	var drifting: bool = handbrake and bool(cfg["hide"]) and absf(_drive_speed) > 4.0
+	var hide: bool = cfg["hide"]
+	var handbrake := Input.is_action_pressed("jump") or _args.has("handbrake")
+	var drifting: bool = handbrake and hide and absf(_drive_speed) > 4.0
+	var p := Vector2(_ride.position.x, _ride.position.z)
+	# Zemin (saniyede ~10 kez olculur): cimde / toprakta arac agirlasir, tutunma azalir
+	_surf_t -= dt
+	if _surf_t <= 0.0:
+		_surf_t = 0.1
+		var s_new := _surface_at(p)
+		if s_new < _surf - 0.1 and absf(_drive_speed) > 7.0 and hide:
+			# Kaldirima / cime cikis: sarsinti ve hiz kaybi
+			_drive_speed *= 0.93
+			_bump = 1.0
+		_surf = s_new
+	var wet := 0.0
+	if weather != null:
+		wet = clampf(maxf(weather.rain, weather.snow * 1.6), 0.0, 1.0)
+	var grip := GRIP_ROAD * lerpf(0.55, 1.0, clampf((_surf - 0.45) / 0.55, 0.0, 1.0)) * (1.0 - 0.28 * wet)
+	if not hide:
+		grip *= 0.9
+	var brake_k := float(cfg["brake"]) * (grip / GRIP_ROAD)
+	var v_abs := absf(_drive_speed)
+	var top_now := top * (1.0 if _surf > 0.9 else (0.72 if _surf > 0.6 else 0.4))
+	# Vites: hiza gore kademe; degisirken cekis kisa sure kesilir
+	var g_new := 1
+	for gi in GEARS.size() - 1:
+		if v_abs > top * float(GEARS[gi][0]) * (0.96 if gi + 1 >= gear_no else 0.86):
+			g_new = gi + 2
+	if g_new != gear_no:
+		if g_new > gear_no and gas > 0.12:
+			_shift_t = 0.16
+		gear_no = g_new
+	_shift_t = maxf(0.0, _shift_t - dt)
+	var g_lo: float = top * float(GEARS[gear_no - 2][0]) * 0.55 if gear_no > 1 else 0.0
+	var g_hi: float = top * float(GEARS[gear_no - 1][0])
+	rpm_frac = clampf((v_abs - g_lo) / maxf(g_hi - g_lo, 0.1), 0.0, 1.0) if _drive_speed >= -0.2 else clampf(v_abs / 8.0, 0.0, 1.0)
 	if drifting:
-		_drive_speed = move_toward(_drive_speed, 0.0, 3.2 * dt)      # arka tekerler kilitli: kayarak yavaslar
+		_drive_speed = move_toward(_drive_speed, 0.0, 4.0 * dt)      # arka tekerler kilitli: kayarak yavaslar
 	elif handbrake:
 		_drive_speed = move_toward(_drive_speed, 0.0, 11.0 * dt)
 	elif gas > 0.12:
 		if _drive_speed < -0.2:
-			_drive_speed = move_toward(_drive_speed, 0.0, float(cfg["brake"]) * dt)
+			_drive_speed = move_toward(_drive_speed, 0.0, brake_k * dt)
+		elif _drive_speed < top_now * gas:
+			# Cekis: dusuk viteste guclu, vites buyudukce ve devir sonuna dogru azalir; ust hiza yumusak yaklasir
+			var pull: float = float(cfg["acc"]) * float(GEARS[gear_no - 1][1]) * (1.0 - 0.25 * rpm_frac) * gas
+			if _shift_t > 0.0:
+				pull *= 0.15
+			pull *= lerpf(0.6, 1.0, clampf((_surf - 0.45) / 0.55, 0.0, 1.0))
+			pull = minf(pull, grip * 0.75)                               # tekerler bosa donmez
+			var room := clampf((top_now * gas - _drive_speed) / 2.0, 0.0, 1.0)
+			_drive_speed += pull * room * dt
 		else:
-			# Hiz arttikca ivme azalir
-			var acc: float = float(cfg["acc"]) * (1.0 - 0.6 * clampf(_drive_speed / top, 0.0, 1.0))
-			_drive_speed = move_toward(_drive_speed, top * gas, acc * dt)
+			_drive_speed = move_toward(_drive_speed, top_now * gas, (1.5 + v_abs * 0.12) * dt)
 	elif gas < -0.12:
 		if _drive_speed > 0.2:
-			_drive_speed = move_toward(_drive_speed, 0.0, float(cfg["brake"]) * dt)     # fren
+			_drive_speed = move_toward(_drive_speed, 0.0, brake_k * -gas * dt)     # fren
 		else:
-			_drive_speed = move_toward(_drive_speed, -top * 0.22 * -gas, 1.8 * dt)     # geri vites
+			_drive_speed = move_toward(_drive_speed, -minf(top * 0.25, 9.0) * -gas, 3.2 * dt)     # geri vites
 	else:
-		_drive_speed = move_toward(_drive_speed, 0.0, (1.2 + absf(_drive_speed) * 0.08) * dt)   # motor freni ve suruklenme
-	# Direksiyon: yavas doner, birakinca ortalanir; hizlandikca daha az kirilir
-	_steer = move_toward(_steer, steer, dt * float(cfg["steer"]) * (1.0 if absf(steer) > 0.05 else 1.6))
-	var lock: float = float(cfg["lock"]) * lerpf(1.0, 0.35, clampf(absf(_drive_speed) / top, 0.0, 1.0))
-	var yaw_rate := _drive_speed * tan(_steer * lock) / float(cfg["base"])
+		# Gaz yok: motor freni + yuvarlanma + hava direnci
+		_drive_speed = move_toward(_drive_speed, 0.0, (0.9 + v_abs * 0.05 + v_abs * v_abs * 0.0012) * dt)
+	if v_abs > top_now + 0.5 and not drifting:
+		# Cim / kaldirim: arac agirlasir
+		_drive_speed = move_toward(_drive_speed, signf(_drive_speed) * top_now, (3.0 + (v_abs - top_now) * 0.6) * dt)
+	v_abs = absf(_drive_speed)
+	# Direksiyon: yumusak doner, birakinca kendiliginden toplar (hizlandikca daha cabuk); yuksek hizda daha agir
+	var sf := clampf(v_abs / top, 0.0, 1.0)
+	var s_rate: float = float(cfg["steer"]) * (lerpf(1.25, 0.8, sf) if absf(steer) > 0.05 else lerpf(1.5, 3.0, sf))
+	if absf(steer) > 0.05 and signf(steer) != signf(_steer) and absf(_steer) > 0.05:
+		s_rate *= 1.8                       # ters yone kirma: once hizla toplar
+	_steer = move_toward(_steer, steer, dt * s_rate)
+	# Donus: dusuk hizda teker acisi (geometri), yuksek hizda yanal ivmeye gore sinirli (hiza bagli direksiyon)
+	var yaw_geo := _drive_speed * tan(_steer * float(cfg["lock"])) / float(cfg["base"])
+	var yaw_rate := yaw_geo
+	var under := 0.0
+	if v_abs > 1.5:
+		# Tam kirista istenen yanal ivme: dusuk hizda tutunmanin altinda, hiz arttikca tutunmayi asar
+		var lat_full := GRIP_ROAD * (0.72 + 0.75 * sf)
+		var yaw_cap := lat_full / v_abs * absf(_steer)
+		if absf(yaw_rate) > yaw_cap:
+			yaw_rate = signf(yaw_rate) * yaw_cap
+		# Lastiklerin kaldirabildigi: fazlasi onden kayma (arac disa acilir, hiz kaybeder)
+		var yaw_lim := grip / v_abs
+		if absf(yaw_rate) > yaw_lim and not drifting:
+			under = clampf((absf(yaw_rate) - yaw_lim) / yaw_lim, 0.0, 1.0)
+			yaw_rate = signf(yaw_rate) * yaw_lim * (1.0 - 0.15 * under)
+			_drive_speed = move_toward(_drive_speed, 0.0, (2.5 + 5.0 * under) * dt)
+	_understeer = lerpf(_understeer, under, minf(1.0, dt * 6.0))
 	if drifting:
 		# El freni: arka kayar, burun hizla doner ama araba eski yonunde kaymaya devam eder (yan verme)
-		yaw_rate = _drive_speed * tan(_steer * float(cfg["lock"]) * 0.8) / float(cfg["base"]) * 1.6
+		yaw_rate = clampf(_drive_speed * tan(_steer * float(cfg["lock"]) * 0.8) / float(cfg["base"]) * 1.6, -2.2, 2.2)
 		_slip = clampf(_slip + yaw_rate * dt * 0.8, -1.2, 1.2)
 	else:
 		# Tekerler tutunur: kayma acisi kapanir, kayarken hiz kaybeder
 		_drive_speed *= maxf(0.0, 1.0 - absf(_slip) * 0.9 * dt)
 		_slip = move_toward(_slip, 0.0, dt * (1.6 + absf(_slip) * 2.0))
 	var yaw := _ride.rotation.y - yaw_rate * dt
-	var p := Vector2(_ride.position.x, _ride.position.z)
 	var fwd := Vector2(-sin(yaw + _slip), -cos(yaw + _slip))     # gidis yonu (kayarken burundan farkli)
 	var want := p + fwd * _drive_speed * dt
-	var np: Vector2 = want
-	if bool(cfg["hide"]):
-		# Araba: burun, orta ve arka icin uc daire (govde boyunca). Tek daireyle burun duvarlarin icine giriyordu.
-		var nose := Vector2(-sin(yaw), -cos(yaw))
-		for it in 2:
-			for off: float in [1.15, -1.15, 0.0]:
-				var q: Vector2 = np + nose * off
-				var q2: Vector2 = world.resolve(q, 0.85, p + nose * off)
-				np += q2 - q
-		np = ParkMap.clamp_bounds(np)
-	else:
-		np = ParkMap.clamp_bounds(world.resolve(want, float(cfg["r"]), p))
+	# Hizli giderken duvarlarin icinden gecmemek icin hareket kucuk adimlara bolunur
+	var move := _drive_speed * dt
+	var n_sub := clampi(int(ceilf(absf(move) / 0.3)), 1, 12)
+	var np: Vector2 = p
+	var nose := Vector2(-sin(yaw), -cos(yaw))
+	for si in n_sub:
+		var from := np
+		var w2: Vector2 = np + fwd * (move / n_sub)
+		var q_new: Vector2 = w2
+		if hide:
+			# Araba: govde boyunca bes daire. Tek daireyle burun duvarlarin icine giriyordu.
+			for it in 2:
+				for off: float in [1.25, -1.25, 0.0, 0.62, -0.62]:
+					var q: Vector2 = q_new + nose * off
+					var q2: Vector2 = world.resolve(q, 0.85, from + nose * off)
+					q_new += q2 - q
+			q_new = ParkMap.clamp_bounds(q_new)
+			# Son guvence: govdenin hicbir noktasi bina tabaninin icine giremez
+			if ParkMap.home == null:
+				var bad := false
+				var side_v := Vector2(-nose.y, nose.x)
+				for off: float in [1.95, 0.95, 0.0, -0.95, -1.95]:
+					for lat: float in ([-0.8, 0.0, 0.8] if absf(off) > 1.0 else [0.0]):
+						var cq: Vector2 = nose * off + side_v * lat
+						if world.inside_building_poly(q_new + cq) and not world.inside_building_poly(from + cq):
+							bad = true
+							break
+					if bad:
+						break
+				if bad:
+					q_new = from
+		else:
+			q_new = ParkMap.clamp_bounds(world.resolve(w2, float(cfg["r"]), from))
+			if ParkMap.home == null and world.inside_building_poly(q_new) and not world.inside_building_poly(from):
+				q_new = from
+		np = q_new
+		if q_new.distance_to(w2) > 0.05:
+			break
 	np = _push_from_vehicles(np, float(cfg["r"]) + 0.2, _ride)
-	if np.distance_to(want) > 0.02:
-		_drive_speed *= maxf(0.0, 1.0 - 6.0 * dt)       # carpti: yavasla
-	var hide: bool = cfg["hide"]
+	_crash_t = maxf(0.0, _crash_t - dt)
+	var lost := np.distance_to(want)
+	if lost > 0.02 and absf(move) > 0.0005:
+		# Carpma: engele dik gelen hiz kadar sert. Kafadan carpista arac geri seker, siyirmada yavaslar.
+		var block := clampf(lost / absf(move), 0.0, 1.0)
+		var hit := v_abs * block
+		if hit > 4.0 and block > 0.55:
+			if _crash_t <= 0.0:
+				_sfx("araba_kapi", -3.0 + minf(hit * 0.2, 5.0), 0.55)
+				_crash_t = 0.6
+				_bump = 1.0
+			_drive_speed = -signf(_drive_speed) * minf(hit * 0.22, 3.5)      # geri sekme
+			_slip = 0.0
+		else:
+			_drive_speed *= maxf(0.0, 1.0 - (3.0 + 9.0 * block) * dt)       # siyirdi / dayandi: yavasla
 	var h := ParkMap.terrain_height(np) if hide else ParkMap.walk_height(np)
 	var slope := atan2(ParkMap.terrain_height(np + fwd * 1.5) - ParkMap.terrain_height(np - fwd * 1.5), 3.0)
-	fuel.drain(_ride.get_meta("kind"), np.distance_to(p))
+	fuel.drain(kind, np.distance_to(p))
 	_ride.position = Vector3(np.x, h, np.y)
 	_ride.rotation.y = yaw
-	var accel := (_drive_speed - _last_speed) / maxf(dt, 0.001)
+	var accel := clampf((_drive_speed - _last_speed) / maxf(dt, 0.001), -14.0, 8.0)
 	_last_speed = _drive_speed
-	# Egim + hizlanirken burun hafif kalkar, frende hafif iner (birikmez; hedefe yaklasir)
-	var pitch_to := slope + clampf(accel * 0.004, -0.03, 0.02) * (1.0 if hide else 0.5)
-	_ride.rotation.x = lerpf(_ride.rotation.x, pitch_to, minf(1.0, dt * 6.0))
-	World.spin_wheels(_ride, _drive_speed * dt, _steer * float(cfg["lock"]))
+	_accel_s = lerpf(_accel_s, accel, minf(1.0, dt * 7.0))
+	_bump = maxf(0.0, _bump - dt * 4.0)
+	# Agirlik aktarimi: gazda arkaya yatar (burun kalkar), frende one dalar; egimle birlikte
+	var pitch_to := slope + clampf(_accel_s * 0.0045, -0.05, 0.03) * (1.0 if hide else 0.5) + sin(_bump * 9.0) * _bump * 0.02
+	_ride.rotation.x = lerpf(_ride.rotation.x, pitch_to, minf(1.0, dt * 7.0))
+	World.spin_wheels(_ride, (0.0 if drifting else _drive_speed * dt), _steer * float(cfg["lock"]) * lerpf(1.0, 0.45, sf))
 	_blink_t += dt
-	var turn := (1 if _steer > 0.0 else -1) if absf(_steer) > 0.3 and absf(_drive_speed) < 14.0 else 0
+	var turn := (1 if _steer > 0.0 else -1) if absf(_steer) > 0.3 and v_abs < 14.0 else 0
 	if _ride.has_meta("blinkers"):
 		Car.blink(_ride.get_meta("blinkers"), turn, _blink_t)
+	var lat_acc := yaw_rate * _drive_speed
 	if hide:
 		_wheel_grips()
-		# Araba: virajda govde hafif disa yatar
-		_ride.rotation.z = lerpf(_ride.rotation.z, _steer * clampf(_drive_speed / top, 0.0, 1.0) * 0.04, minf(1.0, dt * 3.0))
+		# Araba: virajda govde disa yatar (yanal ivmeyle orantili)
+		_ride.rotation.z = lerpf(_ride.rotation.z, clampf(lat_acc * 0.0055 + _slip * 0.05, -0.075, 0.075), minf(1.0, dt * 4.0))
 	else:
 		# Iki tekerlekli: donus hizina gore iceri yatar
-		var lean_to := clampf(-yaw_rate * absf(_drive_speed) * 0.07, -0.6, 0.6)
+		var lean_to := clampf(-lat_acc * 0.07, -0.6, 0.6)
 		_ride.rotation.z = lerpf(_ride.rotation.z, lean_to, minf(1.0, dt * 3.0))
-		owner_model.ride_speed = absf(_drive_speed)
+		owner_model.ride_speed = v_abs
 		if cfg.has("grip"):
 			var g: Vector3 = cfg["grip"]
 			var gl := _ride.global_transform * Vector3(-g.x, g.y, g.z)
 			var gr := _ride.global_transform * Vector3(g.x, g.y, g.z)
 			# Bisiklette donerken el isareti (yavas giderken direksiyonu kirinca)
-			if _ride.get_meta("kind") == "bisiklet" and turn != 0 and absf(_drive_speed) > 1.0 and absf(_drive_speed) < 5.0:
+			if kind == "bisiklet" and turn != 0 and v_abs > 1.0 and v_abs < 5.0:
 				if turn < 0:
 					gl = _ride.global_transform * Vector3(-0.95, 1.42, 0.2)
 				else:
@@ -3126,13 +3276,56 @@ func _update_drive(dt: float) -> void:
 			owner_model.grips = [gl, gr]
 	owner_node.position = _ride.position
 	owner_node.rotation = _ride.rotation
-	if absf(_drive_speed) > 1.0 and not _looking():
-		# Geri giderken kamera arkaya doner
-		_cam_yaw = lerp_angle(_cam_yaw, yaw + (PI if _drive_speed < -1.0 else 0.0), minf(1.0, dt * 2.2))
-	state.count("drive", absf(_drive_speed) * dt)
+	if v_abs > 1.0 and not _looking():
+		# Kamera aracin arkasina gecer (hizlandikca daha cabuk); geri giderken arkaya doner
+		_cam_yaw = lerp_angle(_cam_yaw, yaw + (PI if _drive_speed < -1.0 else 0.0), minf(1.0, dt * (2.2 + 2.0 * sf)))
+	state.count("drive", v_abs * dt)
 	if _engine and float(cfg["engine"]) > 0.0:
-		_engine.pitch_scale = (0.75 + absf(_drive_speed) / top * 1.3) * float(cfg["engine"])
-		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0)
+		# Motor sesi devirle degisir: vites icinde yukselir, vites buyuyunce duser
+		var rev_to := (0.62 + rpm_frac * 0.85 + float(gear_no - 1) * 0.05 + clampf(absf(gas), 0.0, 1.0) * 0.08) * float(cfg["engine"])
+		_engine.pitch_scale = lerpf(_engine.pitch_scale, rev_to, minf(1.0, dt * 9.0))
+		_engine.volume_db = -16.0 + 6.0 * clampf(absf(gas), 0.0, 1.0) + 2.0 * rpm_frac
+	# Lastik sesi: el freninde ve onden kayarken
+	if _skid != null:
+		var sk := clampf(maxf(_understeer, absf(_slip) * 1.6 if v_abs > 3.0 else 0.0), 0.0, 1.0) if _surf > 0.6 else 0.0
+		if sk > 0.12 and state.d["sound"]:
+			if not _skid.playing:
+				_skid.play()
+			_skid.volume_db = lerpf(-30.0, -9.0, sk)
+			_skid.pitch_scale = 0.9 + 0.25 * sf
+		elif _skid.playing:
+			_skid.stop()
+	if _args.has("drivelog") and Engine.get_process_frames() % int(_args["drivelog"]) == 0:
+		print("SURUS hiz=%.1f km/sa vites=%d devir=%.2f direk=%.2f donus=%.2f onkayma=%.2f kayma=%.2f zemin=%.2f egim=%.3f yatma=%.3f" % [
+			_drive_speed * 3.6, gear_no, rpm_frac, _steer, yaw_rate, _understeer, _slip, _surf,
+			_ride.rotation.x, _ride.rotation.z])
+
+
+## Lastik ciyaklamasi: suzulmus gurultu (dosya gerekmez).
+func _make_skid() -> AudioStreamWAV:
+	var rate := 22050
+	var n := rate
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var bp := 0.0
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / rate
+		var x := rng.randf_range(-1.0, 1.0)
+		lp += (x - lp) * 0.35
+		bp = bp * 0.93 + (lp - bp) * 0.3
+		var tone := sin(TAU * 1150.0 * t + sin(TAU * 7.0 * t) * 1.5) * 0.35 + sin(TAU * 1720.0 * t) * 0.18
+		var smp := clampf((bp * 1.6 + tone * (0.6 + 0.4 * bp)) * 0.55, -1.0, 1.0)
+		data.encode_s16(i * 2, int(smp * 32000.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.data = data
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_end = n
+	return w
 
 
 # ---------------------------------------------------------------- farlar
@@ -3826,6 +4019,10 @@ func _setup_audio() -> void:
 		_engine = AudioStreamPlayer.new()
 		_engine.stream = ms
 		add_child(_engine)
+	_skid = AudioStreamPlayer.new()
+	_skid.stream = _make_skid()
+	_skid.volume_db = -30.0
+	add_child(_skid)
 	for i in 6:
 		var v := AudioStreamPlayer.new()
 		add_child(v)
@@ -4783,6 +4980,10 @@ func _update_camera(dt: float) -> void:
 		_cam_blend -= dt
 		cam.global_transform = _cam_last.interpolate_with(cam.global_transform, minf(1.0, dt * 9.0))
 	_cam_last = cam.global_transform
+	if _ride != null and not _fps and _mode == "play" and not pview.on:
+		# Hiz hissi: hizlandikca gorus acisi genisler
+		var kf: float = clampf(absf(_drive_speed) / float(RIDES[_ride.get_meta("kind")]["max"]), 0.0, 1.0)
+		cam.fov = lerpf(cam.fov, 60.0 + 14.0 * kf * kf, minf(1.0, dt * 4.0))
 
 
 func _update_camera_raw(dt: float) -> void:
@@ -4817,7 +5018,8 @@ func _update_camera_raw(dt: float) -> void:
 		_ when pview.on:
 			pview.camera(dt)
 		_:
-			_focus = _focus.lerp(owner_node.position, k)
+			# Aracta kamera hedefi siki izler (140 km/sa'te arac ekrandan kacmasin)
+			_focus = _focus.lerp(owner_node.position, minf(1.0, dt * 14.0) if _ride != null else k)
 			var dist := CAM_DIST * _zoom
 			var in_room: bool = ParkMap.home != null and ParkMap.home.has_method("cam_clamp")
 			if in_room:
@@ -5627,7 +5829,118 @@ func _debug_shot() -> void:
 							worst = minf(worst, maxf(dx, dz))
 				ui.stick = Vector2.ZERO
 				print("CARPMA %s %s en_derin=%.2f m (eksi = binanin icinde) hiz=%.1f" % [sp["name"], ap[0], worst, _drive_speed])
-	if _args.has("secs"):
+	if _args.has("drivetest") and _ride != null:
+		# Surus denemesi (--drive[=tur] --drivetest): en uzun genis yolda tam gaz, fren, geri, viraj; sayilari yazar
+		var best_a := -1
+		var best_b := -1
+		var best_l := 0.0
+		for i in ParkMap.nodes.size():
+			for nb in ParkMap.road_next[i]:
+				var ln: float = ParkMap.nodes[i].distance_to(ParkMap.nodes[nb])
+				if ParkMap.road_width(i, nb) >= 8.0 and ln > best_l and ParkMap.inside_bounds(ParkMap.nodes[i], 40.0) and ParkMap.inside_bounds(ParkMap.nodes[nb], 40.0):
+					best_l = ln
+					best_a = i
+					best_b = nb
+		var ta: Vector2 = ParkMap.nodes[best_a]
+		var tb: Vector2 = ParkMap.nodes[best_b]
+		var td := (tb - ta).normalized()
+		var dt60 := 1.0 / 60.0
+		for phase in ["gaz", "viraj", "elfreni", "cim"]:
+			_ride.position = Vector3(ta.x, ParkMap.terrain_height(ta), ta.y)
+			_ride.rotation = Vector3(0, atan2(-td.x, -td.y), 0)
+			_drive_speed = 0.0
+			_steer = 0.0
+			_slip = 0.0
+			gear_no = 1
+			var t50 := -1.0
+			var t100 := -1.0
+			var vmax := 0.0
+			var tt := 0.0
+			var start := ta
+			if phase == "cim":
+				# yoldan dik cik: cimde / kaldirimda hiz
+				_ride.rotation.y += PI / 2.0
+			while tt < (40.0 if phase == "gaz" else 9.0):
+				ui.stick = Vector2(0, -1)
+				if phase == "viraj" and tt > 5.0:
+					ui.stick = Vector2(1, -1)
+				if phase == "elfreni" and tt > 4.0:
+					ui.stick = Vector2(1, 0)
+					_args["handbrake"] = "1"
+				var before := _drive_speed
+				_update_drive(dt60)
+				tt += dt60
+				vmax = maxf(vmax, _drive_speed)
+				if t50 < 0.0 and _drive_speed * 3.6 >= 50.0:
+					t50 = tt
+				if t100 < 0.0 and _drive_speed * 3.6 >= 100.0:
+					t100 = tt
+				if phase == "gaz" and _drive_speed < before - 1.0:
+					break       # yolun sonu: carpti
+				if phase != "gaz" and int(tt * 60.0) % 30 == 0:
+					print("  %s t=%.1f hiz=%.0f direk=%.2f onkayma=%.2f kayma=%.2f zemin=%.2f yatma=%.3f egim=%.3f" % [phase, tt, _drive_speed * 3.6, _steer, _understeer, _slip, _surf, _ride.rotation.z, _ride.rotation.x])
+			_args.erase("handbrake")
+			if phase == "gaz":
+				print("SURUS %s yol=%.0f m: 0-50 %.1f sn, 0-100 %.1f sn, en yuksek %.0f km/sa (%.1f sn, %.0f m)" % [_ride.get_meta("kind"), best_l, t50, t100, vmax * 3.6, tt, Vector2(_ride.position.x, _ride.position.z).distance_to(start)])
+		# Fren mesafesi: 50 ve 100 km/sa'ten
+		for v0 in [50.0, 100.0]:
+			_ride.position = Vector3(ta.x, ParkMap.terrain_height(ta), ta.y)
+			_ride.rotation = Vector3(0, atan2(-td.x, -td.y), 0)
+			_drive_speed = v0 / 3.6
+			_last_speed = _drive_speed
+			_steer = 0.0
+			var dip := 0.0
+			var n_f := 0
+			while _drive_speed > 0.05 and n_f < 900:
+				ui.stick = Vector2(0, 1)
+				_update_drive(dt60)
+				dip = minf(dip, _ride.rotation.x)
+				n_f += 1
+			print("SURUS fren %.0f km/sa -> 0: %.1f m, %.1f sn, burun dalma %.3f rad" % [v0, Vector2(_ride.position.x, _ride.position.z).distance_to(ta), n_f * dt60, dip])
+		# Geri vites
+		_drive_speed = 0.0
+		for i in 300:
+			ui.stick = Vector2(0, 1)
+			_update_drive(dt60)
+		print("SURUS geri vites 5 sn: %.0f km/sa" % (_drive_speed * 3.6))
+		# Duvara carpma: en yakin lokantaya dogru
+		if not eateries.places.is_empty():
+			var sp0: Dictionary = eateries.places[0]
+			var c0: Vector2 = sp0["center"]
+			var tw0: Vector2 = sp0["tw"]
+			var from0: Vector2 = c0 + tw0 * 30.0
+			_ride.position = Vector3(from0.x, ParkMap.terrain_height(from0), from0.y)
+			_ride.rotation = Vector3(0, atan2(tw0.x, tw0.y), 0)
+			_drive_speed = 0.0
+			var vhit := 0.0
+			var vmin := 0.0
+			for i in 600:
+				ui.stick = Vector2(0, -1)
+				var bf := _drive_speed
+				_update_drive(dt60)
+				if _drive_speed < bf - 2.0 and vhit == 0.0:
+					vhit = bf
+				vmin = minf(vmin, _drive_speed)
+			print("SURUS carpma: %.0f km/sa ile vurdu, geri sekme %.1f m/sn, bina merkezine uzaklik %.1f m" % [vhit * 3.6, vmin, Vector2(_ride.position.x, _ride.position.z).distance_to(c0)])
+		ui.stick = Vector2.ZERO
+		_drive_speed = 0.0
+	if _args.has("gas") and _ride != null:
+		# --gas=1 [--steerin=0.5]: surerken gaz / direksiyon basili (goruntu icin)
+		var n_g := int(float(_args.get("secs", "3")) * 60.0)
+		for i in n_g:
+			ui.stick = Vector2(float(_args.get("steerin", "0")), -float(_args["gas"]))
+			await get_tree().process_frame
+		if _args.has("vtoggle"):
+			# ic kameradan dis kameraya gecis: ilk karede kamera aracin arkasinda mi?
+			_toggle_fps()
+			await get_tree().process_frame
+			var back: Vector3 = _ride.global_position + Vector3(0, 1.3, 0)
+			print("KAMERA V sonrasi ilk kare: araca uzaklik %.2f m (beklenen ~%.1f), ic=%s" % [cam.global_position.distance_to(back), _cam_dist_s, _fps])
+			for i in 3:
+				ui.stick = Vector2(0, -float(_args["gas"]))
+				await get_tree().process_frame
+			print("KAMERA 3 kare sonra: %.2f m" % cam.global_position.distance_to(_ride.global_position + Vector3(0, 1.3, 0)))
+	elif _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("police"):
 		print("POLIS SON kovalama=", traffic.chasing, " uzaklik=%.1f" % traffic._police_dist(), " para=", state.d["coins"], " borc=", state.d.get("traffic_debt", 0))

@@ -837,17 +837,16 @@ func gear() -> String:
 		return "R"
 	if absf(v) <= 0.3:
 		return "D" if gas > 0.12 else ("R" if gas < -0.12 else "P")
-	if kind == "motosiklet":
-		return str(clampi(int(v * 3.6 / 12.0) + 1, 1, 5))
-	return "D" if gas > -0.12 or v > 2.0 else "N"
+	# Vites kademesi surus kodundan gelir (main.gd gear_no)
+	return str(clampi(int(m.gear_no), 1, 5))
 
 
 func rpm() -> float:
-	var kmh := absf(m._drive_speed) * 3.6
+	# Devir (bin d/dk): rolanti 0.85, vites icinde yukselir; vites buyuyunce duser (main.gd rpm_frac)
 	var gas := absf(m.ui.stick.y)
-	var band := 13.0
-	var g := minf(floorf(kmh / band), 4.0)
-	return 0.85 + clampf((kmh - g * band) / band, 0.0, 1.3) * 2.6 + gas * 0.6 + g * 0.12
+	if m._ride == null:
+		return 0.85
+	return 0.85 + clampf(float(m.rpm_frac), 0.0, 1.0) * 4.6 + gas * 0.5
 
 
 func _update_gauge() -> void:
@@ -881,7 +880,7 @@ func _update_gauge() -> void:
 		top = float(m.RIDES[kind]["max"])
 		if m.fuel.TANK.has(kind):
 			fuel = m.fuel.frac(kind)
-	_gauge.maxv = maxf(ceilf(top * 3.6 * 1.4 / 20.0) * 20.0, 40.0)
+	_gauge.maxv = maxf(ceilf(top * 3.6 * 1.12 / 20.0) * 20.0, 40.0)
 	_gauge.kmh = mm.speed_kmh
 	_gauge.limit = int(m.traffic.limit) if (ride == null or ride.get_meta("kind") != "bisiklet") else 999
 	_gauge.gear = gear()
