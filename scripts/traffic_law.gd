@@ -321,23 +321,19 @@ func _dress_police(body: Node3D) -> void:
 	var blue := Kit.mat("1f4fb8", 0.35)
 	blue.metallic = 0.3
 	# Yanlarda lacivert-mavi serit (kapilar boyunca, govde egrisini izleyen parcalar) ve POLIS yazisi
-	var ys := y0 + H * 0.41
-	var seg_n := 8
+	var ys := y0 + H * 0.37
+	var seg_n := 2            # on ve arka kapi: her biri kendi en dis yuzeyine oturur
 	var z_a := cz - L * 0.17
 	var z_b := cz + L * 0.21
 	var seg_l := (z_b - z_a) / seg_n
 	for side in [-1.0, 1.0]:
-		var prev_x := NAN
 		for i in seg_n:
 			var za := z_a + seg_l * i
-			var sx := Car.side_x(pts, side, ys - H * 0.035, ys + H * 0.035, za, za + seg_l)
+			var sx := Car.side_x(pts, side, ys - H * 0.09, ys + H * 0.09, za, za + seg_l)
 			if is_nan(sx):
-				sx = prev_x
-			if is_nan(sx):
-				continue
-			prev_x = sx
-			Kit.box(body, Vector3(0.014, H * 0.07, seg_l + 0.004), Vector3(sx - side * 0.004, ys, za + seg_l * 0.5), blue)
-		var ly := y0 + H * 0.53
+				sx = cx + side * W * 0.46
+			Kit.box(body, Vector3(0.02, H * 0.06, seg_l + 0.004), Vector3(sx - side * 0.002, ys, za + seg_l * 0.5), blue)
+		var ly := y0 + H * 0.5
 		var lz := cz + L * 0.03
 		var lx := Car.side_x(pts, side, ly - H * 0.05, ly + H * 0.05, lz - L * 0.1, lz + L * 0.1)
 		if is_nan(lx):
@@ -346,7 +342,7 @@ func _dress_police(body: Node3D) -> void:
 		lb.text = "POLİS"
 		lb.font = preload("res://assets/fonts/Anton-Regular.ttf")
 		lb.font_size = 64
-		lb.pixel_size = 0.0042
+		lb.pixel_size = 0.0032
 		lb.modulate = Color("1f3f9a")
 		lb.outline_size = 0
 		lb.position = Vector3(lx + side * 0.012, ly, lz)

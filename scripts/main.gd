@@ -3132,7 +3132,9 @@ func _update_drive(dt: float) -> void:
 		elif _drive_speed < top_now * gas:
 			# Cekis: dusuk viteste guclu, vites buyudukce ve devir sonuna dogru azalir; ust hiza yumusak yaklasir
 			var pull: float = float(cfg["acc"]) * float(GEARS[gear_no - 1][1]) * (1.0 - 0.25 * rpm_frac) * gas
-			if _shift_t > 0.0:
+			if kind == "bisiklet":
+				pull = float(cfg["acc"]) * (1.0 - 0.6 * clampf(_drive_speed / top, 0.0, 1.0)) * gas      # pedal: vites yok
+			elif _shift_t > 0.0:
 				pull *= 0.15
 			pull *= lerpf(0.6, 1.0, clampf((_surf - 0.45) / 0.55, 0.0, 1.0))
 			pull = minf(pull, grip * 0.75)                               # tekerler bosa donmez
@@ -3144,7 +3146,7 @@ func _update_drive(dt: float) -> void:
 		if _drive_speed > 0.2:
 			_drive_speed = move_toward(_drive_speed, 0.0, brake_k * -gas * dt)     # fren
 		else:
-			_drive_speed = move_toward(_drive_speed, -minf(top * 0.25, 9.0) * -gas, 3.2 * dt)     # geri vites
+			_drive_speed = move_toward(_drive_speed, -(minf(top * 0.25, 9.0) if hide else 1.4) * -gas, 3.2 * dt)     # geri vites (iki tekerlide ayakla geri itme)
 	else:
 		# Gaz yok: motor freni + yuvarlanma + hava direnci
 		_drive_speed = move_toward(_drive_speed, 0.0, (0.9 + v_abs * 0.05 + v_abs * v_abs * 0.0012) * dt)
@@ -6021,6 +6023,18 @@ func _debug_shot() -> void:
 			for f in 3:
 				await get_tree().process_frame
 			get_viewport().get_texture().get_image().save_png((_args["shot"] as String).replace(".png", "_%s.png" % s))
+	if _args.has("carcam") and _ride != null:
+		# Surulen araca sabit bakis: --carcam=side|low|rear|front (arayuz gizli)
+		_mode = "debug"
+		ui.visible = false
+		var cb: Basis = _ride.global_basis
+		var offs := {"side": -cb.x * 3.6 + Vector3(0, 1.0, 0), "low": -cb.x * 3.2 - cb.z * 0.6 + Vector3(0, 0.3, 0),
+			"rear": cb.z * 5.2 - cb.x * 1.2 + Vector3(0, 1.7, 0), "front": -cb.z * 5.0 + cb.x * 1.5 + Vector3(0, 1.4, 0)}
+		cam.global_position = _ride.global_position + (offs.get(_args["carcam"], offs["side"]) as Vector3)
+		cam.look_at(_ride.global_position + Vector3(0, 0.7, 0))
+		cam.fov = 60.0
+		for f in 3:
+			await get_tree().process_frame
 	var report := {"coins": state.d["coins"], "foods": state.d["foods"], "quests": state.d["quests"], "places": state.d["places"],
 		"owner": _owner_pos()}
 	for k in agents:

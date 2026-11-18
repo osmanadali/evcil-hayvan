@@ -169,7 +169,9 @@ func _update_hints() -> void:
 	if ride.get_meta("kind") != "bisiklet":
 		rows.append([Keybinds.primary("headlights"), "Farlar" + (" (açık)" if m.lights_on() else "")])
 	var vps: Vector2 = get_viewport().get_visible_rect().size
-	_hints.position = Vector2(vps.x - 300.0 - 24.0, vps.y * 0.5 - 44.0)
+	# Hiz kadraninin ve para yazisinin USTUNDE durur (kadrani kapatmasin)
+	var gauge_top: float = (vps.y - 180.0) if m.minimap.side_gauge else (m.minimap.position.y - 174.0)
+	_hints.position = Vector2(vps.x - 300.0 - 24.0, gauge_top - 46.0 - 48.0 * rows.size())
 	if rows != _hints.rows:
 		_hints.rows = rows
 		_hints.queue_redraw()
