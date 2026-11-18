@@ -620,7 +620,8 @@ func _garson_cmd(cmd: String) -> void:
 		var root: Node3D = j["root"]
 		var lp: Vector2 = t["lp"]
 		var cup := Kit.cyl(root, 0.032, 0.026, 0.1, Vector3(lp.x + 0.25, 0.81, lp.y), Kit.mat("b8322b", 0.2), 10)
-		get_tree().create_timer(9.0).timeout.connect(func(): _free(cup))
+		var cup_id := cup.get_instance_id()      # is bitince bardak silinmis olabilir: dugumu degil kimligini yakala
+		get_tree().create_timer(9.0).timeout.connect(func(): _free(instance_from_id(cup_id)))
 		m._say(t["cust"], "Teşekkürler! (+%d ₺ bahşiş)" % tip)
 		m.owner_model.act("feed", 0.6)
 		m._sfx("para", -10.0, 1.3)
@@ -709,9 +710,11 @@ func _bakici_cmd(cmd: String) -> void:
 			var mk := ow.get_node_or_null("IsIsaret")
 			if mk:
 				mk.queue_free()
+			var ow_id := ow.get_instance_id()
 			get_tree().create_timer(2.5).timeout.connect(func():
-				if is_instance_valid(ow) and _mine() and _j().get("stage", "") == "care":
-					ow.visible = false)
+				var ow2 := instance_from_id(ow_id) as Node3D
+				if ow2 != null and _mine() and _j().get("stage", "") == "care":
+					ow2.visible = false)
 			m._nav = Vector2.INF
 			m.minimap.route = []
 			m._pet_voice(j["kind"])

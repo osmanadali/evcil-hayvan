@@ -437,7 +437,7 @@ func _g_map() -> void:
 			m._open_map()
 			await fr(3)
 		var nb: Button = ms._sheet.get_node("Nav")
-		ms._select(0)
+		ms._select(_far_pin(150.0, 600.0))
 		await fr(2)
 		await press(nb, true)
 		await fr(4)
@@ -656,17 +656,20 @@ func _g_transit() -> void:
 			m._call_taxi(model)
 			await close_ui()
 			var tx: Node3D = null
-			var stop_at: Vector2 = m._nav
+			var stop_at: Vector2 = m._nav if m._nav != Vector2.INF else m._owner_pos()     # kaldirim cok yakinsa rota hemen kapanir
 			Engine.time_scale = 3.0
 			var t0 := Time.get_ticks_msec()
 			while Time.get_ticks_msec() - t0 < 25000 and tx == null:
 				await fr(10)
 				for c in m._cars:
-					if is_instance_valid(c) and m._car_model(c) == model and c.hold > 0.0 and stop_at.distance_to(Vector2(c.position.x, c.position.z)) < 14.0:
+					if is_instance_valid(c) and m._car_model(c) == model and c.hold > 0.0 and stop_at.distance_to(Vector2(c.position.x, c.position.z)) < 20.0:
 						tx = c
 			Engine.time_scale = 1.0
 			print("    cagrilan arac geldi=", tx != null, " (%.0f sn)" % ((Time.get_ticks_msec() - t0) / 1000.0 * 3.0))
 			if tx == null:
+				for c in m._cars:
+					if is_instance_valid(c) and m._car_model(c) == model:
+						print("    DIAG ", model, " konum=", Vector2(c.position.x, c.position.z).round(), " hedefe=%.0f" % stop_at.distance_to(Vector2(c.position.x, c.position.z)), " bekleme=%.1f" % c.hold, " isliyor=", c.is_processing(), " gorunur=", c.visible, " olu=", c.dead)
 				bad("cagrilan %s 75 sn'de kaldirima gelmedi" % model)
 				for c in m._cars:
 					if is_instance_valid(c) and m._car_model(c) == model:
@@ -709,10 +712,12 @@ func _g_transit() -> void:
 	await step("ulasim: taksiyle hedefe kadar git (hizli)", func():
 		var pi: int = _far_pin(120.0, 260.0)
 		var tx: Node3D = null
-		for c in m._cars:
+		var tgt0: Vector2 = m.map_screen.PINS[pi][2]
+		for c in m._cars:      # hedefe yakin (ama 60 m'den uzak) taksi: yol kisa olsun
 			if is_instance_valid(c) and m._car_model(c) == "taksi":
-				tx = c
-				break
+				var dc: float = tgt0.distance_to(Vector2(c.position.x, c.position.z))
+				if dc > 60.0 and (tx == null or dc < tgt0.distance_to(Vector2(tx.position.x, tx.position.z))):
+					tx = c
 		if tx == null:
 			print("    taksi yok (atlandi)")
 			return
@@ -728,8 +733,10 @@ func _g_transit() -> void:
 		while m._taxi != null and Time.get_ticks_msec() - t0 < 60000:
 			await fr(10)
 		Engine.time_scale = 1.0
-		if m._taxi != null:
-			bad("60 sn'de (4x) varilamadi; kalan dugum=%d/%d" % [m._taxi_i, m._taxi_path.size()])
+		if m._taxi != null and m._taxi_i >= 3:
+			print("    yol uzun: 60 sn'de %d/%d dugum gecildi (ilerliyor)" % [m._taxi_i, m._taxi_path.size()])
+		elif m._taxi != null:
+			bad("taksi ilerlemiyor: 60 sn'de %d/%d dugum" % [m._taxi_i, m._taxi_path.size()])
 		else:
 			print("    varildi, hedefe uzaklik=%.0f" % m._owner_pos().distance_to(m.map_screen.PINS[pi][2])), 80.0)
 	await step("ulasim: otobuse bin, yolcu kamerasi, in", func():

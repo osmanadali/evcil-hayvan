@@ -4922,8 +4922,12 @@ func _update_context() -> void:
 		if b.at_stop != "" and b.visible and o.distance_to(Vector2(b.position.x, b.position.z)) < 7.5:
 			ui.set_context("%s Otobüsüne Bin" % b.line, "bus", "play")
 			return
+	var near_ride := _nearest_rideable()
 	for g in world.metro_gates:
 		if o.distance_to(g["pos"]) < 4.0:
+			# Metro girisinin dibine park edilmis araca da binilebilsin: arac giristen yakinsa once o
+			if near_ride != null and o.distance_to(Vector2(near_ride.position.x, near_ride.position.z)) < o.distance_to(g["pos"]):
+				break
 			ui.set_context("Metroya İn", "metro", "star")
 			return
 	if _near_home_exit():
