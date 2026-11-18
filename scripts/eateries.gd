@@ -393,8 +393,6 @@ func context() -> Array:
 			return ["Sipariş kasada verilir · Kalkmak için yürü", "", "sit"]
 		return ["Garsonu Çağır", "eat_call", "hand"]
 	var lo: Vector2 = s.local2(m._owner_pos())
-	if lo.distance_to(s.entrance_local) < 1.1:
-		return ["Dışarı Çık", "eat_out", "come"]
 	if lo.distance_to(s.counter_local) < 1.3:
 		if s.style == "fast":
 			if phase == "cook" or phase == "ready":

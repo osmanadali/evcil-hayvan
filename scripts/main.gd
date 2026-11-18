@@ -1261,6 +1261,70 @@ func _exit_shop() -> void:
 	_cam_pitch = 0.27
 
 
+var _door_warn_t := 0.0
+
+
+## Test: --shop=tur --doortest : oyuncu kapiya yurur; kapi acilirken / acikken / disarida goruntu alir.
+func _door_test() -> void:
+	var sh := _shop
+	var W: float = sh.W
+	var D: float = sh.D
+	_mode = "debug"
+	ui.visible = false
+	var lp := Vector2(W * 0.5, D - 3.2)
+	_place_owner(sh.w2(lp))
+	owner_node.rotation.y = PI
+	var saved := {}
+	var out: String = _args["shot"]
+	for f in 400:
+		var dt := 1.0 / 60.0
+		lp.y = minf(lp.y + 1.3 * dt, D - 0.3)
+		owner_node.position = Vector3(sh.w2(lp).x, owner_node.position.y, sh.w2(lp).y)
+		if _shop == null:
+			break
+		var g: Vector3 = sh.global_position
+		cam.global_position = g + Vector3(W * 0.5 - 2.2, 2.1, D - 4.6)
+		cam.look_at(g + Vector3(W * 0.5, 1.1, D))
+		await get_tree().process_frame
+		if _shop == null:
+			break
+		for key in ["a", "b"]:
+			var thr := 0.4 if key == "a" else 0.97
+			if not saved.has(key) and sh.door_open >= thr:
+				saved[key] = true
+				if DisplayServer.get_name() != "headless":
+					get_viewport().get_texture().get_image().save_png(out.replace(".png", "_%s.png" % key))
+				print("KAPI ", key, " acik=", snappedf(sh.door_open, 0.01), " yerel=", lp)
+	print("KAPI cikti: ic=", _shop != null, " oyuncu=", _owner_pos(), " dukkan_onu=", _shop_spot.get("pos"))
+	_mode = "play"
+	ui.visible = true
+	await get_tree().create_timer(1.5).timeout
+	if DisplayServer.get_name() != "headless":
+		get_viewport().get_texture().get_image().save_png(out.replace(".png", "_c.png"))
+
+
+## Otomatik kayar kapilar: dukkan / lokanta icindeyken kapiya yuruyunce disari cikilir.
+func _shop_doors(dt: float) -> void:
+	_door_warn_t = maxf(0.0, _door_warn_t - dt)
+	if _shop == null or ParkMap.home != _shop or not _shop.has_method("update_door") or not (_mode == "play" or _mode == "debug"):
+		return
+	var o := _owner_pos()
+	var allow := _cart.is_empty()
+	var why := "Önce kasada ödemelisin! (%d ürün, %d ₺)" % [_cart_count(), _cart_total()]
+	if _shop.kind == "lokanta" and eateries.bill > 0:
+		allow = false
+		why = "Önce hesabı ödemelisin! (%d ₺)" % eateries.bill
+	if _shop.update_door(o, dt, allow):
+		_sfx("dukkan_zil", -10.0)
+		if _shop.kind == "lokanta":
+			eateries.leave()
+		else:
+			_exit_shop()
+	elif not allow and _shop.at_door(o) and _door_warn_t <= 0.0:
+		ui.toast(why)
+		_door_warn_t = 3.0
+
+
 ## Eczane tezgahi: eczacidan iste (kucuk panel).
 func _shop_buy() -> void:
 	var a := _active()
@@ -4023,6 +4087,7 @@ func _process(dt: float) -> void:
 	var pt := Time.get_ticks_usec()
 	var pt0 := pt
 	_update_mouse_capture(dt)
+	_shop_doors(dt)
 	# Ana menu ekrani tamamen kapliyor: arkadaki 3B sahneyi cizme (takilmayi onler)
 	var hide3d: bool = ui != null and ui.menu != null and ui.menu.visible and not _prewarming
 	if get_viewport().disable_3d != hide3d:
@@ -4525,9 +4590,7 @@ func _update_context() -> void:
 		return
 	if _shop != null and ParkMap.home == _shop:
 		var lo: Vector2 = _shop.local2(o)
-		if lo.distance_to(_shop.entrance_local) < 1.1:
-			ui.set_context("Dışarı Çık", "shop_out", "come")
-		elif lo.distance_to(_shop.counter_local) < 1.4:
+		if lo.distance_to(_shop.counter_local) < 1.4:
 			if _shop.kind == "market":
 				if _cart.is_empty():
 					ui.set_context("Kasa · Sepetin boş", "", "cart")
@@ -4966,6 +5029,8 @@ func _debug_shot() -> void:
 					for id in ["simit", "simit", "mama", "dondurma", "su"]:
 						_put_in_basket(id)
 					_place_owner(_shop.w2(Vector2(3.0, 3.15)))
+				if _args.has("doortest"):
+					await _door_test()
 				break
 	if _args.has("follow"):
 		# Test: bir bisikletliyi / arabayi arkadan izle, sinyali zorla

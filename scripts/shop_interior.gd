@@ -12,7 +12,12 @@ const H := 3.2
 var kind := "market"            # "market" | "eczane"
 var title := "Market"
 var accent := "c8322b"          # tabela rengi (marka)
-var entrance_local := Vector2(W * 0.5, D - 0.8)
+var entrance_local := Vector2(W * 0.5, D - 1.3)
+## Otomatik cam kayar kapi (on cephede, ortada): oyuncu yaklasinca kanatlar iki yana kayar
+var door_open := 0.0
+var _door_l: Node3D
+var _door_r: Node3D
+var _armed := false             # oyuncu iceri bir adim girdikten sonra kapidan cikis gecerli
 var counter_local := Vector2(2.2, D - 2.6)   # kasanin onu (oyuncu burada alisveris yapar)
 var colliders: Array = []        # [Vector2 a, Vector2 b] yerel
 ## Raftaki urun noktalari: [kimlik, yerel durma noktasi (Vector2)]; oyuncu onune gelince sepete koyar
@@ -91,6 +96,32 @@ func update_view(cam_pos: Vector3) -> void:
 		front.visible = cam_pos.z - global_position.z < D
 
 
+func _set_door(t: float) -> void:
+	door_open = t
+	var e := t * t * (3.0 - 2.0 * t)
+	if _door_l:
+		_door_l.position = Vector3(W * 0.5 - 0.5 - e * 0.95, 0.0, D - 0.02)
+		_door_r.position = Vector3(W * 0.5 + 0.5 + e * 0.95, 0.0, D - 0.02)
+
+
+## Her kare: oyuncu kapiya yaklasinca kanatlar acilir; acik kapidan disari yurudugunde true doner.
+## allow = false (or. odenmemis sepet) iken kapi acilmaz.
+func update_door(player_world: Vector2, dt: float, allow := true) -> bool:
+	var l := local2(player_world)
+	var dx := absf(l.x - W * 0.5)
+	if l.y < D - 1.9 or dx > 2.2:
+		_armed = true
+	var near := allow and dx < 1.7 and l.y > D - 2.3
+	_set_door(move_toward(door_open, 1.0 if near else 0.0, dt * (2.6 if near else 1.6)))
+	return _armed and allow and door_open > 0.75 and dx < 0.85 and l.y > D - 0.62
+
+
+## Kapinin onunde mi (izin verilmeyen cikis uyarisi icin)
+func at_door(player_world: Vector2) -> bool:
+	var l := local2(player_world)
+	return _armed and absf(l.x - W * 0.5) < 0.9 and l.y > D - 0.9
+
+
 # ---------------------------------------------------------------- yapim
 
 func _solid(c: Vector2, half: Vector2) -> void:
@@ -127,6 +158,28 @@ func _build_shell() -> void:
 		var cx: float = W * 0.5 + side * (W * 0.25 + 0.5)
 		Kit.box(front, Vector3(W * 0.5 - 1.0, H - 1.1, 0.04), Vector3(cx, 0.5 + (H - 1.1) * 0.5, D + 0.06), glass)
 		Kit.box(front, Vector3(0.1, H, 0.14), Vector3(W * 0.5 + side * 1.0, H * 0.5, D + 0.06), frame)
+	# Otomatik kayar kapi: iki cam kanat, kapali iken bosluk (2 m) tamamen kapali
+	var dglass := StandardMaterial3D.new()
+	dglass.albedo_color = Color(0.7, 0.84, 0.92, 0.3)
+	dglass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dglass.roughness = 0.05
+	var steel := Kit.mat("b8bcc2", 0.3)
+	steel.metallic = 0.6
+	var kanat := []
+	for side in [-1.0, 1.0]:
+		var k := Node3D.new()
+		front.add_child(k)
+		Kit.box(k, Vector3(0.98, H - 0.65, 0.03), Vector3(0, (H - 0.65) * 0.5, 0), dglass)
+		Kit.box(k, Vector3(0.98, 0.06, 0.05), Vector3(0, H - 0.68, 0), steel)
+		Kit.box(k, Vector3(0.98, 0.06, 0.05), Vector3(0, 0.03, 0), steel)
+		Kit.box(k, Vector3(0.05, H - 0.65, 0.05), Vector3(-side * 0.47, (H - 0.65) * 0.5, 0), steel)
+		Kit.box(k, Vector3(0.03, 0.5, 0.04), Vector3(-side * 0.38, 1.05, 0.03), steel)
+		kanat.append(k)
+	_door_l = kanat[0]
+	_door_r = kanat[1]
+	# Kapi ustunde motor kutusu ve isik
+	Kit.box(front, Vector3(2.2, 0.16, 0.18), Vector3(W * 0.5, H - 0.62, D - 0.06), Kit.mat("2b2d31", 0.4))
+	_set_door(0.0)
 	# Disarisi: parlak gun isigi (camdan gorunsun)
 	var outside := StandardMaterial3D.new()
 	outside.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
