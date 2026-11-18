@@ -223,6 +223,7 @@ func _glass_front(r: Node3D, HX: float, HZ: float, glass: Material, dark: Materi
 func _staff(r: Node3D, local: Vector3, kind: String, shirt: String) -> PersonModel:
 	var v := _person(kind, Color(shirt), Color("2d3138"))
 	v.position = local
+	v.rotation.y = PI          # model -Z'ye bakar; vitrine / kapiya (+Z) donsun
 	r.add_child(v)
 	return v
 

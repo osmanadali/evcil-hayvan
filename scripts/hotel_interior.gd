@@ -227,6 +227,7 @@ func _build_lobby() -> void:
 	v.tint = Color("7a1f2b")
 	v.pants = Color("22232a")
 	v.position = Vector3(dc.x, 0, 0.8)
+	v.rotation.y = PI          # model -Z'ye bakar; desk ve kapiya (+Z) donsun
 	add_child(v)
 	staff = v
 	# Arka duvar: tabela, anahtarlik, saatler

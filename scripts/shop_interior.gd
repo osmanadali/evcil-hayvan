@@ -194,6 +194,7 @@ func _counter(c: Vector2, length: float, top_hex: String) -> void:
 	_solid(c, Vector2(length * 0.5, 0.35))
 
 
+## face_y: PersonModel dugumu rotation 0 iken -Z'ye bakar; PI = +Z (kapiya, musteriye dogru).
 func _staff(at: Vector2, face_y: float, shirt: Color, female: bool) -> void:
 	var v := PersonModel.new()
 	v.kind = "kadin" if female else "erkek"
@@ -339,7 +340,7 @@ func _build_pharmacy() -> void:
 	# Uzun tezgah ve eczaci
 	_counter(Vector2(W * 0.5, 2.4), 6.0, "f4f4f0")
 	Kit.box(self, Vector3(0.45, 0.32, 0.06), Vector3(W * 0.5 - 1.5, 1.25, 2.3), Kit.mat("1d1e21", 0.3))
-	_staff(Vector2(W * 0.5 - 0.5, 1.4), 0.0, Color("f4f4f0"), false)
+	_staff(Vector2(W * 0.5 - 0.5, 1.4), PI, Color("f4f4f0"), false)
 	counter_local = Vector2(W * 0.5 - 0.5, 3.3)
 	# Yesil hac, adi
 	var green := StandardMaterial3D.new()
@@ -380,7 +381,7 @@ func _build_vet() -> void:
 	# Resepsiyon (giris solu) ve gorevli
 	_counter(Vector2(2.4, D - 2.4), 2.6, "f4f6f5")
 	Kit.box(self, Vector3(2.6, 0.3, 0.05), Vector3(2.4, 0.75, D - 2.04), teal)
-	_staff(Vector2(2.2, D - 3.2), 0.0, Color("1e9a8a"), true)
+	_staff(Vector2(2.2, D - 3.2), PI, Color("1e9a8a"), true)
 	counter_local = Vector2(2.4, D - 1.4)
 	# Bekleme koltuklari (sag duvar)
 	for k in 4:
@@ -409,7 +410,7 @@ func _build_vet() -> void:
 			Kit.box(self, Vector3(0.12, 0.18, 0.1), Vector3(7.5 + k * 0.22, 0.65 + row * 0.5, 0.35), Kit.mat(["ffffff", "d9ecf7", "fde7e7", "e6f4e6"][(k + row) % 4], 0.4))
 	Kit.box(self, Vector3(2.3, 1.6, 0.02), Vector3(8.4, 1.05, 0.54), glass)
 	_solid(Vector2(8.4, 0.3), Vector2(1.2, 0.3))
-	_staff(Vector2(table_local.x + 0.2, table_local.y - 1.0), 0.0, Color("f4f6f5"), false)
+	_staff(Vector2(table_local.x + 0.2, table_local.y - 1.0), PI, Color("f4f6f5"), false)
 	# Kafesler (sol arka)
 	for k in 3:
 		var c := Vector3(1.0 + k * 1.1, 0.5, 0.6)
