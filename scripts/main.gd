@@ -3060,6 +3060,7 @@ var _surf_t := 0.0
 var _crash_t := 0.0
 var _skid: AudioStreamPlayer
 var _bump := 0.0              # kaldirima cikarken kisa sarsinti
+var _kerb_t := 0.0            # kaldirima carpinca kisa sureli yavaslama
 
 
 ## Zemin tutunmasi: asfalt 1, kaldirim / sehir zemini / patika 0.8, cim ve toprak 0.45.
@@ -3093,9 +3094,12 @@ func _update_drive(dt: float) -> void:
 		var s_new := _surface_at(p)
 		if s_new < _surf - 0.1 and absf(_drive_speed) > 7.0 and hide:
 			# Kaldirima / cime cikis: sarsinti ve hiz kaybi
-			_drive_speed *= 0.93
+			_kerb_t = 0.3
 			_bump = 1.0
 		_surf = s_new
+	if _kerb_t > 0.0:
+		_kerb_t -= dt
+		_drive_speed = move_toward(_drive_speed, 0.0, 8.0 * dt)
 	var wet := 0.0
 	if weather != null:
 		wet = clampf(maxf(weather.rain, weather.snow * 1.6), 0.0, 1.0)

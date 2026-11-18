@@ -220,6 +220,11 @@ func _start_taxi() -> void:
 		# Tepe lambasi: "TAKSİ"
 		var sign := Node3D.new()
 		taxi_car.add_child(sign)
+		# Tabela tavanin gercek yuksekligine oturur (modele gore olculur)
+		var roof_y := Car.top_y(Car.body_points(taxi_car), 0.0, 0.3, -0.12, 0.32)
+		if is_nan(roof_y):
+			roof_y = 1.47
+		sign.position.y = roof_y + 0.07 - 1.55
 		Kit.box(sign, Vector3(0.62, 0.16, 0.24), Vector3(0, 1.55, 0.1), Kit.glow("ffd23a", 1.6))
 		var l := Label3D.new()
 		l.text = "TAKSİ"

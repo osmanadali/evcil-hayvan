@@ -313,38 +313,74 @@ func _dress_police(body: Node3D) -> void:
 	var L := box.size.z
 	var W := box.size.x
 	var H := box.size.y
+	var cx := box.get_center().x
 	var cz := box.get_center().z
+	var y0 := box.position.y
+	# Govdenin gercek yuzeyi: sinir kutusu aynalari da saydigi icin serit ve lamba havada kaliyordu
+	var pts := Car.body_points(body)
 	var blue := Kit.mat("1f4fb8", 0.35)
 	blue.metallic = 0.3
-	# Yanlarda lacivert-mavi serit ve POLIS yazisi
-	for side in [-1, 1]:
-		var x: float = box.get_center().x + side * (W * 0.5 + 0.005)
-		Kit.box(body, Vector3(0.02, H * 0.1, L * 0.6), Vector3(x, box.position.y + H * 0.4, cz + L * 0.04), blue)
+	# Yanlarda lacivert-mavi serit (kapilar boyunca, govde egrisini izleyen parcalar) ve POLIS yazisi
+	var ys := y0 + H * 0.41
+	var seg_n := 8
+	var z_a := cz - L * 0.17
+	var z_b := cz + L * 0.21
+	var seg_l := (z_b - z_a) / seg_n
+	for side in [-1.0, 1.0]:
+		var prev_x := NAN
+		for i in seg_n:
+			var za := z_a + seg_l * i
+			var sx := Car.side_x(pts, side, ys - H * 0.035, ys + H * 0.035, za, za + seg_l)
+			if is_nan(sx):
+				sx = prev_x
+			if is_nan(sx):
+				continue
+			prev_x = sx
+			Kit.box(body, Vector3(0.014, H * 0.07, seg_l + 0.004), Vector3(sx - side * 0.004, ys, za + seg_l * 0.5), blue)
+		var ly := y0 + H * 0.53
+		var lz := cz + L * 0.03
+		var lx := Car.side_x(pts, side, ly - H * 0.05, ly + H * 0.05, lz - L * 0.1, lz + L * 0.1)
+		if is_nan(lx):
+			lx = cx + side * W * 0.46
 		var lb := Label3D.new()
 		lb.text = "POLİS"
 		lb.font = preload("res://assets/fonts/Anton-Regular.ttf")
 		lb.font_size = 64
-		lb.pixel_size = 0.0055
+		lb.pixel_size = 0.0042
 		lb.modulate = Color("1f3f9a")
 		lb.outline_size = 0
-		lb.position = Vector3(x + side * 0.012, box.position.y + H * 0.53, cz + L * 0.05)
+		lb.position = Vector3(lx + side * 0.012, ly, lz)
 		lb.rotation.y = side * PI / 2
 		body.add_child(lb)
-	# Kaput: POLIS
+	# Kaput: POLIS (kaput yuzeyinin yuksekligine ve egimine oturur)
+	var hz := box.position.z + L * 0.17
+	var hy_f := Car.top_y(pts, cx, W * 0.2, hz - 0.22, hz - 0.08)
+	var hy_b := Car.top_y(pts, cx, W * 0.2, hz + 0.08, hz + 0.22)
+	if is_nan(hy_f) or is_nan(hy_b):
+		hy_f = y0 + H * 0.6
+		hy_b = hy_f + 0.03
 	var hood := Label3D.new()
 	hood.text = "POLİS"
 	hood.font = preload("res://assets/fonts/Anton-Regular.ttf")
 	hood.font_size = 64
-	hood.pixel_size = 0.005
+	hood.pixel_size = 0.0042
 	hood.modulate = Color("1f3f9a")
 	hood.outline_size = 0
-	hood.position = Vector3(box.get_center().x, box.position.y + H * 0.62, box.position.z + L * 0.17)
-	hood.rotation = Vector3(-PI / 2 + 0.12, PI, 0)
+	hood.position = Vector3(cx, maxf(hy_f, hy_b) + 0.012, hz)
+	hood.rotation = Vector3(-PI / 2 + atan2(hy_b - hy_f, 0.3), PI, 0)
 	body.add_child(hood)
-	# Tepe lambasi
-	var roof_y := box.end.y
-	var roof_z := cz + L * 0.04
-	Kit.box(body, Vector3(W * 0.62, 0.08, 0.3), Vector3(box.get_center().x, roof_y + 0.02, roof_z), Kit.mat("2a2d33", 0.5))
+	# Tepe lambasi: tavanin gercek yuksekligine oturur, tavan genisligini asmaz
+	var roof_z := cz + L * 0.05
+	var roof_y := Car.top_y(pts, cx, W * 0.15, roof_z - 0.18, roof_z + 0.18)
+	if is_nan(roof_y):
+		roof_y = box.end.y
+	var rl := Car.side_x(pts, -1.0, roof_y - 0.09, roof_y + 0.05, roof_z - 0.18, roof_z + 0.18)
+	var rr := Car.side_x(pts, 1.0, roof_y - 0.09, roof_y + 0.05, roof_z - 0.18, roof_z + 0.18)
+	var bw := W * 0.55
+	if not is_nan(rl) and not is_nan(rr):
+		bw = clampf((rr - rl) * 0.86, 0.7, W * 0.62)
+		cx = (rl + rr) * 0.5
+	Kit.box(body, Vector3(bw, 0.1, 0.28), Vector3(cx, roof_y - 0.005, roof_z), Kit.mat("2a2d33", 0.5))
 	var red := Kit.glow("ff2a2a", 0.3)
 	var bl := Kit.glow("2a6bff", 0.3)
 	red.albedo_color = Color("6a1010")
@@ -352,16 +388,18 @@ func _dress_police(body: Node3D) -> void:
 	_bar_mats = [red, bl]
 	for i in 2:
 		var side := -1 if i == 0 else 1
-		Kit.box(body, Vector3(W * 0.27, 0.13, 0.26), Vector3(box.get_center().x + side * W * 0.155, roof_y + 0.12, roof_z), _bar_mats[i])
+		Kit.box(body, Vector3(bw * 0.44, 0.11, 0.24), Vector3(cx + side * bw * 0.26, roof_y + 0.095, roof_z), _bar_mats[i])
 		var l := OmniLight3D.new()
 		l.light_color = Color("ff3030") if i == 0 else Color("3a70ff")
 		l.omni_range = 9.0
 		l.light_energy = 0.0
 		l.shadow_enabled = false
-		l.position = Vector3(box.get_center().x + side * W * 0.3, roof_y + 0.4, roof_z)
+		l.position = Vector3(cx + side * bw * 0.3, roof_y + 0.4, roof_z)
 		body.add_child(l)
 		_bar_lights.append(l)
-	Kit.box(body, Vector3(W * 0.06, 0.14, 0.27), Vector3(box.get_center().x, roof_y + 0.12, roof_z), Kit.glow("f2f2f2", 0.6))
+	Kit.box(body, Vector3(bw * 0.09, 0.12, 0.25), Vector3(cx, roof_y + 0.095, roof_z), Kit.glow("f2f2f2", 0.6))
+	if m._args.has("police"):
+		print("POLIS govde: kutu genislik=%.2f tavan y=%.2f (kutu ust=%.2f) tavan genislik=%.2f lamba genislik=%.2f" % [W, roof_y, box.end.y, (rr - rl) if not is_nan(rl) and not is_nan(rr) else -1.0, bw])
 
 
 func _update_police_lights(dt: float) -> void:
@@ -634,10 +672,10 @@ func _update_chase(dt: float) -> void:
 		_route.pop_front()
 	if d > 30.0 and not _route.is_empty():
 		aim = _route[0]
-	var want := 23.0
+	var want := 34.0          # ~120 km/sa: oyuncunun arabasi 140'a cikar; duz yolda kacabilir, sehir icinde zor
 	if d < 30.0:
 		var ps := absf(m._drive_speed) if m._ride != null else 0.0
-		want = clampf(ps + (d - 9.0) * 0.8, 0.0, 23.0)
+		want = clampf(ps + (d - 9.0) * 0.8, 0.0, 34.0)
 	if d < 8.5:
 		want = 0.0
 	_pspeed = move_toward(_pspeed, want, dt * (10.0 if want < _pspeed else 6.0))

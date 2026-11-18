@@ -302,6 +302,40 @@ static func add_lamps(holder: Node3D, two := false) -> Array:
 	return out
 
 
+## Govdenin yuzey noktalari (holder uzayinda; tekerler haric). Tepe lambasi, serit, tabela gibi eklentiler
+## sinir kutusuna degil bu noktalara gore yerlestirilir (kutu aynalari ve anteni de sayar; eklenti havada kalir).
+static func body_points(holder: Node3D) -> PackedVector3Array:
+	var pts := PackedVector3Array()
+	for mi: MeshInstance3D in holder.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or String(mi.name).begins_with("wheel") or not (mi.mesh is ArrayMesh):
+			continue
+		var xf := _rel(holder, mi)
+		for si in mi.mesh.get_surface_count():
+			var verts: PackedVector3Array = mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]
+			var step := maxi(1, verts.size() / 20000)
+			for k in range(0, verts.size(), step):
+				pts.append(xf * verts[k])
+	return pts
+
+
+## Verilen yukseklik ve boy araliginda govdenin yan yuzeyi: side (-1 sol, +1 sag) yonunde en dis x. Nokta yoksa NAN.
+static func side_x(pts: PackedVector3Array, side: float, y0: float, y1: float, z0: float, z1: float) -> float:
+	var best := -1e9
+	for q in pts:
+		if q.y >= y0 and q.y <= y1 and q.z >= z0 and q.z <= z1 and q.x * side > best:
+			best = q.x * side
+	return best * side if best > -1e8 else NAN
+
+
+## Verilen alanda (|x - cx| <= hx, z0..z1) govdenin en ust noktasi (tavan / kaput yuksekligi). Nokta yoksa NAN.
+static func top_y(pts: PackedVector3Array, cx: float, hx: float, z0: float, z1: float) -> float:
+	var best := -1e9
+	for q in pts:
+		if absf(q.x - cx) <= hx and q.z >= z0 and q.z <= z1 and q.y > best:
+			best = q.y
+	return best if best > -1e8 else NAN
+
+
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 	var xf := Transform3D()
 	var cur: Node = n
