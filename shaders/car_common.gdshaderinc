@@ -70,7 +70,7 @@ vec3 lamp_glow(vec3 c, vec3 p) {
 	if (p.z < -0.40 && p.y > 0.203 && p.y < 0.27 && ax > 0.145) {
 		float red = step(c.g * 1.6, c.r) * step(0.22, c.r);
 		float low = 1.0 - smoothstep(0.218, 0.224, p.y);
-		e += vec3(1.0, 0.06, 0.03) * red * tail_on * 1.8 * (1.0 - low * step(0.5, rev_on));
+		e += vec3(1.0, 0.015, 0.008) * red * tail_on * 1.0 * (1.0 - low * step(0.5, rev_on));   // kirmizi kalsin (parlakta turuncuya kaymasin)
 		e += vec3(1.0, 0.98, 0.92) * red * low * rev_on * 1.5;
 	}
 	return e;

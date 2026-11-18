@@ -69,7 +69,7 @@ static func update(ride: Node3D, head: bool, brake: bool, rev: bool) -> void:
 	var d: Dictionary = ride.get_meta("isiklar")
 	for s: SpotLight3D in d["spots"]:
 		s.visible = head
-		s.light_energy = 2.6 if head else 0.0
+		s.light_energy = 4.2 if head else 0.0
 	var tail := 1.0 if brake else (0.35 if head else 0.0)
 	CarBody.set_lamps(ride, 1.0 if head else 0.0, tail, 1.0 if rev else 0.0)
 	var lamps: Array = d["lamps"]
@@ -80,7 +80,7 @@ static func update(ride: Node3D, head: bool, brake: bool, rev: bool) -> void:
 	for b: Node3D in lamps[1]:
 		b.visible = tail > 0.0 or rev
 	var rm: StandardMaterial3D = lamps[3]
-	var col := Color("fff6ea") if rev and not brake else Color("ff2010")
+	var col := Color("fff6ea") if rev and not brake else Color("ff1206")
 	rm.albedo_color = col
 	rm.emission = col
-	rm.emission_energy_multiplier = 5.0 if brake else (3.0 if rev else 1.4)
+	rm.emission_energy_multiplier = 2.4 if brake else (3.0 if rev else 0.9)
