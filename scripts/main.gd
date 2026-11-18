@@ -1326,7 +1326,7 @@ func _door_test() -> void:
 		if fr > 6 and shots.has("d"):
 			d = maxf(d - maxf(1.3 * dt, 0.12), 0.2)
 		var pp := f + n * d
-		if world.is_free(pp, 0.3):
+		if world.is_free(pp, 0.3) or d > 1.0:
 			owner_node.position = Vector3(pp.x, world.gy(pp), pp.y)
 		owner_node.rotation.y = atan2(n.x, n.y)
 		var c2 := f + n * 6.0 + side * 2.5
