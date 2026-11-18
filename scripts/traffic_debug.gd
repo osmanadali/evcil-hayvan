@@ -149,3 +149,32 @@ static func run(m: Node, secs: float) -> void:
 	print("TRAFIK ortalama hiz=%.1f km/sa  ic ice gecme: %d olay, %.1f arac-sn  takilan (35 sn+ kipirtisiz)=%d  en uzun durma=%.0f sn" % [
 		dist_sum / maxf(time_sum, 0.001) * 3.6, overlap_events, overlap_time, stuck, longest])
 	print("TRAFIK bina icinde=%d ornek  engel/park etmis arac icinde=%d ornek  isinlanma=%d  goz onunde belirme=%d" % [in_building, in_parked, jumps, pop_in])
+
+
+## --trafficblock: oyuncuyu en yakin aracin onune (seridine) koyar; aracin durdugunu ve korna caldigini yazar.
+static func block_test(m: Node) -> void:
+	var tree := m.get_tree()
+	var best: Node3D = null
+	var bd := 1e9
+	var me: Vector2 = m._owner_pos()
+	for c in m._cars:
+		if c.is_processing() and c._len - c._s > 30.0 and c._speed > 3.0:
+			var d := me.distance_to(Vector2(c.position.x, c.position.z))
+			if d < bd:
+				bd = d
+				best = c
+	if best == null:
+		print("TRAFIK engel testi: uygun arac yok")
+		return
+	var honks := [0]
+	var old: Callable = Car.honk_cb
+	Car.honk_cb = func(c): honks[0] += 1
+	var spot: Vector2 = best._point(best._s + 18.0)
+	m._place_owner(spot)
+	print("TRAFIK engel testi: arac=%s hiz=%.1f oyuncu 18 m onunde" % [best.kind, best._speed])
+	for i in 3:
+		await tree.create_timer(4.0).timeout
+		var op: Vector2 = m._owner_pos()
+		var front: float = op.distance_to(Vector2(best.position.x, best.position.z)) - best.half_len
+		print("TRAFIK engel testi: t=%d sn  arac hizi=%.1f  on tampon-oyuncu=%.1f m  bekleme=%.0f sn  korna=%d" % [(i + 1) * 4, best._speed, front, best.stuck_t, honks[0]])
+	Car.honk_cb = old

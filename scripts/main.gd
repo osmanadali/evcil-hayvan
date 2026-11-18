@@ -5459,6 +5459,9 @@ func _debug_shot() -> void:
 		# kavsak) gider, trafigi cevresine dagitir; cekimde kavsaga yukaridan bakilir
 		_place_owner(flow.debug_junction(int(_args["junction"])) + Vector2(9.0, 9.0))
 		flow.reseed(float(_args.get("jmin", "16")))
+	if _args.has("trafficblock"):
+		await get_tree().create_timer(3.0).timeout
+		await preload("res://scripts/traffic_debug.gd").block_test(self)
 	if _args.has("trafficdbg"):
 		# Trafik olcumu: --trafficdbg[=sn] (varsayilan 60 sn); sayilari "TRAFIK ..." satirlariyla yazar
 		var tsecs := float(_args["trafficdbg"])

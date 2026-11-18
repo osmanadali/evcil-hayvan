@@ -14,6 +14,7 @@ const BIKES := [2, 3, 5]
 const NEAR := 110.0               # bundan uzaktaki arac ucuz calisir
 const R_MIN := 65.0               # en yakin dogma uzakligi
 const R_MAX := 165.0
+const R_FAR := 290.0              # yakinda yer yoksa en cok bu kadar uzakta dogar
 const R_OUT := 205.0              # bundan uzaklasan arac baska yere tasinir
 const KINDS := ["araba", "taksi", "hatchback", "dolmus", "araba", "kamyonet", "hatchback", "motosiklet",
 	"taksi", "araba", "dolmus", "hatchback", "kamyonet", "araba", "motosiklet", "taksi"]
@@ -71,6 +72,7 @@ func _process(dt: float) -> void:
 	Car.player = m.owner_node
 	var me: Vector2 = m._owner_pos()
 	var cam: Camera3D = m.get_viewport().get_camera_3d()
+	var moved := 0
 	for list: Array in [m._cars, m._cyclists]:
 		for c in list.duplicate():
 			if not is_instance_valid(c):
@@ -81,8 +83,9 @@ func _process(dt: float) -> void:
 			var d := me.distance_to(Vector2(c.position.x, c.position.z))
 			c.far = d > NEAR
 			var seen := d < 170.0 and cam != null and cam.is_position_in_frustum(c.global_position + Vector3(0, 1, 0))
-			if c.dead or (d > R_OUT and (not seen or d > 340.0)) or (c.stuck_t > 28.0 and not seen):
-				_recycle(c, list)
+			if (c.dead or (d > R_OUT and (not seen or d > 340.0)) or (c.stuck_t > 28.0 and not seen)) and moved < 3:
+				moved += 1
+				_recycle(c, list, d)
 	var want := target()
 	if m._cars.size() < want:
 		_add_car(false)
@@ -101,6 +104,8 @@ func _find_spot(initial: bool, min_d := 45.0) -> Array:
 	var cam: Camera3D = m.get_viewport().get_camera_3d()
 	var best: Array = []
 	var best_d := 1e9
+	var far_best: Array = []
+	var far_d := 1e9
 	var found := 0
 	for i in 140:
 		var link: Array = TN.spawn_links[randi() % TN.spawn_links.size()]
@@ -109,7 +114,7 @@ func _find_spot(initial: bool, min_d := 45.0) -> Array:
 		var t := randf_range(0.1, 0.8)
 		var p := pa.lerp(pb, t)
 		var d := p.distance_to(me)
-		if d > R_MAX or d < (min_d if initial else R_MIN):
+		if d > R_FAR or d < (min_d if initial else R_MIN):
 			continue
 		if not initial and d < 150.0 and cam != null and cam.is_position_in_frustum(Vector3(p.x, ParkMap.terrain_height(p) + 1.0, p.y)):
 			continue
@@ -118,13 +123,20 @@ func _find_spot(initial: bool, min_d := 45.0) -> Array:
 			if is_instance_valid(o) and Vector2(o.position.x, o.position.z).distance_squared_to(p) < 20.0 * 20.0:
 				free = false
 				break
-		if free and d < best_d:
+		if not free:
+			continue
+		if d > R_MAX:
+			# Yakinda yol yoksa (park, harita kenari) daha uzaktaki yollar da olur
+			if d < far_d:
+				far_d = d
+				far_best = [link[0], link[1], t, d]
+		elif d < best_d:
 			best_d = d
-			best = [link[0], link[1], t]
+			best = [link[0], link[1], t, d]
 			found += 1
 			if found >= 3:
 				break
-	return best
+	return best if not best.is_empty() else far_best
 
 
 func _place(c: Node3D, spot: Array) -> void:
@@ -171,12 +183,14 @@ func debug_junction(i: int) -> Vector2:
 	return ParkMap.nodes[list[(i % 100) % list.size()]] if not list.is_empty() else Vector2.ZERO
 
 
-func _recycle(c: Node3D, list: Array) -> void:
+func _recycle(c: Node3D, list: Array, d: float) -> void:
 	var spot := _find_spot(false)
 	if spot.is_empty():
 		if c.dead:
 			_remove(c, list)
 		return
+	if not c.dead and c.stuck_t <= 28.0 and (float(spot[3]) > d - 30.0 or (float(spot[3]) > R_MAX and d < R_FAR + 30.0)):
+		return             # daha yakin bir yer yok: oldugu yerde kalsin
 	_place(c, spot)
 
 
