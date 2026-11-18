@@ -70,6 +70,8 @@ static var _fixed := {}    # malzemeleri bir kez duzelt (yol -> true)
 static func make(rig_id: String) -> Node3D:
 	if not SPECS.has(rig_id) or not ResourceLoader.exists(SPECS[rig_id]["path"]):
 		return null
+	if not load(SPECS[rig_id]["path"]) is PackedScene:
+		return null         # model ice aktarilmamis / bozuk: cagiran eski arabaya duser
 	var r: Node3D = load("res://scripts/car_rig.gd").new()
 	r._build(rig_id)
 	return r
