@@ -5905,6 +5905,9 @@ func _debug_shot() -> void:
 		await _perf_run()
 	if _args.has("mount") or _args.has("petseat") or _args.has("vcam"):
 		await life.debug(_args)
+	if _args.has("playtest"):
+		# Oynanis test botu: --playtest[=telefon,harita,arac,ulasim,mekan,yasam] (scripts/playtest.gd)
+		await preload("res://scripts/playtest.gd").new().run(self, _args)
 	if _args.has("vtour"):
 		await life.debug_tour(_args)
 	if _args.has("junction"):

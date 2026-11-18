@@ -395,6 +395,7 @@ func _tap(pos: Vector2) -> void:
 ## Harita her acildiginda: evim, araclarim, duraklar gibi degisen isaretler.
 func _rebuild_dynamic() -> void:
 	PINS.resize(_static_pins)
+	_pins.resize(mini(_pins.size(), _static_pins))    # silinen isaretler listede kalmasin (ikinci acilista cokme)
 	for n in _dyn_nodes:
 		n.queue_free()
 	_dyn_nodes.clear()
