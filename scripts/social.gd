@@ -734,7 +734,7 @@ func _spawn_guest(ap: Dictionary) -> void:
 func _guest_pos() -> Vector2:
 	if guest.is_empty():
 		return Vector2.INF
-	var v: Node3D = guest["model"]
+	var v: Node3D = guest["model"] if is_instance_valid(guest["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 	return Vector2(v.global_position.x, v.global_position.z)
 
 
@@ -748,7 +748,7 @@ func _player_at_guest_table() -> bool:
 func _update_guest(dt: float) -> void:
 	if guest.is_empty():
 		return
-	var v: Node3D = guest["model"]
+	var v: Node3D = guest["model"] if is_instance_valid(guest["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 	if not is_instance_valid(v):
 		guest = {}
 		return
@@ -984,7 +984,7 @@ func give_gift() -> void:
 	if guest.is_empty():
 		return
 	var id: String = guest["id"]
-	var v: Node3D = guest["model"]
+	var v: Node3D = guest["model"] if is_instance_valid(guest["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 	var item := ""
 	for g in GIFTS:
 		if _bag_n(g) > 0:
@@ -1015,7 +1015,7 @@ func give_gift() -> void:
 
 func start_walk() -> void:
 	guest["started"] = true
-	var v: Node3D = guest["model"]
+	var v: Node3D = guest["model"] if is_instance_valid(guest["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 	m._say(v, "Hadi yürüyelim! Sen önden git.")
 	m.ui.toast("%s ile parkta yürü: 180 metre birlikte yürüyün." % _short(guest["id"]))
 	for kind in m.agents:
@@ -1025,7 +1025,7 @@ func start_walk() -> void:
 func start_boat() -> void:
 	if not m.boat.built:
 		return
-	var v: Node3D = guest["model"]
+	var v: Node3D = guest["model"] if is_instance_valid(guest["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 	guest["boarded"] = true
 	_boat_seen = false
 	v.visible = false
@@ -1173,7 +1173,7 @@ func _update_kids(dt: float) -> void:
 	var o: Vector2 = m._owner_pos()
 	var all_gone := true
 	for k in kids:
-		var v: Node3D = k["model"]
+		var v: Node3D = k["model"] if is_instance_valid(k["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 		if not is_instance_valid(v):
 			continue
 		all_gone = false
@@ -1208,7 +1208,7 @@ func _update_kids(dt: float) -> void:
 func _waiting_kid() -> Dictionary:
 	var o: Vector2 = m._owner_pos()
 	for k in kids:
-		var v: Node3D = k["model"]
+		var v: Node3D = k["model"] if is_instance_valid(k["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 		if is_instance_valid(v) and not k["done"] and o.distance_to(Vector2(v.position.x, v.position.z)) < 3.0:
 			return k
 	return {}
@@ -1749,7 +1749,7 @@ func debug_bayram() -> void:
 	m._place_owner(m.HOME_DOOR + out * 4.0)
 	spawn_kids()
 	for k in kids:
-		var v: Node3D = k["model"]
+		var v: Node3D = k["model"] if is_instance_valid(k["model"]) else null      # silinmis dugum turlu degiskene atanamaz
 		var q: Vector2 = m._owner_pos() + Vector2.from_angle(float(k["slot"]) * 1.1 + 0.6) * 1.3
 		v.position = Vector3(q.x, ParkMap.walk_height(q), q.y)
 	print("SOSYAL bayram ", date_text(), " cocuk=", kids.size())

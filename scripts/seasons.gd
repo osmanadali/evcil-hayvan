@@ -673,7 +673,7 @@ func _update_balls(dt: float) -> void:
 func _update_revenge(dt: float) -> void:
 	for i in range(_revenge.size() - 1, -1, -1):
 		var rv: Dictionary = _revenge[i]
-		var p: Node3D = rv["npc"]
+		var p: Node3D = rv["npc"] if is_instance_valid(rv["npc"]) else null      # silinmis dugum turlu degiskene atanamaz
 		if not is_instance_valid(p):
 			_revenge.remove_at(i)
 			continue

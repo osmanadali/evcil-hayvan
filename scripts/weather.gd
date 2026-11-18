@@ -475,7 +475,7 @@ func update_people(dt: float, people: Array) -> void:
 	_umb_t = 0.5
 	var want := rain > 0.3 and not indoor
 	for i in people.size():
-		var n: Node3D = people[i]
+		var n: Node3D = people[i] if is_instance_valid(people[i]) else null      # silinmis dugum turlu degiskene atanamaz
 		if not is_instance_valid(n):
 			continue
 		var u: Node3D = n.get_node_or_null("Semsiye")

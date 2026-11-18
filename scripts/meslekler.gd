@@ -660,7 +660,7 @@ func _bakici_tick(dt: float) -> void:
 	var me: Vector2 = m._owner_pos()
 	j["love_t"] = float(j["love_t"]) - dt
 	if j["stage"] == "care":
-		var pet: Node3D = j["pet"]
+		var pet: Node3D = j["pet"] if is_instance_valid(j["pet"]) else null      # silinmis dugum turlu degiskene atanamaz
 		var moved: float = me.distance_to(j["last"])
 		if moved < 8.0 and is_instance_valid(pet) and Vector2(pet.position.x, pet.position.z).distance_to(me) < 7.0 and m._ride == null:
 			j["walked"] = float(j["walked"]) + moved
@@ -677,7 +677,7 @@ func _bakici_tick(dt: float) -> void:
 
 func _bakici_context(me: Vector2) -> Dictionary:
 	var j := _j()
-	var pet: Node3D = j["pet"]
+	var pet: Node3D = j["pet"] if is_instance_valid(j["pet"]) else null      # silinmis dugum turlu degiskene atanamaz
 	if not is_instance_valid(pet):
 		return {}
 	var pp := Vector2(pet.position.x, pet.position.z)
@@ -698,7 +698,7 @@ func _bakici_context(me: Vector2) -> Dictionary:
 
 func _bakici_cmd(cmd: String) -> void:
 	var j := _j()
-	var pet: Node3D = j["pet"]
+	var pet: Node3D = j["pet"] if is_instance_valid(j["pet"]) else null      # silinmis dugum turlu degiskene atanamaz
 	match cmd:
 		"mj_b_al":
 			j["stage"] = "care"

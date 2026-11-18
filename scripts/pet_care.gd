@@ -1036,7 +1036,7 @@ func do_trick(id: String) -> void:
 func _update_trick(dt: float) -> void:
 	if _trick.is_empty():
 		return
-	var a: Node3D = _trick["agent"]
+	var a: Node3D = _trick["agent"] if is_instance_valid(_trick["agent"]) else null      # silinmis dugum turlu degiskene atanamaz
 	if not is_instance_valid(a) or not a.external:
 		_trick.clear()
 		return

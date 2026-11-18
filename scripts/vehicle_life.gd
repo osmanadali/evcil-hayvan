@@ -790,7 +790,7 @@ func _fly_out(a: Node3D, from: Vector3, delay: float) -> void:
 func _update_flights(dt: float) -> void:
 	for i in range(_flights.size() - 1, -1, -1):
 		var f: Array = _flights[i]
-		var a: Node3D = f[0]
+		var a: Node3D = f[0] if is_instance_valid(f[0]) else null      # silinmis dugum turlu degiskene atanamaz
 		if not is_instance_valid(a):
 			_flights.remove_at(i)
 			continue

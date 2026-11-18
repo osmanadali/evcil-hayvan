@@ -37,6 +37,7 @@ func run(main: Node, args: Dictionary) -> void:
 		match g:
 			"telefon": await _g_phone()
 			"harita": await _g_map()
+			"fare": await _g_mouse()
 			"arac": await _g_vehicles()
 			"ulasim": await _g_transit()
 			"mekan": await _g_places()
@@ -209,6 +210,7 @@ func norm() -> void:
 	if not m._play_ride.is_empty():
 		m._end_play_ride()
 	if m.boat.riding():
+		m.boat.phase = "docked"        # tur ortasinda: iskeleye varmis say, in
 		m.boat.disembark()
 	if m.seating.busy():
 		m.seating.release()
@@ -464,6 +466,58 @@ func _g_map() -> void:
 			bad("mini harita tiklamasi haritayi acmadi"))
 
 
+## Gercek fare tiklamalari (yalnizca pencereli calismada, or. xvfb; headless fare olayi iletmez):
+## telefon simgesi -> Harita -> Tam Ekran Harita -> haritaya tikla -> Yol Tarifi; sonra ikinci kez ac.
+func _g_mouse() -> void:
+	var ms = m.map_screen
+	await step("fare: telefon > Harita > Tam Ekran > isarete tikla > Yol Tarifi (2 tur)", func():
+		for turn in 2:
+			m._open_phone()
+			await wait(1.0)
+			await press(m.ui.phone_app_button("Harita"), true)
+			await wait(0.6)
+			if not m.ui.phone_in_app():
+				bad("fare tiklamasi Harita uygulamasini acmadi (tur %d)" % turn)
+				return
+			var tb: Button = m._find_button(m.ui, "Tam Ekran")
+			if tb == null:
+				bad("Tam Ekran Harita dugmesi yok")
+				return
+			await press(tb, true)
+			await wait(0.6)
+			if not ms.visible:
+				bad("tam ekran harita acilmadi (tur %d)" % turn)
+				return
+			var vr: Rect2 = ms._view.get_global_rect()
+			for f in [Vector2(0.3, 0.4), Vector2(0.7, 0.6), Vector2(0.5, 0.3), Vector2(0.45, 0.55)]:
+				await click_at(vr.position + vr.size * f)
+				await fr(2)
+			print("    secili=", ms._selected, " isaretli=", ms._custom != Vector2.INF, " baslik=", ms._sheet_title.text)
+			if ms._selected < 0 and ms._custom == Vector2.INF:
+				bad("haritaya tiklama hedef secmedi (tur %d)" % turn)
+			var nb: Button = ms._sheet.get_node("Nav")
+			await press(nb, true)
+			await wait(0.5)
+			if ms.visible or m._nav == Vector2.INF:
+				bad("Yol Tarifi dugmesi rota kurmadi (tur %d): harita=%s" % [turn, ms.visible])
+			await wait(1.0)
+			print("    rota dugum=", m.minimap.route.size(), " hedef=", m.minimap.dest_name), 400.0)
+	await step("fare: telefon simgeleri (ilk 6) tiklaninca acilir", func():
+		for app in ["Mesajlar", "İş Bul", "Sosyal", "Banka", "EvBul", "Otel"]:
+			m._open_phone()
+			await wait(0.9)
+			var b: Button = m.ui.phone_app_button(app)
+			if b == null:
+				continue
+			var vis: bool = get_viewport().get_visible_rect().has_point(b.get_global_rect().get_center())
+			await press(b, true)
+			await wait(0.5)
+			print("    ", app, " ekranda=", vis, " uygulama=", m.ui.phone_in_app())
+			if vis and not m.ui.phone_in_app():
+				bad(app + " fareyle acilmadi")
+			await close_ui(), 400.0)
+
+
 # ---------------------------------------------------------------- araclar
 
 func _g_vehicles() -> void:
@@ -598,19 +652,23 @@ func _g_transit() -> void:
 			m._call_taxi(model)
 			await close_ui()
 			var tx: Node3D = null
+			var stop_at: Vector2 = m._nav
+			Engine.time_scale = 3.0
 			var t0 := Time.get_ticks_msec()
-			while Time.get_ticks_msec() - t0 < 12000 and tx == null:
+			while Time.get_ticks_msec() - t0 < 25000 and tx == null:
 				await fr(10)
-				var o: Vector2 = m._owner_pos()
 				for c in m._cars:
-					if is_instance_valid(c) and m._car_model(c) == model and c.hold > 0.0 and o.distance_to(Vector2(c.position.x, c.position.z)) < 14.0:
+					if is_instance_valid(c) and m._car_model(c) == model and c.hold > 0.0 and stop_at.distance_to(Vector2(c.position.x, c.position.z)) < 14.0:
 						tx = c
+			Engine.time_scale = 1.0
+			print("    cagrilan arac geldi=", tx != null, " (%.0f sn)" % ((Time.get_ticks_msec() - t0) / 1000.0 * 3.0))
 			if tx == null:
+				bad("cagrilan %s 75 sn'de kaldirima gelmedi" % model)
 				for c in m._cars:
 					if is_instance_valid(c) and m._car_model(c) == model:
 						tx = c
 						break
-				print("    cagrilan arac gelmedi; en yakin ", model, " kullaniliyor: ", tx != null)
+			m._set_nav(m.map_screen.PINS[pi][2], m.map_screen.PINS[pi][0])
 			if tx == null:
 				bad(model + " bulunamadi")
 				return
@@ -744,6 +802,7 @@ func _g_transit() -> void:
 		if m._mode != "metro":
 			bad("metro yolculugu baslamadi")
 			return
+		m._metro.auto = true       # perondan trene kendi yurur (oyuncu WASD ile yurur)
 		await wait(3.0)
 		await key("jump")          # hizlandir
 		var t0 := Time.get_ticks_msec()
@@ -1178,13 +1237,16 @@ func _g_life() -> void:
 		if m._mode != "photo":
 			bad("C fotograf modunu acmadi")
 			return
-		for a in ["pose:sit", "pose:hop", "pose:look", "take"]:
+		var acts: Array = ["pose:sit", "pose:hop", "pose:look"]
+		if DisplayServer.get_name() != "headless":
+			acts.append("take")          # headless'ta ekran goruntusu yok
+		for a in acts:
 			m._on_photo(a)
 			await wait(0.5)
 		await wait(1.0)
 		m._on_photo("exit")
 		await fr(5)
-		m.patigram.add_post("user://test.png")
+		m.patigram.add_post("test_yok.png")
 		await monkey(func():
 			m._open_phone()
 			await fr(3)
