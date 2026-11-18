@@ -1969,6 +1969,20 @@ static func spin_wheels(holder: Node3D, dist: float, steer := 0.0) -> void:
 		node.basis = Basis(w[2]) * turn * spin
 
 
+## Trafikteki arac, modeli adiyla: taksi / dolmus / hatchback; yoksa renkli araba.
+func traffic_model(model: String, i: int, paint: Color) -> Node3D:
+	var spec := {"taksi": [4.5, true], "hatchback": [4.1, false], "dolmus": [5.4, true]}
+	if spec.has(model):
+		var v := vehicle("res://assets/models/%s.glb" % model, spec[model][0], spec[model][1])
+		if v:
+			v.set_meta("model", model)
+			_seat_driver(v, i, model == "dolmus")
+			return v
+	var c := make_car(paint)
+	_seat_driver(c, i, false)
+	return c
+
+
 ## Trafikteki arac: taksi, dolmus, hatchback ya da renkli araba.
 func traffic_car(i: int, paint: Color) -> Node3D:
 	var pick := [["taksi", 4.5, true], ["hatchback", 4.1, false], ["dolmus", 5.4, true]]

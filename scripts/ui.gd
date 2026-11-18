@@ -1526,6 +1526,12 @@ func open_settings() -> void:
 		gfx_changed.emit()
 		toast(["Düşük: en akıcı; gölge ve çim sade.", "Orta: dengeli görüntü ve akıcılık.", "Yüksek: yansımalar, dolaylı ışık ve en sık çim."][(gq + 1) % 3])
 		open_settings())
+	var tq := clampi(int(state.d.get("traffic", 1)), 0, 2)
+	_menu_item(body, "TRAFİK YOĞUNLUĞU:  " + ["AZ", "NORMAL", "YOĞUN"][tq], func():
+		state.d["traffic"] = (tq + 1) % 3
+		state.save_game()
+		toast(["Az: sokaklar sakin.", "Normal: gündelik şehir trafiği.", "Yoğun: kalabalık caddeler."][(tq + 1) % 3])
+		open_settings())
 	if not DisplayServer.is_touchscreen_available():
 		var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 		_menu_item(body, "TAM EKRAN:  " + ("AÇIK" if full else "KAPALI"), func():
