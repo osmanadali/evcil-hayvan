@@ -113,6 +113,7 @@ var eateries: Node        # lokantalar, ek marketler, Yakinimda (scripts/eaterie
 var everyday: Node        # balik tutma, Sali pazari, Maras dondurmacisi (scripts/everyday.gd)
 var esnaf: Node           # firin, kasap, manav, berber, kahvehane, cuma, dugun konvoyu (scripts/esnaf.gd)
 var pet_care: Node        # tasma, guvercinler, egitim, barinak (scripts/pet_care.gd)
+var flow: Node            # trafik yoneticisi: arac dogurma / kaldirma, yogunluk (scripts/traffic_flow.gd)
 var traffic: Node         # trafik isiklari, hiz siniri, polis ve cezalar (scripts/traffic_law.gd)
 var tutorial: Node        # ilk kullanim ipuclari (scripts/tutorial.gd)
 var radio: Node           # araba radyosu (scripts/car_radio.gd)
@@ -193,6 +194,9 @@ func _ready() -> void:
 	needs.m = self
 	needs.state = state
 	add_child(needs)
+	flow = preload("res://scripts/traffic_flow.gd").new()
+	flow.m = self
+	add_child(flow)
 	traffic = preload("res://scripts/traffic_law.gd").new()
 	traffic.m = self
 	traffic.state = state
@@ -760,49 +764,8 @@ func _spawn_npcs() -> void:
 			var np := _npc_pet(pet_def[0], Color(pet_def[1]), pet_def[2])
 			np.follow = n
 			np.place(ParkMap.nodes[n.graph_node] + Vector2(0.8, 0.5))
-	# Sokaklarda dolasan arabalar
-	if world.car_mesh:
-		var paints := ["f2f2f2", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "f2c230"]
-		for i in (14 if ParkMap.zone == "" else 8):
-			var car := Car.new()
-			for t in 40:
-				var k := rng.randi() % ParkMap.nodes.size()
-				if ParkMap.road_next[k].size() > 0 and ParkMap.inside_bounds(ParkMap.nodes[k], 20.0):
-					car.node = k
-					break
-			car.owner_node = owner_node
-			car.add_child(world.traffic_car(i, Color(paints[i % paints.size()])))
-			add_child(car)
-			_cars.append(car)
-	Car.traffic.clear()
-	for c in _cars:
-		Car.traffic.append(c)
-	# Bisikletliler: yolun saginda yavas gider, donerken kolla isaret verir
-	for i in (4 if ParkMap.zone == "" else 2):
-		var bike := _vehicle("res://assets/models/bisiklet.glb", 1.75, true)
-		if bike == null:
-			break
-		var cy := Car.new()
-		cy.cruise = rng.randf_range(3.8, 5.2)
-		for t in 40:
-			var k := rng.randi() % ParkMap.nodes.size()
-			if ParkMap.road_next[k].size() > 0 and ParkMap.inside_bounds(ParkMap.nodes[k], 20.0):
-				cy.node = k
-				break
-		cy.owner_node = owner_node
-		cy.add_child(bike)
-		add_child(cy)
-		var rd := PersonModel.new()
-		rd.kind = "kadin" if i % 2 == 0 else "erkek"
-		rd.tint = Color(["2f62a8", "e07b1f", "3f8f4a", "c8322b"][i % 4])
-		bike.add_child(rd)
-		rd.riding = "bisiklet"
-		rd.ride_lean = float(RIDES["bisiklet"]["lean"])
-		rd.ride_crank = RIDES["bisiklet"]["crank"]
-		rd.position = Vector3(0, 0.97 + 0.09 - rd.hips_height(), RIDES["bisiklet"]["seat"].z)
-		cy.rider = rd
-		_cyclists.append(cy)
-		Car.traffic.append(cy)
+	# Sokaklardaki trafik: oyuncunun cevresinde sabit sayida arac (scripts/traffic_flow.gd)
+	flow.start()
 	# Sokak kopekleri: kulaklari kupeli, sokak aginda kendi baslarina gezer
 	for i in 5:
 		var sd := _npc_pet("kopek", Color(["c9a070", "8a7a66", "e8dcc4", "6b5a48", "b89a74"][i]), rng.randf_range(1.0, 1.15))
@@ -5497,6 +5460,28 @@ func _debug_shot() -> void:
 		await preload("res://scripts/traffic_debug.gd").run(self, tsecs if tsecs > 1.5 else 60.0)
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
+	if _args.has("junction"):
+		# --junction=N [--jwait=sn] [--jdist=m]: N. isikli kavsaga (100+: isiksiz kavsak) gider, trafigin dolmasini
+		# bekler ve kavsaga yukaridan bakar
+		var ji := int(_args["junction"])
+		var jp: Vector2 = flow.debug_junction(ji - 100) if ji >= 100 or traffic.junctions.is_empty() else traffic.junctions[ji % traffic.junctions.size()]["pos"]
+		_place_owner(jp + Vector2(9.0, 9.0))
+		flow.reseed()
+		await get_tree().create_timer(float(_args.get("jwait", "20"))).timeout
+		_mode = "debug"
+		ui.visible = false
+		var jd := float(_args.get("jdist", "26"))
+		var ja := float(_args.get("ang", "0.6"))
+		var jh := ParkMap.terrain_height(jp)
+		cam.global_position = Vector3(jp.x + sin(ja) * jd, jh + jd * 0.75, jp.y + cos(ja) * jd)
+		cam.look_at(Vector3(jp.x, jh, jp.y))
+		var near_n := 0
+		for c in _cars:
+			if Vector2(c.position.x, c.position.z).distance_to(jp) < 60.0:
+				near_n += 1
+		print("KAVSAK ", jp, " 60 m icinde arac=", near_n)
+		await get_tree().process_frame
+		await get_tree().process_frame
 	if _args.has("police"):
 		print("POLIS SON kovalama=", traffic.chasing, " uzaklik=%.1f" % traffic._police_dist(), " para=", state.d["coins"], " borc=", state.d.get("traffic_debt", 0))
 	if _args.has("pview") and traffic.police:

@@ -197,6 +197,18 @@ func _process(dt: float) -> void:
 			var ah := rel2.dot(dir2)
 			if ah > 0.5 and ah < 14.0 and absf(rel2.dot(Vector2(-dir2.y, dir2.x)) - LANE) < 2.2:
 				want = minf(want, maxf(ah - 8.0, 0.0) * 1.0)
+		# Trafik isigi: kirmizida dur cizgisinde bekle
+		var side2 := Vector2(-dir2.y, dir2.x)
+		for k in _Car.lights:
+			var rl: Vector2 = ParkMap.nodes[k] - here2
+			var ahd := rl.dot(dir2)
+			if ahd < 0.0 or ahd > 45.0 or absf(rl.dot(side2)) > 7.0:
+				continue
+			var line := ahd - float(_Car.lights[k]["r"]) - 6.2
+			if line > -1.5:
+				var ls := _Car.light_at(k, dir2)
+				if ls >= 2 or (ls == 1 and line > speed * speed / 5.0):
+					want = minf(want, sqrt(2.4 * maxf(line - 0.5, 0.0)))
 		speed = move_toward(speed, want, dt * (3.0 if want < speed else 1.6))
 		s += speed * dt
 		if not _wheels.is_empty():

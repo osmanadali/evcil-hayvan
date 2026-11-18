@@ -136,6 +136,8 @@ func _process(dt: float) -> void:
 		for o in _Car.traffic:
 			if not is_instance_valid(o) or not o.is_visible_in_tree():
 				continue
+			if "half_len" in o and o._speed < 0.4:
+				continue      # durmus arac yol vermis demektir
 			var rel := Vector2(o.global_position.x, o.global_position.z) - p
 			if rel.length() < 7.0 and rel.dot(fw) > -1.0:
 				visual.speed = 0.0

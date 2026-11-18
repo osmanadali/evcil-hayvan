@@ -9,6 +9,8 @@ const Car = preload("res://scripts/car.gd")
 
 ## Aracin yari boyu ve yari eni (m).
 static func extent(o: Node3D) -> Vector2:
+	if "half_len" in o:
+		return Vector2(o.half_len, o.half_w)
 	if o.get("line") != null:
 		return Vector2(6.0, 1.3)
 	if o.get("rider") != null:
