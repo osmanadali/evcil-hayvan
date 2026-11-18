@@ -193,13 +193,57 @@ static func conflict(k: int, a1: int, c1: int, a2: int, c2: int) -> bool:
 		return true           # ayni yola cikiyorlar
 	var t1 := turn_kind(a1, k, c1)
 	var t2 := turn_kind(a2, k, c2)
-	if t1 == 1 or t2 == 1:
-		return false          # saga donus yalnizca ayni yola cikanla kesisir
 	var d1 := (ParkMap.nodes[k] - ParkMap.nodes[a1]).normalized()
 	var d2 := (ParkMap.nodes[k] - ParkMap.nodes[a2]).normalized()
-	if d1.dot(d2) < -0.6 and t1 == t2:
-		return false          # karsilikli duz gidenler (ya da karsilikli sola donenler)
+	# Dar kavsaklarda yaylar birbirine cok yakin: yalnizca karsilikli kollardan gelip sola donmeyenler ayni anda gecer
+	if d1.dot(d2) < -0.6 and t1 >= 0 and t2 >= 0:
+		return false
 	return true
+
+
+static func _bike_cross(v: Object, o: Object, a1: int, c1: int, a2: int, c2: int) -> bool:
+	return a1 == a2 and c1 != c2 and (v.get("kind") == "bisiklet" or o.get("kind") == "bisiklet")
+
+
+## Otobus gibi kendi guzergahinda giden arac kavsagi tutar (yaklasirken ve gecerken her cagrida yenilenir).
+static func claim(v: Object, k: int, dir: Vector2) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	# Otobusun geldigi kol: ayni koldan gelen araclar onu beklemez (onunde giderler)
+	var from := -2
+	var best := 0.5
+	for nb in road_nbs(k):
+		var dn := (ParkMap.nodes[k] - ParkMap.nodes[nb]).normalized().dot(dir)
+		if dn > best:
+			best = dn
+			from = nb
+	var list: Array = _hold.get(k, [])
+	for h in list:
+		if h[0] == v:
+			h[3] = now - 11.0        # 3 sn sonra kendiliginden duser
+			return
+	list.append([v, from, -1, now - 11.0, true])
+	_hold[k] = list
+
+
+## Arac bu kavsaga simdilik giremiyor (cikisi dolu): sirasini birakir, baskalari gecebilsin.
+static func forget(v: Object, k: int) -> void:
+	release(v, k)
+	if _wait.has(k):
+		(_wait[k] as Dictionary).erase(v.get_instance_id())
+
+
+static func debug_state(k: int) -> String:
+	var now := Time.get_ticks_msec() / 1000.0
+	var out := "tutanlar:"
+	for h in _hold.get(k, []):
+		var o: Object = h[0]
+		out += " [%s %s>%s yas=%.0f]" % [(str(o.get("kind")) if o.get("kind") != null else "otobus") if is_instance_valid(o) else "yok", h[1], h[2], now - float(h[3])]
+	out += " bekleyenler:"
+	var ws: Dictionary = _wait.get(k, {})
+	for id in ws:
+		var w: Array = ws[id]
+		out += " [%s %s>%s bekledi=%.0f son=%.1f]" % [str(w[0].get("kind")) if is_instance_valid(w[0]) else "yok", w[1], w[2], now - float(w[3]), now - float(w[4])]
+	return out
 
 
 static func release(v: Object, k: int) -> void:
@@ -222,6 +266,11 @@ static func request(v: Object, k: int, a: int, c: int, d: float, sp: float) -> b
 			list.remove_at(i)
 	for h in list:
 		if h[0] == v:
+			if d > 0.5:
+				for h2 in list:
+					if h2.size() > 4 and h2[0] != v and int(h2[1]) != a:
+						list.erase(h)      # otobus yaklasiyor: henuz girmedim, yol ver
+						return false
 			h[2] = c
 			return true
 	var waits: Dictionary = _wait.get(k, {})
@@ -237,7 +286,7 @@ static func request(v: Object, k: int, a: int, c: int, d: float, sp: float) -> b
 		_wait[k] = waits
 	me[5] = d / maxf(sp, 2.0)
 	for h in list:
-		if conflict(k, a, c, int(h[1]), int(h[2])):
+		if conflict(k, a, c, int(h[1]), int(h[2])) or _bike_cross(v, h[0], a, c, int(h[1]), int(h[2])):
 			return false
 	var waited := now - float(me[3])
 	var pk := ParkMap.nodes[k]
@@ -263,7 +312,7 @@ static func request(v: Object, k: int, a: int, c: int, d: float, sp: float) -> b
 			return false                     # sola donen, karsidan gelene yol verir
 		if (-wd).dot(right) > 0.5 and float(w[5]) < float(me[5]) + 2.0:
 			return false                     # sagdan gelene yol ver
-	if d < 4.0 + sp * 1.6:
+	if d < 5.0 + sp * 0.7 + sp * sp / 6.0:
 		list.append([v, a, c, now])
 		_hold[k] = list
 		waits.erase(id)

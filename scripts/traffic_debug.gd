@@ -118,6 +118,13 @@ static func run(m: Node, secs: float) -> void:
 					overlap_time += step
 					if not pairs.has(key):
 						overlap_events += 1
+						if overlap_events <= 8:
+							var oa: Node3D = list[i]
+							var ob: Node3D = list[j]
+							print("TRAFIK ic ice: t=%.0f %s(%s d=%s>%s>%s s=%.1f/%.1f v=%.1f) x %s(%s d=%s>%s>%s s=%.1f/%.1f v=%.1f) yer=%s kavsak=%s" % [t,
+								oa.get("kind"), oa.name, oa.get("node"), oa.get("_next"), oa.get("_queued"), float(oa.get("_s") if oa.get("_s") != null else 0.0), float(oa.get("_len") if oa.get("_len") != null else 0.0), float(oa.get("_speed") if oa.get("_speed") != null else 0.0),
+								ob.get("kind"), ob.name, ob.get("node"), ob.get("_next"), ob.get("_queued"), float(ob.get("_s") if ob.get("_s") != null else 0.0), float(ob.get("_len") if ob.get("_len") != null else 0.0), float(ob.get("_speed") if ob.get("_speed") != null else 0.0),
+								info[i][0], oa.get("_held")])
 		pairs = now_pairs
 	var stuck := 0
 	var longest := 0.0
@@ -125,7 +132,19 @@ static func run(m: Node, secs: float) -> void:
 		longest = maxf(longest, max_still[id])
 		if float(max_still[id]) > 35.0:
 			stuck += 1
+			var so: Object = instance_from_id(id)
+			if is_instance_valid(so):
+				print("TRAFIK takilan: %s d=%s>%s>%s s=%s/%s onundeki tur=%s bosluk=%s tutulan=%s bekleme=%s yer=%s sure=%.0f" % [so.get("kind"), so.get("node"),
+					so.get("_next"), so.get("_queued"), so.get("_s"), so.get("_len"), so.get("_lead_type"), so.get("_gap"), so.get("_held"), so.get("hold"), last[id], max_still[id]])
+				if so.get("_next") != null:
+					print("TRAFIK   kavsak ", so.get("_next"), " ", preload("res://scripts/traffic_net.gd").debug_state(int(so.get("_next"))))
 	var n := maxi(samples, 1)
+	var kinds := {}
+	for o in Car.traffic:
+		if is_instance_valid(o) and o.is_inside_tree():
+			var kd: String = str(o.get("kind")) if o.get("kind") != null else ("otobus" if o.get("line") != null else "diger")
+			kinds[kd] = int(kinds.get(kd, 0)) + 1
+	print("TRAFIK turler=", kinds)
 	print("TRAFIK sure=%.0f sn  arac(ort)=%.1f  oyuncuya 150 m icinde(ort)=%.1f  farkli arac=%d" % [t, float(count_sum) / n, float(near_sum) / n, seen.size()])
 	print("TRAFIK ortalama hiz=%.1f km/sa  ic ice gecme: %d olay, %.1f arac-sn  takilan (35 sn+ kipirtisiz)=%d  en uzun durma=%.0f sn" % [
 		dist_sum / maxf(time_sum, 0.001) * 3.6, overlap_events, overlap_time, stuck, longest])

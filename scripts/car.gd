@@ -339,6 +339,8 @@ func _build() -> void:
 			var u := (_d - _b).cross(_dir) / cr
 			if t > 0.05 and u < -0.05 and t < chord * 2.5:
 				_c = _b + _dir * t
+				_d = _c + (_d - _c) * (0.5 if cr > 0.0 else 0.65)
+				chord = _b.distance_to(_d)
 	_clen = maxf((chord + _b.distance_to(_c) + _c.distance_to(_d)) * 0.5, 0.01)
 
 
@@ -409,16 +411,39 @@ func _sense(look: float) -> void:
 	var my_id := get_instance_id()
 	var lim := (look + 4.0) * (look + 4.0)
 	var cand := PackedInt32Array()
+	var two_wheel := kind == "bisiklet" or kind == "motosiklet"
+	var bike_near := false
+	var beside := false           # bisikletli tam yanimda: saga geri kayma
+	var oncoming := false
+	var here := _tangent(_s)
 	for i in _ox.size():
 		if _oid[i] != my_id and _ox[i].distance_squared_to(me) < lim:
 			if _ghost_t > 0.0 and (_ot[i] == 1 or _ot[i] == 4):
 				continue
 			cand.append(i)
+			if _ot[i] == 4 and not two_wheel and _ov[i].length() < 5.6:
+				# Onumde ya da yanimda ayni yone giden bisikletli: gecene kadar sola acik dur
+				var rel := _ox[i] - me
+				var ah := rel.dot(here)
+				if ah > -(half_len + 3.0) and absf(rel.cross(here)) < 3.2 and _ov[i].dot(here) > -0.3 * _ov[i].length():
+					bike_near = true
+					if ah < half_len + 2.0 or (_nudge > 0.3 and ah < half_len + 4.0 + _speed * _speed / 9.0):
+						beside = true      # yanimda ya da artik arkasinda duramam: gecisi tamamla
+		if _oid[i] != my_id and _ot[i] == 1 and not two_wheel:
+			# Karsidan gelen arac (sol onumde, bana dogru): sola acilma
+			var rel2 := _ox[i] - me
+			var ah2 := rel2.dot(here)
+			if ah2 > -4.0 and ah2 < 38.0 and absf(rel2.cross(here)) < 5.0 and _ov[i].dot(here) < -1.0:
+				oncoming = true
+	if bike_near and (beside or not oncoming):
+		_nudge_t = maxf(_nudge_t, 1.5)
+	elif oncoming:
+		_nudge_t = 0.0
 	if cand.is_empty():
 		return
 	var sd := half_len
 	while sd <= look:
-		var q := _point(_s + sd)
+		var q := _point(_s + sd - half_len) + _tangent(_s + sd - half_len) * half_len
 		for i in cand:
 			var tp := _ot[i]
 			var rr := half_w + _or[i] + (0.15 if tp == 1 else 0.1)
@@ -431,8 +456,6 @@ func _sense(look: float) -> void:
 			_gap = sd - half_len
 			_lead_sp = maxf(along, 0.0)
 			_lead_type = tp
-			if tp == 4 and kind != "bisiklet" and kind != "motosiklet":
-				_nudge_t = 5.0
 			return
 		sd += 1.5
 
@@ -440,7 +463,7 @@ func _sense(look: float) -> void:
 ## k kavsagina (from yonunden, to yonune) girmeden once: durulacak yere uzaklik (on tampondan), yoksa 1e9.
 func _gate(k: int, from: int, to: int, dn: float, dir: Vector2, straight_end: float) -> float:
 	var stop := 1e9
-	var line := straight_end - half_len
+	var line := straight_end - half_len - 1.5      # donen uzun aracin burnu icin pay
 	var lit := false
 	if obey_lights and lights.has(k):
 		var j: Dictionary = lights[k]
@@ -450,12 +473,14 @@ func _gate(k: int, from: int, to: int, dn: float, dir: Vector2, straight_end: fl
 			if ls >= 2 or (ls == 1 and line > _speed * _speed / 8.0):
 				stop = maxf(line, 0.0)
 				lit = true
-	if not lit and TN.jr.has(k) and line > -1.0 and line < 32.0:
+				if _held == k:
+					_release()        # kirmizida bekleyen kavsagi tutmasin
+	if not lit and TN.jr.has(k) and line > -1.0 and line < 40.0:
 		var ok := TN.request(self, k, from, to, maxf(line, 0.0), _speed)
 		if ok and _lead_type == 1 and _lead_sp < 1.0 and _gap > line + 1.0 and _gap < line + _ce * 2.0 + _clen + half_len * 2.0 + 2.5:
 			# Cikis dolu: kavsagi kilitleme, cizgide bekle
 			ok = false
-			TN.release(self, k)
+			TN.forget(self, k)
 		if ok:
 			_held = k
 		else:
@@ -483,7 +508,7 @@ func _process(dt: float) -> void:
 		want = minf(want, 2.5)
 	if _nudge_t > 0.0:
 		_nudge_t -= dt
-	_nudge = move_toward(_nudge, 0.55 if _nudge_t > 0.0 else 0.0, dt * 0.6)
+	_nudge = move_toward(_nudge, 0.55 if _nudge_t > 0.0 else 0.0, dt * minf(_speed * 0.2, 1.0))
 	var straight := _s < _len
 	var to_end := _len - _s
 	var dn := to_end + _ce
@@ -509,6 +534,7 @@ func _process(dt: float) -> void:
 		if kind == "dolmus" and _dwell_cd <= 0.0 and _stop_s < 0.0 and straight and hold <= 0.0:
 			_find_stop()
 	var obstacle := false
+	var hard := 0.0               # cizgide durabilmek icin gereken fren
 	if _gap < 1e8:
 		var g0 := 2.0 if _lead_type == 1 or _lead_type == 4 else 2.6
 		var room := _gap - g0
@@ -528,6 +554,7 @@ func _process(dt: float) -> void:
 			stop = _gate(_queued, _next, _after, dn + l2, _dir2, dn + l2 - minf(_cut(_queued), l2 * 0.45))
 		if stop < 1e8:
 			want = minf(want, sqrt(5.0 * maxf(stop - 0.5, 0.0)))
+			hard = _speed * _speed / (2.0 * maxf(stop, 0.3))
 	if _held >= 0 and ((_held == node and _s > half_len + 1.0) or (_held != node and _held != _next and _held != _queued)):
 		_release()
 	# Dolmus duragi
@@ -552,7 +579,7 @@ func _process(dt: float) -> void:
 		stuck_t = 0.0
 	var rate := accel
 	if want < _speed:
-		rate = 9.0 if (want < 0.3 and _gap < 3.0) else 4.5
+		rate = 9.0 if (want < 0.3 and _gap < 3.0) else clampf(hard, 4.5, 9.0)
 	_speed = move_toward(_speed, want, dt * rate)
 	_s += _speed * dt
 	var guard := 0

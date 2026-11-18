@@ -1,5 +1,6 @@
 extends Node3D
 const _Car = preload("res://scripts/car.gd")
+const _TN = preload("res://scripts/traffic_net.gd")
 ## EGO otobusu: hattin gercek guzergahini izler, duraklarda durur, kapilarini acar.
 ## Guzergah assets/transit.json'dan gelir (tools/transit_build.py). Harita disina cikinca bir sure gorunmez
 ## (hattin Ulus / Kizilay kismi), sonra ters yonde geri gelir.
@@ -26,6 +27,10 @@ var at_stop := ""             # durakta beklerken durak adi
 var stop_pos := Vector2.ZERO  # son durulan duragin bekleme yeri
 var last_stop := {}
 var _next_stop := 0
+var _claim_t := 0.0
+var _sense_t := 0.0
+var _lead_gap := 1e9
+var _lead_sp := 0.0
 var _doors: Array[Node3D] = []
 var _wheels: Array = []
 
@@ -181,22 +186,53 @@ func _process(dt: float) -> void:
 				stop_pos = st["pos"]
 				last_stop = st
 				_next_stop += 1
-		if owner_node and owner_node.is_visible_in_tree():
-			var here := _point(s)
-			var dir := (_point(s + 2.0) - here).normalized()
-			var rel := Vector2(owner_node.global_position.x, owner_node.global_position.z) - here
-			var ahead := rel.dot(dir)
-			if ahead > 0.0 and ahead < 13.0 and absf(rel.dot(Vector2(-dir.y, dir.x)) - LANE) < 2.4:
-				want = 0.0          # yolun ortasindaki oyuncuya yol verir
+		# Onundeki arac / yaya / oyuncu: guzergah boyunca one bakar (car.gd'nin ortak engel listesi)
 		var here2 := _point(s)
 		var dir2 := (_point(s + 2.0) - here2).normalized()
-		for o in _Car.traffic:
-			if o == self or not is_instance_valid(o) or not o.is_visible_in_tree():
-				continue
-			var rel2 := Vector2(o.global_position.x, o.global_position.z) - here2
-			var ah := rel2.dot(dir2)
-			if ah > 0.5 and ah < 14.0 and absf(rel2.dot(Vector2(-dir2.y, dir2.x)) - LANE) < 2.2:
-				want = minf(want, maxf(ah - 8.0, 0.0) * 1.0)
+		_sense_t -= dt
+		if _sense_t <= 0.0:
+			_sense_t = 0.13
+			_lead_gap = 1e9
+			_lead_sp = 0.0
+			_Car._obstacles()
+			var my_id := get_instance_id()
+			var lane_now := here2 + Vector2(-dir2.y, dir2.x) * LANE
+			var reach := 20.0 + speed * 2.4
+			var cand := PackedInt32Array()
+			for i in _Car._ox.size():
+				if _Car._oid[i] != my_id and _Car._ox[i].distance_squared_to(lane_now) < (reach + 4.0) * (reach + 4.0):
+					cand.append(i)
+			var dd := 6.2
+			while dd < reach and _lead_gap > 1e8 and not cand.is_empty():
+				var c0 := _point(s + dd)
+				var t0 := (_point(s + dd + 1.5) - c0).normalized()
+				var q := c0 + Vector2(-t0.y, t0.x) * LANE
+				for i in cand:
+					var rr := 1.3 + _Car._or[i] + 0.15
+					if q.distance_squared_to(_Car._ox[i]) > rr * rr:
+						continue
+					var v := _Car._ov[i]
+					var along := v.dot(t0)
+					if v.length() > 0.5 and along < -0.5 * v.length():
+						continue          # karsi seritten gelen
+					_lead_gap = dd - 6.0
+					_lead_sp = maxf(along, 0.0)
+					break
+				dd += 1.6
+		if _lead_gap < 1e8:
+			var room := _lead_gap - 2.5
+			want = minf(want, (minf(sqrt(_lead_sp * _lead_sp + 3.0 * room), _lead_sp + room * 0.6) if room > 0.0 else 0.0))
+		# Yaklastigi isiksiz kavsagi tutar (yandan gelen araclar bekler)
+		_claim_t -= dt
+		if _claim_t <= 0.0:
+			_claim_t = 0.25
+			for k in _TN.jr:
+				var rj: Vector2 = ParkMap.nodes[k] - here2
+				if absf(rj.x) > 40.0 or absf(rj.y) > 40.0 or _Car.lights.has(k):
+					continue
+				var aj := rj.dot(dir2)
+				if aj > -9.0 and aj < 14.0 + speed * 2.0 and absf(rj.dot(Vector2(-dir2.y, dir2.x))) < 5.0:
+					_TN.claim(self, k, dir2)
 		# Trafik isigi: kirmizida dur cizgisinde bekle
 		var side2 := Vector2(-dir2.y, dir2.x)
 		for k in _Car.lights:

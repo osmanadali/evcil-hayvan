@@ -5454,6 +5454,11 @@ func _debug_shot() -> void:
 		await life.debug(_args)
 	if _args.has("vtour"):
 		await life.debug_tour(_args)
+	if _args.has("junction"):
+		# --junction=N [--secs=sn] [--jdist=m] [--ang=radyan]: merkeze en yakin N. isikli kavsaga (100+: isiksiz
+		# kavsak) gider, trafigi cevresine dagitir; cekimde kavsaga yukaridan bakilir
+		_place_owner(flow.debug_junction(int(_args["junction"])) + Vector2(9.0, 9.0))
+		flow.reseed(float(_args.get("jmin", "16")))
 	if _args.has("trafficdbg"):
 		# Trafik olcumu: --trafficdbg[=sn] (varsayilan 60 sn); sayilari "TRAFIK ..." satirlariyla yazar
 		var tsecs := float(_args["trafficdbg"])
@@ -5461,15 +5466,10 @@ func _debug_shot() -> void:
 	if _args.has("secs"):
 		await get_tree().create_timer(float(_args["secs"])).timeout
 	if _args.has("junction"):
-		# --junction=N [--jwait=sn] [--jdist=m]: N. isikli kavsaga (100+: isiksiz kavsak) gider, trafigin dolmasini
-		# bekler ve kavsaga yukaridan bakar
-		var ji := int(_args["junction"])
-		var jp: Vector2 = flow.debug_junction(ji - 100) if ji >= 100 or traffic.junctions.is_empty() else traffic.junctions[ji % traffic.junctions.size()]["pos"]
-		_place_owner(jp + Vector2(9.0, 9.0))
-		flow.reseed()
-		await get_tree().create_timer(float(_args.get("jwait", "20"))).timeout
+		# Kavsaga yukaridan bak
 		_mode = "debug"
 		ui.visible = false
+		var jp: Vector2 = flow.debug_junction(int(_args["junction"]))
 		var jd := float(_args.get("jdist", "26"))
 		var ja := float(_args.get("ang", "0.6"))
 		var jh := ParkMap.terrain_height(jp)

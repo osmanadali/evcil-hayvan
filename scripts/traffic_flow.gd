@@ -9,12 +9,12 @@ const TN = preload("res://scripts/traffic_net.gd")
 const Kit = preload("res://scripts/kit.gd")
 const PersonModel = preload("res://scripts/person_model.gd")
 
-const COUNTS := [9, 17, 27]       # yogunluga gore arac sayisi
+const COUNTS := [10, 18, 30]      # yogunluga gore arac sayisi
 const BIKES := [2, 3, 5]
-const NEAR := 130.0               # bundan uzaktaki arac ucuz calisir
-const R_MIN := 75.0               # en yakin dogma uzakligi
-const R_MAX := 210.0
-const R_OUT := 245.0              # bundan uzaklasan arac baska yere tasinir
+const NEAR := 110.0               # bundan uzaktaki arac ucuz calisir
+const R_MIN := 65.0               # en yakin dogma uzakligi
+const R_MAX := 165.0
+const R_OUT := 205.0              # bundan uzaklasan arac baska yere tasinir
 const KINDS := ["araba", "taksi", "hatchback", "dolmus", "araba", "kamyonet", "hatchback", "motosiklet",
 	"taksi", "araba", "dolmus", "hatchback", "kamyonet", "araba", "motosiklet", "taksi"]
 const PAINTS := ["f2f2f2", "9a9da3", "3a3d42", "b23a34", "2f4f8a", "e9e4d6", "f2c230", "6b7a5a", "1f2a44"]
@@ -96,22 +96,22 @@ func _process(dt: float) -> void:
 
 
 ## Dogma yeri: [a, b, oran] ya da bos. Oyuncunun gormedigi, baska aracin olmadigi bir yol parcasi.
-func _find_spot(initial: bool) -> Array:
+func _find_spot(initial: bool, min_d := 45.0) -> Array:
 	var me: Vector2 = m._owner_pos()
 	var cam: Camera3D = m.get_viewport().get_camera_3d()
 	var best: Array = []
 	var best_d := 1e9
 	var found := 0
-	for i in 60:
+	for i in 140:
 		var link: Array = TN.spawn_links[randi() % TN.spawn_links.size()]
 		var pa := ParkMap.nodes[link[0]]
 		var pb := ParkMap.nodes[link[1]]
 		var t := randf_range(0.1, 0.8)
 		var p := pa.lerp(pb, t)
 		var d := p.distance_to(me)
-		if d > R_MAX or d < (45.0 if initial else R_MIN):
+		if d > R_MAX or d < (min_d if initial else R_MIN):
 			continue
-		if not initial and d < 170.0 and cam != null and cam.is_position_in_frustum(Vector3(p.x, ParkMap.terrain_height(p) + 1.0, p.y)):
+		if not initial and d < 150.0 and cam != null and cam.is_position_in_frustum(Vector3(p.x, ParkMap.terrain_height(p) + 1.0, p.y)):
 			continue
 		var free := true
 		for o in Car.traffic:
@@ -148,7 +148,7 @@ func _place(c: Node3D, spot: Array) -> void:
 
 
 ## Hata ayiklama: butun araclari oyuncunun yeni yerinin cevresine yeniden dagitir.
-func reseed() -> void:
+func reseed(min_d := 45.0) -> void:
 	for list: Array in [m._cars, m._cyclists]:
 		for c in list:
 			if is_instance_valid(c) and c.is_processing():
@@ -156,19 +156,19 @@ func reseed() -> void:
 	for list: Array in [m._cars, m._cyclists]:
 		for c in list:
 			if is_instance_valid(c) and c.is_processing():
-				var spot := _find_spot(true)
+				var spot := _find_spot(true, min_d)
 				if not spot.is_empty():
 					_place(c, spot)
 
 
-## Hata ayiklama: i. isiksiz, dort kollu kavsagin yeri.
+## Hata ayiklama: merkeze en yakin i. isikli kavsak (100+: isiksiz, dort kollu kavsak).
 func debug_junction(i: int) -> Vector2:
 	var list: Array = []
 	for k in TN.jr:
-		if not Car.lights.has(k) and TN.road_nbs(k).size() >= 4 and ParkMap.inside_bounds(ParkMap.nodes[k], 120.0):
+		if Car.lights.has(k) == (i < 100) and TN.road_nbs(k).size() >= (3 if i < 100 else 4):
 			list.append(k)
-	list.sort()
-	return ParkMap.nodes[list[i % list.size()]] if not list.is_empty() else Vector2.ZERO
+	list.sort_custom(func(a, b): return ParkMap.nodes[a].length_squared() < ParkMap.nodes[b].length_squared())
+	return ParkMap.nodes[list[(i % 100) % list.size()]] if not list.is_empty() else Vector2.ZERO
 
 
 func _recycle(c: Node3D, list: Array) -> void:
