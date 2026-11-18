@@ -8,6 +8,7 @@ const Kit = preload("res://scripts/kit.gd")
 const ParkMap = preload("res://scripts/park_map.gd")
 const GasStation = preload("res://scripts/gas_station.gd")
 const Car = preload("res://scripts/car.gd")
+const CarRig = preload("res://scripts/car_rig.gd")
 
 const BRAND := "OTOKENT"
 ## Katalog: id -> [ad, model, uzunluk, boya ("" = orijinal), fiyat, tur (m.RIDES anahtari), on-arka ters mi]
@@ -19,8 +20,10 @@ const CATALOG := {
 	"sedan_siyah": ["Kent Hatchback GT · Gece Siyahı", "hatchback", 4.1, "26282c", 2200, "araba", false],
 	"sedan_gumus": ["Kent Hatchback GT · Yarış Kırmızısı", "hatchback", 4.1, "c8322b", 2400, "araba", false],
 	"minibus": ["Kervan Minibüs", "dolmus", 5.4, "", 3000, "araba", true],
+	# model "rig:<id>": ic mekanli ayrintili arac (scripts/car_rig.gd); vitrinde sergilenmez, yalniz satin alininca kurulur
+	"derya": ["Derya 1.6 Sedan · İç Mekânlı", "rig:sedan", 4.55, "", 2800, "araba", false],
 }
-const ORDER := ["scooter", "moto", "hb_mavi", "hb_beyaz", "sedan_siyah", "sedan_gumus", "minibus"]
+const ORDER := ["scooter", "moto", "hb_mavi", "hb_beyaz", "sedan_siyah", "sedan_gumus", "derya", "minibus"]
 
 var m: Node
 var state: Node
@@ -151,6 +154,11 @@ func build() -> void:
 ## Katalogdaki araci kurar (m.world.vehicle ile model, boya, sinyaller); bulunamazsa null.
 func make_vehicle(id: String) -> Node3D:
 	var it: Array = CATALOG[id]
+	if String(it[1]).begins_with("rig:"):
+		var rv: Node3D = CarRig.make(String(it[1]).substr(4))
+		if rv:
+			rv.set_meta("garage", id)
+		return rv
 	var v: Node3D = m.world.vehicle("res://assets/models/%s.glb" % it[1], float(it[2]), bool(it[6]))
 	if v == null:
 		if it[5] != "araba":

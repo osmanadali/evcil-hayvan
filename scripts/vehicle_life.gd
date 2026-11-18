@@ -46,6 +46,7 @@ var _mirror_i := 0
 var _frame := 0
 var _door: Node3D
 var _door_ride: Node3D
+var _door_side := -1          # acilan kapi: -1 sol (surucu), +1 sag
 var _dbg_cam: Array = []
 
 
@@ -322,7 +323,7 @@ func mount(r: Node3D) -> void:
 	m.ui.set_context("", "")
 	var base := _flat(r)
 	var seat: Vector3 = cfg["seat"]
-	var side_l := Vector3(-1.25, 0, 0.45) if car else Vector3(-0.56, 0, seat.z - 0.02)
+	var side_l: Vector3 = r.get_meta("door_spot", Vector3(-1.25, 0, 0.45)) if car else Vector3(-0.56, 0, seat.z - 0.02)
 	# Aracin saginda / onunde ise arkadan dolan
 	var pts: Array = []
 	var me := base.affine_inverse() * on.position
@@ -364,6 +365,10 @@ func _mount_car(r: Node3D, _cfg: Dictionary, side_l: Vector3) -> void:
 	var on: Node3D = m.owner_node
 	var om: Node3D = m.owner_model
 	var glass := r.has_meta("glass")
+	_door_side = -1
+	if r.has_meta("rig") and not r.has_doors:
+		await r.mount_closed(self, side_l)      # kapisi acilmayan model: kisa egilme, icerde belirir
+		return
 	# Kapiya don, kola uzan; kapi acilir
 	var yaw0 := on.rotation.y
 	var face := r.rotation.y - PI / 2
@@ -480,10 +485,14 @@ func _dismount_car(r: Node3D) -> void:
 	var om: Node3D = m.owner_model
 	var glass := r.has_meta("glass")
 	# Bos olan taraf: once surucu kapisi (sol), doluysa sag
-	var side_l := _free_side(r, [Vector3(-1.25, 0, 0.45), Vector3(1.25, 0, 0.45), Vector3(-1.6, 0, 0.45), Vector3(1.6, 0, 0.45)])
+	var side_l := _free_side(r, r.get_meta("exit_spots", [Vector3(-1.25, 0, 0.45), Vector3(1.25, 0, 0.45), Vector3(-1.6, 0, 0.45), Vector3(1.6, 0, 0.45)]))
 	var left := side_l.x < 0.0
+	if r.has_meta("rig") and not r.has_doors:
+		await r.dismount_closed(self, side_l)
+		return
+	_door_side = -1 if left else 1
 	m._sfx("araba_kapi", -6.0, 1.05)
-	if left:
+	if left or r.has_meta("rig"):
 		_door_show(r, glass)
 	await _run(0.34, func(k: float):
 		_door_angle(_ease(k)))
@@ -563,17 +572,24 @@ func _dismount_two(r: Node3D, cfg: Dictionary) -> void:
 ## (scripts/car_body.gd). Kapisi ayrilmamis araclarda kapi hareketi yoktur (karakter egilip biner).
 func _door_show(r: Node3D, _glass: bool) -> void:
 	_door_hide()
+	if r.has_meta("rig"):
+		_door_ride = r          # modelin gercek kapisi mentesesinden doner (scripts/car_rig.gd)
+		return
 	if CarBody.has_door(r):
-		_door_ride = r
+		_door_ride = r          # Polo: govdeden ayrilan kapi (scripts/car_body.gd)
 
 
 func _door_angle(k: float) -> void:
-	if _door_ride != null:
+	if _door_ride == null or not is_instance_valid(_door_ride):
+		return
+	if _door_ride.has_meta("rig"):
+		_door_ride.door(k, _door_side)
+	else:
 		CarBody.door_angle(_door_ride, k)
 
 
 func _door_hide() -> void:
-	if _door_ride != null:
+	if _door_ride != null and is_instance_valid(_door_ride) and not _door_ride.has_meta("rig"):
 		CarBody.door_angle(_door_ride, 0.0)
 	_door_ride = null
 
@@ -591,7 +607,8 @@ func _spot_xf(r: Node3D, spot: String) -> Transform3D:
 	var kind: String = r.get_meta("kind")
 	if PET_SEATS.has(kind):
 		return Transform3D(Basis(), PET_SEATS[kind][0])
-	var s: Array = CAR_SPOTS.get(spot, CAR_SPOTS["on"])
+	var spots: Dictionary = r.get_meta("pet_spots", CAR_SPOTS)
+	var s: Array = spots.get(spot, spots["on"])
 	var out := 0.0
 	if float(s[3]) > 0.5 and absf(m._drive_speed) > 3.0:
 		out = 0.07          # giderken basini camdan hafifce cikarir
@@ -609,7 +626,7 @@ func _pet_init(a: Node3D, mode: String) -> void:
 			var f: Vector3 = m.owner_model.ride_feet
 			m.owner_model.ride_feet = Vector3(maxf(f.x, fx), f.y, f.z)
 	else:
-		_pet_scale(a, 0.62)
+		_pet_scale(a, float(r.get_meta("pet_size", 0.62)))
 
 
 ## Binme hareketi surerken hayvan oldugu yerde bekler.
@@ -639,7 +656,7 @@ func _apply_spot(a: Node3D, spot: String) -> void:
 		a.model.pose = "sit"
 		a.model.paws_up = 0.0
 	else:
-		var s: Array = CAR_SPOTS[spot]
+		var s: Array = (m._ride.get_meta("pet_spots", CAR_SPOTS) as Dictionary)[spot]
 		a.model.pose = s[2]
 		a.model.paws_up = move_toward(a.model.paws_up, float(s[3]), get_process_delta_time() * 3.0)
 	a.model.speed = 0.0
@@ -672,7 +689,7 @@ func pet_command(cmd: String) -> bool:
 		"sit":
 			_pet["hold"] = true
 			_goto("on")
-			m.ui.toast("%s yolcu koltuğuna oturdu." % nm)
+			m.ui.toast("%s %s oturdu." % [nm, "arka koltuğa" if m._ride.has_meta("rig") else "yolcu koltuğuna"])
 		"lie", "sleep":
 			_pet["hold"] = true
 			_goto("arka")
@@ -721,7 +738,7 @@ func _update_pet(dt: float) -> void:
 					opts.erase(_pet["spot"])
 					_goto(opts[randi() % opts.size()])
 	# Ruzgar: acikta (iki tekerli) ya da camdan bakarken kulaklar ucusur, dil disarida
-	var windy: bool = two or (_pet["mode"] == "seat" and float(CAR_SPOTS[_pet["spot"]][3]) > 0.5)
+	var windy: bool = two or (_pet["mode"] == "seat" and float((r.get_meta("pet_spots", CAR_SPOTS) as Dictionary)[_pet["spot"]][3]) > 0.5)
 	a.model.wind = move_toward(a.model.wind, clampf(sp / 7.0, 0.0, 1.0) if windy else 0.0, dt * 2.0)
 	_tongue(a, a.model.wind)
 	if sp > 0.5:
@@ -938,7 +955,7 @@ func debug(args: Dictionary) -> void:
 	if args.has("mount") or args.has("petseat"):
 		var target: Node3D = null
 		for r in m._rides:
-			if r.get_meta("kind") == want and not r.has_meta("garage"):
+			if (r.get_meta("kind") == want or r.get_meta("rig_id", "") == want) and not r.has_meta("garage"):
 				target = r
 				break
 		if target == null:
@@ -1200,6 +1217,11 @@ func _debug_cam(mode: String, follow: bool) -> void:
 	var b := _flat(r)
 	var eye := Vector3(-3.4, 1.5, 0.3)
 	var look := Vector3(0, 0.9, 0)
+	if mode.contains(","):
+		# --vcam=x,y,z,hx,hy,hz : arac uzayinda serbest bakis
+		var e := mode.split_floats(",")
+		eye = Vector3(e[0], e[1], e[2])
+		look = Vector3(e[3], e[4], e[5])
 	match mode:
 		"front":
 			eye = Vector3(-0.5, 2.2, -3.0)
