@@ -5045,6 +5045,10 @@ func _update_context() -> void:
 		ui.set_context("", "")
 		return
 	var tx := _nearest_taxi()
+	# Taksi duragina / gecen taksinin yanina park edilmis kendi aracina da binilebilsin: arac taksiden yakinsa once o
+	if tx and near_ride != null and near_ride in _rides \
+			and o.distance_to(Vector2(near_ride.position.x, near_ride.position.z)) < o.distance_to(Vector2(tx.position.x, tx.position.z)):
+		tx = null
 	if tx:
 		ui.set_context("%s Bin" % ("Dolmuşa" if _car_model(tx) == "dolmus" else "Taksiye"), "taxi", "play")
 		return

@@ -419,7 +419,7 @@ func _g_map() -> void:
 				await fr(3)
 			if i >= ms.PINS.size():
 				break
-			ms.select_by_name(ms.PINS[i][0])
+			ms._select(i)                  # ada gore degil sirayla: ayni adli isaretler olabilir (iki "M · Gar" girisi)
 			await fr(1)
 			ms._nav()
 			await fr(2)
