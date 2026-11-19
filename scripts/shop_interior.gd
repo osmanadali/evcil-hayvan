@@ -327,6 +327,7 @@ func _build_market() -> void:
 		Kit.box(self, Vector3(0.45, 0.22, 0.32), Vector3(4.0, 0.11 + k * 0.07, D - 0.75), Kit.mat("d0302b", 0.5))
 	_solid(Vector2(4.0, D - 0.75), Vector2(0.25, 0.18))
 	_sign("Sepet", Vector3(4.0, 1.1, D - 0.6), "d0302b", Color.WHITE)
+	_build_tobacco()
 	# Urun noktalari ve fiyat etiketleri (durma noktasi, etiket konumu, etiketin baktigi yon)
 	for sp in [["su", Vector2(1.4, 1.2), 0.0], ["ayran", Vector2(3.0, 1.2), 0.0], ["meyve", Vector2(4.6, 1.2), 0.0],
 			["dondurma", Vector2(6.2, 1.2), 0.0], ["simit", Vector2(3.0, 3.15), PI], ["ekmek", Vector2(5.4, 3.15), PI],
@@ -334,13 +335,14 @@ func _build_market() -> void:
 			["odul", Vector2(6.35, 3.05), PI], ["mama", Vector2(7.05, 3.05), PI], ["konserve", Vector2(7.75, 3.05), PI],
 			["yumurta", Vector2(4.2, 3.15), PI], ["makarna", Vector2(4.2, 5.0), PI], ["peynir", Vector2(3.0, 6.85), PI],
 			["domates", Vector2(8.0, 5.75), PI], ["biber", Vector2(9.2, 5.75), PI],
-			["seker", Vector2(4.2, 6.85), PI], ["hediye", Vector2(1.6, 5.0), PI], ["cicek", Vector2(6.7, 6.85), PI]]:
+			["seker", Vector2(4.2, 6.85), PI], ["hediye", Vector2(1.6, 5.0), PI], ["cicek", Vector2(6.7, 6.85), PI],
+			["sigara", Vector2(0.7, 5.9), PI * 0.5, Vector3(0.36, 0.62, 5.9)], ["cakmak", Vector2(0.62, 6.95), PI * 0.5, Vector3(0.36, 0.62, 6.95)]]:
 		spots.append([sp[0], sp[1]])
-		_tag(sp[0], sp[1], sp[2])
+		_tag(sp[0], sp[1], sp[2], sp[3] if sp.size() > 3 else Vector3.INF)
 
 
 ## Fiyat etiketi: urunun ustunde sari levha (ad ve fiyat), durma noktasina bakar.
-func _tag(id: String, stand: Vector2, face: float) -> void:
+func _tag(id: String, stand: Vector2, face: float, at3 := Vector3.INF) -> void:
 	var item: Array = []
 	for it in PRICES:
 		if it[0] == id:
@@ -350,7 +352,7 @@ func _tag(id: String, stand: Vector2, face: float) -> void:
 	var toward := Vector2(0, 1).rotated(-face)          # face=0: etiket +Z'ye, PI: -Z'ye bakar
 	var at := stand - toward * 0.42
 	var r := Node3D.new()
-	r.position = Vector3(at.x, 1.75, at.y)
+	r.position = Vector3(at.x, 1.75, at.y) if at3 == Vector3.INF else at3
 	r.rotation.y = face
 	add_child(r)
 	Kit.box(r, Vector3(0.62, 0.26, 0.02), Vector3.ZERO, Kit.mat("f5c518", 0.5))
@@ -364,12 +366,56 @@ func _tag(id: String, stand: Vector2, face: float) -> void:
 	r.add_child(l)
 
 
+## Sol duvarda, kasanin yaninda tekel dolabi: uydurma markali sigara paketleri ve cakmaklar (smoking.gd).
+func _build_tobacco() -> void:
+	var z0 := 5.55
+	var z1 := 7.35
+	var zc := (z0 + z1) * 0.5
+	var wood := Kit.mat("3a2a22", 0.6)
+	Kit.box(self, Vector3(0.26, 1.25, z1 - z0), Vector3(0.13, 1.5, zc), wood)
+	Kit.box(self, Vector3(0.34, 0.9, z1 - z0), Vector3(0.17, 0.45, zc), Kit.mat("4a4d52", 0.5))   # alt dolap
+	Kit.box(self, Vector3(0.36, 0.04, z1 - z0 + 0.04), Vector3(0.18, 0.92, zc), Kit.mat("e8e2d4", 0.3))
+	# Paket raflari (uydurma markalar: Kervan kirmizi, Yayla mavi, Bozkir yesil, Sultan altin, Ince beyaz)
+	var brands := [["c8322b", "f4f4f0"], ["2f62a8", "f4f4f0"], ["3f8f4a", "f2e6c8"], ["c9a02e", "2a2a2a"], ["f4f4f0", "8a8f99"]]
+	for row in 4:
+		var y := 1.0 + row * 0.27
+		Kit.box(self, Vector3(0.24, 0.015, z1 - z0 - 0.06), Vector3(0.14, y, zc), Kit.mat("2a1e18", 0.5))
+		var z := z0 + 0.06
+		var bi := row
+		while z < z1 - 0.12:
+			var b: Array = brands[bi % brands.size()]
+			Kit.box(self, Vector3(0.05, 0.1, 0.062), Vector3(0.25, y + 0.058, z + 0.031), Kit.mat(b[0], 0.5))
+			Kit.box(self, Vector3(0.002, 0.03, 0.062), Vector3(0.276, y + 0.08, z + 0.031), Kit.mat(b[1], 0.5))
+			z += 0.068
+			if int((z - z0) / 0.068) % 4 == 0:
+				bi += 1
+	# Tezgahta cakmak standi (renkli cakmaklar)
+	var lz := z1 - 0.28
+	Kit.box(self, Vector3(0.22, 0.05, 0.3), Vector3(0.2, 0.965, lz), Kit.mat("1d1e21", 0.4))
+	var lc := ["e0322b", "f2c230", "2f8a3a", "1f5aa8", "f07a1a", "b84a8a"]
+	for k in 12:
+		var c := Kit.box(self, Vector3(0.022, 0.075, 0.012), Vector3(0.14 + (k % 3) * 0.06, 1.03, lz - 0.12 + (k / 3) * 0.075), Kit.mat(lc[k % lc.size()], 0.3))
+		c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_solid(Vector2(0.17, zc), Vector2(0.17, (z1 - z0) * 0.5))
+	var l := Label3D.new()
+	l.text = "TEKEL\nSigara sağlığa zararlıdır · 18 yaş altına satılmaz"
+	l.font_size = 30
+	l.pixel_size = 0.0026
+	l.modulate = Color("f4f1ea")
+	l.outline_size = 6
+	l.outline_modulate = Color(0, 0, 0, 0.8)
+	l.position = Vector3(0.27, 2.24, zc)
+	l.rotation.y = PI * 0.5
+	add_child(l)
+
+
 ## Urun fiyatlari (ui.SHOP_ITEMS ile ayni): [kimlik, ad, fiyat]
 const PRICES := [["mama", "Kuru Mama", 8], ["konserve", "Konserve", 14], ["odul", "Ödül Bisküvisi", 6], ["su", "Su", 3],
 	["simit", "Simit", 5], ["ayran", "Ayran", 6], ["ekmek", "Ekmek", 4], ["cikolata", "Çikolata", 8], ["dondurma", "Dondurma", 10],
 	["meyve", "Meyve Suyu", 7], ["top", "Oyuncak Top", 12], ["sampuan", "Pati Şampuanı", 15],
 	["yumurta", "Yumurta", 3], ["domates", "Domates", 4], ["biber", "Biber", 3], ["makarna", "Makarna", 9], ["peynir", "Peynir", 14],
-	["seker", "Bayram Şekeri", 4], ["hediye", "Hediye Paketi", 35], ["cicek", "Çiçek Buketi", 25]]
+	["seker", "Bayram Şekeri", 4], ["hediye", "Hediye Paketi", 35], ["cicek", "Çiçek Buketi", 25],
+	["sigara", "Sigara Paketi", 45], ["cakmak", "Çakmak", 10]]
 
 
 func _build_pharmacy() -> void:

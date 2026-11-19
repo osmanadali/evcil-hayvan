@@ -29,6 +29,7 @@ const ACTIONS := [
 	["headlights", "FARLAR", [KEY_H]],
 	["messages", "MESAJLAR", [KEY_K]],
 	["snowball", "KARTOPU", [KEY_Y]],
+	["smoke", "SİGARA YAK / SÖNDÜR", [KEY_B]],
 ]
 const RESERVED := [KEY_ESCAPE, KEY_ALT]
 
