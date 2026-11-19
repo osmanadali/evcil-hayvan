@@ -127,6 +127,7 @@ func keycode(code: Key) -> void:
 
 
 func click_at(pos: Vector2) -> void:
+	pos = get_viewport().get_final_transform() * pos     # tuval -> pencere (pencere 1280x720 degilse olcek)
 	var mm := InputEventMouseMotion.new()
 	mm.position = pos
 	mm.global_position = pos
