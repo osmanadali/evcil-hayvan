@@ -1040,7 +1040,8 @@ func _pointer_move(rel: Vector2) -> void:
 		_cam_yaw -= rel.x * 0.006
 		if (_ride != null and _fps) or pview.on:
 			_fps_yaw = clampf(_fps_yaw - rel.x * 0.005, -1.9, 1.9)
-			_fps_pitch = clampf(_fps_pitch - rel.y * 0.004, -0.8, 0.55)
+			var up_max := 0.3 if (_ride != null and _ride.get_meta("kind") == "araba") else 0.55
+			_fps_pitch = clampf(_fps_pitch - rel.y * 0.004, -0.8, up_max)
 		else:
 			_cam_pitch = clampf(_cam_pitch + rel.y * 0.004, 0.1, 1.15)
 
@@ -3457,6 +3458,160 @@ func _make_skid() -> AudioStreamWAV:
 var _lights_manual := -1      # -1 otomatik (aksam / gece / yagmur), 0 elle kapali, 1 elle acik
 var _lights_ride: Node3D
 
+
+
+## --cartest=hatch|sedan [--parts=ic,dis,harita] [--phases=gun,gece]: tek calistirmada arabaya biner; gunduz ve gece
+## ic kameradan (duz / sol / sag / arka / yukari / asagi) ve disaridan (far, stop) goruntuler kaydeder
+## (<shot>_<evre>_<ad>.png), sonra gercek tus olayi ile haritayi acip kapatir.
+func _car_test(which: String) -> void:
+	var base: String = (_args["shot"] as String).trim_suffix(".png")
+	var tree := get_tree()
+	var save := func(tag: String) -> void:
+		if DisplayServer.get_name() == "headless":
+			await tree.process_frame
+			return
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s_%s.png" % [base, tag])
+		print("CARTEST kayit ", tag)
+	var target: Node3D = null
+	for r in _rides:
+		if r.get_meta("kind") != "araba" or r.has_meta("garage"):
+			continue
+		if (which == "sedan") == (str(r.get_meta("rig_id", "")) == "sedan"):
+			target = r
+			break
+	if target == null:
+		print("CARTEST arac yok: ", which)
+		return
+	var parts: PackedStringArray = str(_args.get("parts", "ic,dis,harita")).split(",")
+	var phases: PackedStringArray = str(_args.get("phases", "gun,gece")).split(",")
+	if _ride == null and _args.has("realmount"):
+		# Gercek akis: kapi hareketiyle binis, V tusu, kisa surus, fareyle bakis
+		clock = 23.5 if phases[0] == "gece" else 13.0
+		var side: Vector3 = target.global_transform * Vector3(-2.0, 0, 0.6)
+		_place_owner(Vector2(side.x, side.z))
+		life.instant = false
+		for i in 5:
+			await tree.process_frame
+		life.mount(target)
+		var guard := 0
+		while (life.busy() or _ride == null) and guard < 900:
+			guard += 1
+			await tree.process_frame
+		print("CARTEST gercek binis kare=%d arac=%s" % [guard, _ride != null])
+		await save.call("gercek_binis")
+		for down in [true, false]:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = Keybinds.codes_of("fps_view")[0]
+			ev.keycode = ev.physical_keycode
+			ev.pressed = down
+			Input.parse_input_event(ev)
+			await tree.process_frame
+		for i in 6:
+			await tree.process_frame
+		print("CARTEST V sonrasi ic=%s" % _fps)
+		await save.call("gercek_ic")
+		for i in 25:
+			ui.stick = Vector2(0.3, -1.0)
+			await tree.process_frame
+		await save.call("gercek_ic_surus")
+		for i in 6:
+			var mm := InputEventMouseMotion.new()
+			mm.relative = Vector2(-40, -25)
+			_pointer_move(mm.relative)
+			_look_hold = 0.9
+			await tree.process_frame
+		await save.call("gercek_ic_fare")
+		ui.stick = Vector2.ZERO
+		_drive_speed = 0.0
+		_toggle_fps()
+	if _ride == null:
+		owner_node.position = target.position + Vector3(1.0, 0, 0)
+		_enter_ride_now(target, true)
+	for ph in phases:
+		clock = 13.0 if ph == "gun" else 23.5
+		for i in 6:
+			await tree.process_frame
+		print("CARTEST %s %s gece=%.2f farlar=%s cam=%s" % [which, ph, night, lights_on(), _ride.has_meta("glass")])
+		if "ic" in parts:
+			if not _fps:
+				_toggle_fps()
+			var views: Array = [["duz", 0.0, 0.0], ["sol", 1.1, 0.0], ["sag", -1.1, 0.0], ["arka", 2.6, 0.0], ["yukari", 0.4, 0.45], ["asagi", -0.3, -0.5]]
+			if _args.has("angles"):
+				# --angles=sapma:egim,sapma:egim (radyan)
+				views = []
+				for a2 in str(_args["angles"]).split(","):
+					var yp: PackedStringArray = a2.split(":")
+					views.append(["a%s_%s" % [yp[0], yp[1]], float(yp[0]), float(yp[1])])
+			ui.visible = not _args.has("noui")
+			for v: Array in views:
+				for i in 4:
+					_fps_yaw = v[1]
+					_fps_pitch = v[2]
+					_look_hold = 1.0
+					await tree.process_frame
+				await save.call("%s_ic_%s" % [ph, v[0]])
+				if v[0] == "duz" and ph == "gece":
+					_lights_manual = 0
+					for i in 3:
+						await tree.process_frame
+					await save.call("gece_ic_duz_farsiz")
+					_lights_manual = -1
+			ui.visible = true
+			_fps_yaw = 0.0
+			_fps_pitch = 0.0
+			_toggle_fps()
+			for i in 3:
+				await tree.process_frame
+			await save.call("%s_takip" % ph)
+		if "dis" in parts:
+			var old_manual := _lights_manual
+			_mode = "debug"
+			ui.visible = false
+			var b: Transform3D = _ride.global_transform
+			for v: Array in [["on", Vector3(1.6, 1.1, -5.5), Vector3(0, 0.6, -1.0), false, false], ["on_far", Vector3(1.6, 1.1, -5.5), Vector3(0, 0.6, -1.0), true, false],
+					["yol", Vector3(-2.2, 2.6, 5.5), Vector3(0, 0.3, -8.0), true, false], ["arka_stop", Vector3(-1.4, 1.2, 5.2), Vector3(0, 0.7, 1.0), true, true],
+					["yan_cam", Vector3(-3.4, 1.3, 0.2), Vector3(0, 0.95, 0.1), false, false]]:
+				_lights_manual = 1 if v[3] else (0 if ph == "gun" else -1)
+				if v[4]:
+					_args["brake"] = "1"
+				else:
+					_args.erase("brake")
+				cam.fov = 55.0
+				cam.global_position = b * (v[1] as Vector3)
+				cam.look_at(b * (v[2] as Vector3))
+				for i in 3:
+					await tree.process_frame
+				await save.call("%s_dis_%s" % [ph, v[0]])
+			_args.erase("brake")
+			_lights_manual = old_manual
+			_mode = "play"
+			ui.visible = true
+			_snap_chase_camera()
+		if "harita" in parts:
+			for inside in [false, true]:
+				if inside != _fps:
+					_toggle_fps()
+				for i in 4:
+					await tree.process_frame
+				for round_i in 2:
+					for code in [Keybinds.codes_of("map")[0], KEY_ESCAPE]:
+						for down in [true, false]:
+							var ev := InputEventKey.new()
+							ev.physical_keycode = code
+							ev.keycode = code
+							ev.pressed = down
+							Input.parse_input_event(ev)
+							await tree.process_frame
+						for i in 4:
+							await tree.process_frame
+						print("CARTEST harita %s %s tus=%s acik=%s" % [ph, "ic" if inside else "dis", OS.get_keycode_string(code), map_screen.visible])
+						if map_screen.visible and round_i == 0:
+							await save.call("%s_harita_%s" % [ph, "ic" if inside else "dis"])
+				await save.call("%s_harita_sonra_%s" % [ph, "ic" if inside else "dis"])
+			if _fps:
+				_toggle_fps()
+	print("CARTEST bitti")
 
 # ---------------------------------------------------------------- korna / zil
 
@@ -6299,6 +6454,8 @@ func _debug_shot() -> void:
 			for f in 3:
 				await get_tree().process_frame
 			get_viewport().get_texture().get_image().save_png((_args["shot"] as String).replace(".png", "_%s.png" % s))
+	if _args.has("cartest"):
+		await _car_test(str(_args["cartest"]))
 	if _args.has("horn") and _ride != null:
 		# Test: gercek tus olayi ile korna (--horn=1)
 		var hev := InputEventKey.new()
