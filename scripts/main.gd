@@ -954,6 +954,8 @@ func _input(e: InputEvent) -> void:
 			radio.cycle()
 		elif k.is_action_pressed("headlights"):
 			_toggle_lights()
+		elif k.is_action_pressed("horn"):
+			_horn_press()
 		elif k.is_action_pressed("messages"):
 			neighbors.open_messages()
 		elif k.is_action_pressed("switch_pet"):
@@ -2878,7 +2880,8 @@ func _enter_ride_now(r: Node3D, quiet := false) -> void:
 		ui.toast("Çubuk: gaz, fren, direksiyon · kamera düğmesi: içeriden sür" + (" · nota düğmesi: radyo" if cfg["hide"] else ""))
 	else:
 		ui.toast("W/S gaz-fren · A/D direksiyon · Boşluk el freni · V içeriden · %s in%s" % [Keybinds.primary("interact"),
-			(" · %s farlar" % Keybinds.primary("headlights")) if _ride.get_meta("kind") != "bisiklet" else ""] + radio_hint)
+			(" · %s farlar" % Keybinds.primary("headlights")) if _ride.get_meta("kind") != "bisiklet" else ""]
+			+ (" · %s %s" % [Keybinds.primary("horn"), "zil" if _ride.get_meta("kind") == "bisiklet" else "korna"]) + radio_hint)
 
 
 ## Hayvanlar araca biner: arabada iceride (gorunmez), iki tekerlide aktif hayvan arkada oturur.
@@ -3455,6 +3458,116 @@ var _lights_manual := -1      # -1 otomatik (aksam / gece / yagmur), 0 elle kapa
 var _lights_ride: Node3D
 
 
+# ---------------------------------------------------------------- korna / zil
+
+var _horn_p: AudioStreamPlayer
+var _horn_streams := {}       # arac turu -> AudioStreamWAV (prosedurel)
+var _horn_t := 0.0            # kornanin calmakta oldugu sure
+var _horn_react_t := 0.0
+var horn_count := 0           # test: kac kez calindi
+
+
+## Prosedurel korna sesi. Araba: iki tonlu (dongulu); motosiklet: tek, tiz; scooter: ince "bip"; bisiklet: zil.
+func _horn_stream(kind: String) -> AudioStreamWAV:
+	if _horn_streams.has(kind):
+		return _horn_streams[kind]
+	var rate := 22050
+	var bell := kind == "bisiklet"
+	var dur := 0.9 if bell else 0.5
+	var f: float = {"araba": 410.0, "motosiklet": 520.0, "scooter": 690.0}.get(kind, 410.0)
+	# Dongu dikissiz olsun: sure, temel frekansin tam kati
+	if not bell:
+		dur = roundf(dur * f * 0.25) / (f * 0.25)
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	for i in n:
+		var t := float(i) / rate
+		var v := 0.0
+		if bell:
+			# "Cin-cin": iki vurus, cabuk sonen madeni tinlama
+			for hit in [0.0, 0.22]:
+				var tt: float = t - hit
+				if tt >= 0.0:
+					var e := exp(-tt * 9.0)
+					v += (sin(TAU * 2350.0 * tt) * 0.5 + sin(TAU * 3540.0 * tt) * 0.28 + sin(TAU * 5210.0 * tt) * 0.14) * e
+			v *= 0.42
+		elif kind == "araba":
+			v = tanh(2.4 * (sin(TAU * f * t) + sin(TAU * f * 1.25 * t) + 0.45 * sin(TAU * f * 2.0 * t) + 0.2 * sin(TAU * f * 3.0 * t))) * 0.34
+		elif kind == "motosiklet":
+			v = tanh(2.8 * (sin(TAU * f * t) + 0.5 * sin(TAU * f * 2.0 * t) + 0.3 * sin(TAU * f * 3.0 * t))) * 0.3
+		else:
+			v = tanh(1.8 * (sin(TAU * f * t) + 0.35 * sin(TAU * f * 3.0 * t))) * 0.26
+		data.encode_s16(i * 2, int(clampf(v, -1.0, 1.0) * 32767.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.data = data
+	if not bell:
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_end = n
+	_horn_streams[kind] = w
+	return w
+
+
+## Korna tusu (varsayilan B): arabada / motosiklette / scooterda korna (basili tutunca uzar), bisiklette zil.
+func _horn_press() -> void:
+	if _ride == null or _mode != "play":
+		return
+	var kind: String = _ride.get_meta("kind")
+	horn_count += 1
+	if _horn_p == null:
+		_horn_p = AudioStreamPlayer.new()
+		add_child(_horn_p)
+	if state.d["sound"]:
+		_horn_p.stream = _horn_stream(kind)
+		_horn_p.volume_db = -7.0 if kind == "bisiklet" else -5.0
+		_horn_p.pitch_scale = 1.0
+		_horn_p.play()
+	_horn_t = 0.001
+	_horn_react()
+
+
+func _update_horn(dt: float) -> void:
+	if _horn_t <= 0.0:
+		return
+	_horn_t += dt
+	var bell: bool = _ride != null and _ride.get_meta("kind") == "bisiklet"
+	var held: bool = Input.is_action_pressed("horn") and _ride != null and _mode == "play" and not ui.is_blocking() and not map_screen.visible
+	if bell or _ride == null:
+		if _ride == null and _horn_p != null:
+			_horn_p.stop()
+		if _horn_t > 0.9 or _ride == null:
+			_horn_t = 0.0
+		return
+	# En az kisa bir "dat"; tus basili oldukca surer (en cok 4 sn)
+	if (not held and _horn_t > 0.28) or _horn_t > 4.0:
+		_horn_t = 0.0
+		if _horn_p != null:
+			_horn_p.stop()
+		return
+	_horn_react_t -= dt
+	if _horn_react_t <= 0.0:
+		_horn_react()
+
+
+## Kornaya tepki: yakindaki yayalar durup araca bakar.
+func _horn_react() -> void:
+	_horn_react_t = 0.6
+	if _ride == null:
+		return
+	var o := Vector2(_ride.position.x, _ride.position.z)
+	var bell: bool = _ride.get_meta("kind") == "bisiklet"
+	var reach := 7.0 if bell else 13.0
+	for n in _npc_people:
+		if not is_instance_valid(n) or not ("hold" in n):
+			continue
+		var p := Vector2(n.position.x, n.position.z)
+		if p.distance_to(o) < reach and n.hold < 0.3:
+			n.hold = randf_range(0.9, 1.6)
+			n.hold_face = o
+
+
 func _lights_auto() -> bool:
 	return night > 0.45 or (weather != null and (weather.rain > 0.25 or weather.fog > 0.5 or weather.snow > 0.3))
 
@@ -3748,6 +3861,8 @@ func _open_map() -> void:
 	for r in _rides:
 		var kind: String = r.get_meta("kind")
 		var label: String = {"araba": "Arabam", "scooter": "Scooter", "motosiklet": "Motosiklet", "bisiklet": "Bisiklet"}.get(kind, "Aracım")
+		if str(r.get_meta("rig_id", "")) == "sedan":
+			label = "Sedan (Derya)"
 		dyn.append([label, Vector2(r.position.x, r.position.z), "333a44", "play"])
 	for st in world.stops:
 		dyn.append([st["name"] + ((" · " + " ".join(st["lines"])) if not st["lines"].is_empty() else ""), st["pos"], "1a4fa0", "pin"])
@@ -4500,6 +4615,7 @@ func _process(dt: float) -> void:
 	pview.update(dt)
 	life.update(dt)
 	_update_lights()
+	_update_horn(dt)
 	boat.update(dt)
 	radio.update(dt)
 	hotel.update(dt)
@@ -6183,6 +6299,30 @@ func _debug_shot() -> void:
 			for f in 3:
 				await get_tree().process_frame
 			get_viewport().get_texture().get_image().save_png((_args["shot"] as String).replace(".png", "_%s.png" % s))
+	if _args.has("horn") and _ride != null:
+		# Test: gercek tus olayi ile korna (--horn=1)
+		var hev := InputEventKey.new()
+		hev.physical_keycode = Keybinds.codes_of("horn")[0]
+		hev.keycode = hev.physical_keycode
+		hev.pressed = true
+		Input.parse_input_event(hev)
+		for f in 12:
+			await get_tree().process_frame
+		var held_n := 0
+		for n in _npc_people:
+			if is_instance_valid(n) and n.hold > 0.0:
+				held_n += 1
+		print("KORNA tus=%s sayac=%d caliyor=%s akis=%s sure=%.2f bakan_yaya=%d" % [Keybinds.primary("horn"), horn_count,
+			_horn_p != null and _horn_p.playing, _horn_p.stream != null if _horn_p != null else false,
+			(_horn_p.stream.get_length() if _horn_p != null and _horn_p.stream != null else 0.0), held_n])
+		var hev2 := InputEventKey.new()
+		hev2.physical_keycode = hev.physical_keycode
+		hev2.keycode = hev.physical_keycode
+		hev2.pressed = false
+		Input.parse_input_event(hev2)
+		for f in 40:
+			await get_tree().process_frame
+		print("KORNA birakildi caliyor=%s" % [_horn_p != null and _horn_p.playing])
 	if _args.has("carcam") and _ride != null:
 		# Surulen araca sabit bakis: --carcam=side|low|rear|front (arayuz gizli)
 		_mode = "debug"

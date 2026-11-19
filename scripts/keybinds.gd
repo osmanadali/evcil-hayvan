@@ -27,6 +27,7 @@ const ACTIONS := [
 	["train", "NUMARA EĞİTİMİ", [KEY_T]],
 	["radio", "RADYO", [KEY_N]],
 	["headlights", "FARLAR", [KEY_H]],
+	["horn", "KORNA / ZİL", [KEY_B]],
 	["messages", "MESAJLAR", [KEY_K]],
 	["snowball", "KARTOPU", [KEY_Y]],
 ]
@@ -43,6 +44,21 @@ static func setup(saved: Dictionary) -> void:
 			_set_events(name, [int(saved[name])])
 		else:
 			_set_events(name, a[2])
+	# Sonradan eklenen bir eylemin varsayilan tusu, oyuncunun onceden baska eyleme atadigi tusla cakismasin
+	for a in ACTIONS:
+		var name: String = a[0]
+		if saved.has(name):
+			continue
+		var free := (a[2] as Array).filter(func(c): return not _saved_uses(saved, c))
+		if free.size() != (a[2] as Array).size():
+			_set_events(name, free)
+
+
+static func _saved_uses(saved: Dictionary, code: int) -> bool:
+	for k in saved:
+		if int(saved[k]) == code:
+			return true
+	return false
 
 
 static func _set_events(name: String, codes: Array) -> void:

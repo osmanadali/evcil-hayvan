@@ -169,6 +169,7 @@ func _update_hints() -> void:
 	var rows: Array = [[Keybinds.primary("interact"), "Araçtan in"]]
 	if ride.get_meta("kind") != "bisiklet":
 		rows.append([Keybinds.primary("headlights"), "Farlar" + (" (açık)" if m.lights_on() else "")])
+	rows.append([Keybinds.primary("horn"), "Zil" if ride.get_meta("kind") == "bisiklet" else "Korna"])
 	var vps: Vector2 = get_viewport().get_visible_rect().size
 	# Hiz kadraninin ve para yazisinin USTUNDE durur (kadrani kapatmasin)
 	var gauge_top: float = (vps.y - 180.0) if m.minimap.side_gauge else (m.minimap.position.y - 174.0)
