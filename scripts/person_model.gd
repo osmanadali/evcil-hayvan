@@ -610,7 +610,7 @@ func _anim_pose() -> void:
 	elif mouth_w > 0.001:
 		# Sigara nefesi: sol el agzin onune gelir (klip ne olursa olsun: yururken de)
 		var head2 := _skel.get_bone_global_pose(_bones["Head"]).origin
-		var mouth2 := head2 + Vector3(0.025, -0.015, 0.16) * _scale_k()
+		var mouth2 := head2 + Vector3(-0.045, -0.03, 0.19) * _scale_k()
 		var hp2 := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
 		_arm_ik("Left", hp2.lerp(mouth2, clampf(mouth_w, 0.0, 1.0)))
 	elif _act_t < 1.0 and _act == "leash" and hand_target != null:

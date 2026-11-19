@@ -33,6 +33,7 @@ var _smoke: CPUParticles3D        # uctan ince duman
 var _exhale: CPUParticles3D       # agizdan nefes
 var _cough_t := 90.0
 var _warn_t := 0.0
+var _hold := false                # test: el agizda kalir (--smoke=puff)
 
 
 func _d() -> Dictionary:
@@ -261,10 +262,15 @@ func update(dt: float) -> void:
 			_puff = 0.0
 			_exhale_now()
 	var w := clampf(sin(_puff * PI) * 1.5, 0.0, 1.0) if _puff > 0.0 else 0.0
+	if _hold:
+		w = 1.0
+		if _puff_t < 1.0:
+			_puff_t = 3.0
+			_exhale_now()
 	m.owner_model.mouth_w = w
 	var glow := 1.0 + 5.0 * w
 	_ember_mat.emission_energy_multiplier = glow
-	_light.light_energy = 0.15 + 0.6 * w
+	_light.light_energy = 0.04 + 0.16 * w
 	# Etki: sigara boyunca yavasca enerji
 	m.needs.add("energy", ENERGY_GAIN * dt / DURATION)
 	if _t >= DURATION:
@@ -304,7 +310,7 @@ func _build_cig() -> void:
 	_cig = Node3D.new()
 	m.owner_model.hand.add_child(_cig)
 	# Isaret ve orta parmak arasinda; avuctan disari, parmak yonune dogru
-	_cig.position = Vector3(0.0, 0.02, 0.025)
+	_cig.position = Vector3(0.0, 0.02, -0.012)
 	_cig.rotation = Vector3(PI * 0.5, 0.0, 0.0)
 	var filt := Kit.cyl(_cig, 0.0048, 0.0048, 0.022, Vector3(0, 0.011, 0), Kit.mat("c98a3e", 0.7), 10)
 	filt.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -331,8 +337,8 @@ func _build_cig() -> void:
 	_ember.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_light = OmniLight3D.new()
 	_light.light_color = Color("ff7a30")
-	_light.omni_range = 0.35
-	_light.light_energy = 0.15
+	_light.omni_range = 0.22
+	_light.light_energy = 0.04
 	_light.shadow_enabled = false
 	_cig.add_child(_light)
 	_light.position = _ember.position
@@ -411,12 +417,46 @@ func _puff_tex() -> ImageTexture:
 
 ## Test: cantaya paket ve cakmak koy, sigarayi yak. mode "walk": karakter ileri yurur.
 func debug(mode: String) -> void:
+	if mode == "shop" and m._shop != null:
+		# Markette: sepet al, tekel dolabinin onune git, paket ve cakmak koy, kasada ode, sonra yakmayi dene
+		m._take_basket()
+		for id in ["sigara", "cakmak"]:
+			for sp in m._shop.spots:
+				if sp[0] == id:
+					m._place_owner(m._shop.w2(sp[1]))
+			await get_tree().process_frame
+			m._update_context()
+			print("SIGARA raf ipucu=", m.ui._context_cmd)
+			if m.ui._context_cmd == "shop_take:" + id:
+				m._on_command(m.ui._context_cmd)
+		m._place_owner(m._shop.w2(m._shop.counter_local))
+		await get_tree().process_frame
+		m._update_context()
+		print("SIGARA kasa ipucu=", m.ui._context_cmd)
+		var c0: int = int(state.d["coins"])
+		m._on_command(m.ui._context_cmd)
+		print("SIGARA odendi=", c0 - int(state.d["coins"]), " canta=", _bag(), " ", status())
+		print("SIGARA icerde yak=", light(), " neden=", blocked_reason())
+		for sp in m._shop.spots:
+			if sp[0] == "sigara":
+				m._place_owner(m._shop.w2(sp[1] + Vector2(0.3, 0.3)))
+				m.owner_node.rotation.y = PI * 0.5
+		# Kamera: tekel dolabina capraz bakis
+		m._mode = "debug"
+		m.ui.visible = false
+		var y0: float = m._shop.global_position.y
+		var e: Vector2 = m._shop.w2(Vector2(3.0, 7.9))
+		var t: Vector2 = m._shop.w2(Vector2(0.2, 6.2))
+		m.cam.global_position = Vector3(e.x, y0 + 1.75, e.y)
+		m.cam.look_at(Vector3(t.x, y0 + 1.2, t.y))
+		return
 	_bag()[PACK] = 1
 	_bag()[LIGHTER] = 1
 	await get_tree().create_timer(1.0).timeout
 	var ok := light()
 	print("SIGARA yakildi=", ok, " ", status(), " dal=", sticks())
-	if mode == "walk":
+	_hold = mode.ends_with("puff")
+	if mode.begins_with("walk"):
 		m.owner_model.force_speed = 1.3
 
 
