@@ -3748,6 +3748,8 @@ func _open_map() -> void:
 	for r in _rides:
 		var kind: String = r.get_meta("kind")
 		var label: String = {"araba": "Arabam", "scooter": "Scooter", "motosiklet": "Motosiklet", "bisiklet": "Bisiklet"}.get(kind, "Aracım")
+		if r.get_meta("rig_id", "") == "sedan":
+			label = "Sedan (Derya)"
 		dyn.append([label, Vector2(r.position.x, r.position.z), "333a44", "play"])
 	for st in world.stops:
 		dyn.append([st["name"] + ((" · " + " ".join(st["lines"])) if not st["lines"].is_empty() else ""), st["pos"], "1a4fa0", "pin"])
