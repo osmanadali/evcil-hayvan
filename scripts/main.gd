@@ -2653,6 +2653,8 @@ func _spawn_rides() -> void:
 			if sc.is_empty() or (sc[0] as Vector2).distance_to(p) < 7.0:
 				sc = [p - dir * 7.5, atan2(-dir.x, -dir.y)]
 			_place_ride(sedan, sc[0], float(sc[1]))
+			if _args.has("drivelog"):
+				print("SEDAN yer=", sc[0], " ev=", start, " araba=", p)
 	# Bahce kapisinin onunde bisiklet ve scooter
 	for spec in [["bisiklet", "res://assets/models/bisiklet.glb", 1.75, Vector2(1.8, -3.6)], ["scooter", "res://assets/models/scooter.glb", 1.8, Vector2(2.2, 3.6)],
 			["motosiklet", "res://assets/models/motosiklet.glb", 2.05, Vector2(2.2, 6.4)]]:
@@ -3177,6 +3179,9 @@ func _surface_at(p: Vector2) -> float:
 		return 1.0
 	var mk: Array = world._mask(p)
 	if mk[2] > 0.45:
+		return 1.0
+	# Boyama dokusunda asfalt gorunmeyen sokaklar: yol eksenine yakinsa yine asfalt
+	if world._road_point(p).distance_to(p) < 5.0:
 		return 1.0
 	if mk[3] > 0.45 or mk[4] > 0.45 or mk[0] > 0.45:
 		return 0.8

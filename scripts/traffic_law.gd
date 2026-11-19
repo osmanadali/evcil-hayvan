@@ -3,7 +3,7 @@ extends Node
 ## kovalamaca ve ceza, yanlis park cezasi.
 ## - Isikli kavsaklar: OSM'deki isiklar + ana yollarin buyuk kavsaklari. Her kavsakta iki eksen sirayla
 ##   yesil / sari / kirmizi yanar; trafik arabalari (car.gd) kirmizida dur cizgisinde bekler.
-## - Hiz siniri sehirde 50, park ve okul cevresinde 30 km/s; surerken hiz gostergesinin yaninda levha.
+## - Hiz siniri sehirde 70, park ve okul cevresinde 40 km/s; surerken hiz gostergesinin yaninda levha.
 ## - Polis (beyaz-mavi, tepe lambali; gece lambalari yanip soner) devriye gezer. Yakinindayken sinirin
 ##   15 km/s ustunde gitmek, kirmizida gecmek, arabaya ya da yayaya carpmak kovalamaca baslatir (siren,
 ##   ekranda POLIS ve yildizlar). Polisin yaninda durursan ceza yazilir (para duser, yetmezse borc);
@@ -32,7 +32,7 @@ var state: Node
 var junctions: Array = []    # {node, pos, r, axis, ped, mats: [[k,s,y], [k,s,y]], heads}
 var _world: Node3D
 var _lit_last := -99.0
-var limit := 50
+var limit := 70
 var _zone_t := 0.0
 var _slow_zones: Array = []  # [merkez, yaricap] (park ve okul)
 
@@ -71,7 +71,7 @@ var _star_icons: Array = []
 
 
 class LimitSign extends Control:
-	var limit := 50
+	var limit := 70
 	var warn := 0.0
 	var font: Font
 
@@ -270,8 +270,8 @@ func _build_slow_zones() -> void:
 func _zone_limit(p: Vector2) -> int:
 	for z in _slow_zones:
 		if p.distance_to(z[0]) < z[1]:
-			return 30
-	return 50
+			return 40
+	return 70
 
 
 # ---------------------------------------------------------------- polis arabasi
@@ -934,7 +934,7 @@ func _build_wanted() -> void:
 
 func phone_app() -> void:
 	var debt := int(state.d.get("traffic_debt", 0))
-	var body: VBoxContainer = m.ui._open_panel("TRAFİK", "Şehirde hız sınırı 50 km/s, park ve okul çevresinde 30 km/s. Kırmızıda dur, polisin önünde dikkatli ol.")
+	var body: VBoxContainer = m.ui._open_panel("TRAFİK", "Şehirde hız sınırı 70 km/s, park ve okul çevresinde 40 km/s. Kırmızıda dur, polisin önünde dikkatli ol.")
 	_row(body, "Ceza borcun: %d ₺" % debt, Color("ff8a7a") if debt > 0 else Color("8fe39a"))
 	_row(body, "Yazılan ceza sayısı: %d" % int(state.d.get("traffic_fines", 0)), Color.WHITE)
 	if debt > 0:
