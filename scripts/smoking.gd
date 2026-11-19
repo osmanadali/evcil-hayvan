@@ -270,7 +270,7 @@ func update(dt: float) -> void:
 	m.owner_model.mouth_w = w
 	var glow := 1.0 + 5.0 * w
 	_ember_mat.emission_energy_multiplier = glow
-	_light.light_energy = 0.04 + 0.16 * w
+	_light.light_energy = 0.02 + 0.06 * w
 	# Etki: sigara boyunca yavasca enerji
 	m.needs.add("energy", ENERGY_GAIN * dt / DURATION)
 	if _t >= DURATION:
@@ -449,6 +449,33 @@ func debug(mode: String) -> void:
 		var t: Vector2 = m._shop.w2(Vector2(0.2, 6.2))
 		m.cam.global_position = Vector3(e.x, y0 + 1.75, e.y)
 		m.cam.look_at(Vector3(t.x, y0 + 1.2, t.y))
+		return
+	if mode == "cycle":
+		# Mantik testi: son dal, 40 sn, paket biter, zarar ve kayit; sonra arabada hayvanla yakma denemesi
+		_bag()[PACK] = 1
+		_bag()[LIGHTER] = 1
+		_d()["left"] = 1
+		var e0: float = m.needs.value("energy")
+		print("SIGARA cycle yak=", light(), " ", status(), " dal=", sticks())
+		for i in 45:
+			update(1.0)
+		print("SIGARA cycle bitti aktif=", active, " paket=", packs(), " dal=", sticks(), " zarar=", snappedf(harm(), 0.01),
+			" enerji %.1f->%.1f" % [e0, m.needs.value("energy")])
+		state.save_game()
+		var f := FileAccess.open(state.SAVE_PATH, FileAccess.READ)
+		var saved = JSON.parse_string(f.get_as_text()) if f else {}
+		print("SIGARA kayit=", saved.get("smoke", null), " canta=", saved.get("bag", null))
+		print("SIGARA paketsiz yak=", light())
+		_bag()[PACK] = 1
+		light()
+		print("SIGARA yine yakildi aktif=", active)
+		if active:
+			m._ride = m._rides[0] if not m._rides.is_empty() else null
+			m.life._pet = {"a": null, "mode": "seat"}
+			update(0.1)
+			print("SIGARA arac+hayvan -> aktif=", active, " neden=", blocked_reason())
+			m.life._pet = {}
+			m._ride = null
 		return
 	_bag()[PACK] = 1
 	_bag()[LIGHTER] = 1
