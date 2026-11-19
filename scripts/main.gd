@@ -2117,6 +2117,9 @@ func _summon_my_car() -> void:
 	ui.toast("Araban %d m ötede, yol kenarında seni bekliyor." % int(_owner_pos().distance_to(c[0])))
 
 
+var _called_taxi: Node3D = null     # telefonla cagrilan taksi / dolmus (baglamda kendi aracindan once gelir)
+
+
 func _call_taxi(model: String) -> void:
 	var c := _curb_near(_owner_pos())
 	if c.is_empty():
@@ -2130,6 +2133,7 @@ func _call_taxi(model: String) -> void:
 		ui.toast("Şu an boşta %s yok." % ("dolmuş" if model == "dolmus" else "taksi"))
 		return
 	best.summon(c[2], 90.0)
+	_called_taxi = best
 	_set_nav(ParkMap.nodes[c[2]], "Taksi" if model == "taksi" else "Dolmuş")
 	ui.toast("%s geldi! Yanına git ve bin (önce haritadan hedef seç)." % ("Taksi" if model == "taksi" else "Dolmuş"))
 
@@ -5046,8 +5050,9 @@ func _update_context() -> void:
 		return
 	var tx := _nearest_taxi()
 	# Taksi duragina / gecen taksinin yanina park edilmis kendi aracina da binilebilsin: arac taksiden yakinsa once o
-	if tx and near_ride != null and near_ride in _rides \
-			and o.distance_to(Vector2(near_ride.position.x, near_ride.position.z)) < o.distance_to(Vector2(tx.position.x, tx.position.z)):
+	# (kendi cagirdigin taksi haric: o, aracinin dibinde dursa da once gelir)
+	if tx and tx != _called_taxi and near_ride != null and near_ride in _rides \
+			and o.distance_to(Vector2(near_ride.position.x, near_ride.position.z)) < o.distance_to(Vector2(tx.position.x, tx.position.z)) + 0.8:
 		tx = null
 	if tx:
 		ui.set_context("%s Bin" % ("Dolmuşa" if _car_model(tx) == "dolmus" else "Taksiye"), "taxi", "play")

@@ -290,6 +290,20 @@ func goto(p: Vector2) -> void:
 	m._update_context()
 
 
+## Acik pencerenin ilk yazilari (hata iletisi icin).
+func _modal_text() -> String:
+	if m.ui._modal == null:
+		return ""
+	var out: Array = []
+	var stack: Array = [m.ui._modal]
+	while not stack.is_empty() and out.size() < 3:
+		var n: Node = stack.pop_front()
+		if n is Label and n.text != "":
+			out.append(n.text.left(50))
+		stack.append_array(n.get_children())
+	return " | ".join(out)
+
+
 func ctx() -> String:
 	return m.ui._context_cmd
 
@@ -544,13 +558,18 @@ func _g_vehicles() -> void:
 			var side: Vector2 = Vector2(target.position.x, target.position.z) + Vector2(1.7, 0.3).rotated(-target.rotation.y)
 			await goto(side)
 			await fr(10)
-			m._update_context()
-			await key("interact")
-			var t0 := Time.get_ticks_msec()
-			while (m._ride == null or m.life.busy()) and Time.get_ticks_msec() - t0 < 8000:
-				await fr(3)
+			var seen := []
+			for attempt in 3:              # araya giren bir baglam (kovalayan hayvani geri cagir) once onu yapar
+				m._update_context()
+				seen.append(ctx())
+				await key("interact")
+				var t0 := Time.get_ticks_msec()
+				while (m._ride == null or m.life.busy()) and Time.get_ticks_msec() - t0 < (8000 if ctx() == "drive" else 1500):
+					await fr(3)
+				if m._ride != null:
+					break
 			if m._ride == null:
-				bad("F ile binilmedi (baglam=%s)" % ctx())
+				bad("F ile binilmedi (baglamlar=%s pencere=%s '%s' mesgul=%s mod=%s arac=%s)" % [seen, m.ui.is_blocking(), _modal_text(), m.life.busy(), m._mode, Vector2(target.position.x, target.position.z).round()])
 				m.life.instant = true
 				return
 			await key("fps_view")
@@ -579,7 +598,7 @@ func _g_vehicles() -> void:
 				await fr(3)
 			m.life.instant = true
 			if m._ride != null:
-				bad("F ile inilmedi: hiz=%.2f baglam=%s pencere=%s mesgul=%s mod=%s" % [m._drive_speed, ctx(), m.ui.is_blocking(), m.life.busy(), m._mode])
+				bad("F ile inilmedi: hiz=%.2f baglam=%s pencere=%s '%s' mesgul=%s mod=%s" % [m._drive_speed, ctx(), m.ui.is_blocking(), _modal_text(), m.life.busy(), m._mode])
 			if not m.owner_model.visible:
 				bad("inince karakter gorunmuyor"), 40.0)
 	await step("arac: trafik arabasina bin / in", func():
