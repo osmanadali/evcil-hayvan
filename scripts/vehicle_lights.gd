@@ -37,6 +37,24 @@ static func attach(ride: Node3D, kind: String) -> bool:
 		s.visible = false
 		root.add_child(s)
 		spots.append(s)
+	# Yol dolgusu: farlar yere cok yakin oldugu icin isik yola siyirarak duser ve birkac metre otesi karanlik kalir.
+	# On tamponun ustunden one-asagi bakan genis bir isik, 8-30 m arasini surucunun gorecegi kadar aydinlatir
+	# (koni aracin onunde baslar: kendi kaputunu / tavanini aydinlatmaz).
+	var fill := SpotLight3D.new()
+	fill.position = Vector3(0, box.position.y + (2.3 if two else 2.7), front_z - 0.4)
+	fill.rotation.x = -atan2(fill.position.y, 13.0 if two else 16.0)
+	fill.spot_range = 30.0 if two else 42.0
+	fill.spot_angle = 24.0 if two else 30.0
+	fill.spot_angle_attenuation = 1.1
+	fill.spot_attenuation = 0.55
+	fill.light_color = Color("fff1d2")
+	fill.light_energy = 0.0
+	fill.light_specular = 0.1
+	fill.shadow_enabled = false
+	fill.visible = false
+	fill.set_meta("dolgu", true)
+	root.add_child(fill)
+	spots.append(fill)
 	var lamps: Array = []
 	if not ride.has_meta("body_mats"):
 		# Model dugumu: trafik arabasinda ilk cocuk (tutucu), kendi araclarimizda aracin kendisi
@@ -69,7 +87,7 @@ static func update(ride: Node3D, head: bool, brake: bool, rev: bool) -> void:
 	var d: Dictionary = ride.get_meta("isiklar")
 	for s: SpotLight3D in d["spots"]:
 		s.visible = head
-		s.light_energy = 4.2 if head else 0.0
+		s.light_energy = (5.5 if s.has_meta("dolgu") else 4.2) if head else 0.0
 	var tail := 1.0 if brake else (0.35 if head else 0.0)
 	CarBody.set_lamps(ride, 1.0 if head else 0.0, tail, 1.0 if rev else 0.0)
 	var lamps: Array = d["lamps"]

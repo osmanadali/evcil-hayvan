@@ -78,6 +78,9 @@ static func set_lamps(car: Node3D, head: float, tail: float, rev: float) -> void
 static func set_inside(car: Node3D, on: bool) -> void:
 	for gm: BaseMaterial3D in car.get_meta("glass_mats", []):      # kullanicinin modeli (custom_car.gd)
 		gm.albedo_color.a = 0.04 if on else 0.16
+	for gm: BaseMaterial3D in car.get_meta("rig_glass", []):       # ayrintili modeller (car_rig.gd)
+		gm.albedo_color.a = 0.05 if on else float(gm.get_meta("alfa", 0.16))
+		gm.metallic_specular = 0.15 if on else 0.5
 	if not car.has_meta("body_mats"):
 		return
 	for m: ShaderMaterial in car.get_meta("body_mats"):

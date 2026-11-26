@@ -41,7 +41,7 @@ const SPECS := {
 	},
 	"sedan": {
 		"ad": "Derya 1.6 Sedan", "path": "res://assets/vehicles/sedan.glb", "doors": false,
-		"seat": Vector3(-0.376, 0.07, -0.26), "lean": 0.42, "eye": Vector3(-0.376, 1.22, -0.03), "eye_pitch": -0.1,
+		"seat": Vector3(-0.376, 0.0, -0.26), "lean": 0.42, "eye": Vector3(-0.376, 1.12, -0.03), "eye_pitch": -0.1,
 		"feet": [Vector3(-0.49, 0.38, -0.6), Vector3(-0.25, 0.38, -0.64)],
 		"door_spot": Vector3(-1.4, 0, 0.1), "exit_spots": [Vector3(-1.4, 0, 0.1), Vector3(1.4, 0, 0.1), Vector3(-1.8, 0, 0.1), Vector3(1.8, 0, 0.1)],
 		"pet": {"on": [Vector3(0.36, 0.56, 0.72), 0.0, "sit", 0.0, 0.0], "cam": [Vector3(0.42, 0.56, 0.7), -PI / 2, "stand", 1.0, 0.5],
@@ -64,6 +64,8 @@ var _doors := {}           # -1 sol, +1 sag -> dugum
 var _brakes: Array = []
 var _spin: Node3D
 static var _fixed := {}    # malzemeleri bir kez duzelt (yol -> true)
+static var _glass_by_id := {}   # arac kimligi -> cam malzemeleri (iceriden bakarken daha saydam: car_body.gd set_inside)
+var _glass_mats: Array = []
 
 
 ## Araci kurar: id SPECS anahtari. Bulunamazsa null.
@@ -86,6 +88,9 @@ func _build(rig_id: String) -> void:
 	model.name = "Model"
 	add_child(model)
 	_fix_materials()
+	if not _glass_by_id.has(id):
+		_glass_by_id[id] = _glass_mats
+	set_meta("rig_glass", _glass_by_id[id])
 	var wheels: Array = []
 	for n: Node3D in model.get_children():
 		var nm := String(n.name)
@@ -123,6 +128,7 @@ func _fix_materials() -> void:
 	if _fixed.has(id):
 		return
 	_fixed[id] = true
+	_glass_mats = []
 	var glass: Dictionary = spec["glass"]
 	var paint: Dictionary = spec["paint"]
 	var seen := {}
@@ -134,6 +140,8 @@ func _fix_materials() -> void:
 			seen[m] = true
 			var nm := m.resource_name
 			if glass.has(nm):
+				_glass_mats.append(m)
+				m.set_meta("alfa", float(glass[nm]))
 				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				m.albedo_color = Color(0.05, 0.09, 0.11, float(glass[nm]))
 				m.cull_mode = BaseMaterial3D.CULL_DISABLED

@@ -52,7 +52,7 @@ func texts(id: String) -> Array:
 		"drive":
 			if _touch:
 				return ["ARABA SÜRME", "Sağ alttaki pedallarla gaz ve fren, sol alttaki çubukla direksiyon.\nİç kamera ve in düğmeleri kamera yanında."]
-			return ["ARABA SÜRME", "%s/%s gaz-fren  ·  %s/%s direksiyon  ·  %s el freni\n%s iç kamera  ·  %s radyo  ·  %s farlar  ·  %s in" % [_k("move_forward"), _k("move_back"), _k("move_left"), _k("move_right"), _k("jump"), _k("fps_view"), _k("radio"), _k("headlights"), f]]
+			return ["ARABA SÜRME", "%s/%s gaz-fren  ·  %s/%s direksiyon  ·  %s el freni\n%s iç kamera  ·  %s radyo  ·  %s farlar  ·  %s korna  ·  %s in" % [_k("move_forward"), _k("move_back"), _k("move_left"), _k("move_right"), _k("jump"), _k("fps_view"), _k("radio"), _k("headlights"), _k("horn"), f]]
 		"radio":
 			return ["RADYO", "%s ile istasyon değiştir.\nSürerken müzik keyfi!" % ("Radyo düğmesiyle" if _touch else _k("radio") + " tuşu")]
 		"passenger":
