@@ -3070,6 +3070,8 @@ func _cockpit_camera() -> void:
 	_focus = owner_node.position        # dis kamera hedefi geride kalmasin
 	if not _looking():
 		_fps_yaw = lerpf(_fps_yaw, 0.0, minf(1.0, get_process_delta_time() * 1.5))
+		# Egim de ortalanir: fare bir kez yukari kayinca kamera tavana bakar halde kalmasin
+		_fps_pitch = lerpf(_fps_pitch, 0.0, minf(1.0, get_process_delta_time() * 1.5))
 	var look := Basis(Vector3.UP, _fps_yaw) * Basis(Vector3.RIGHT, _fps_pitch)
 	if kind == "araba":
 		if _cockpit == null:
@@ -3645,6 +3647,11 @@ func _car_test(which: String) -> void:
 						await tree.process_frame
 					print("CARTEST surharita %s %s tus=%s acik=%s hiz=%.1f rota=%d" % [ph, "ic" if inside else "dis", OS.get_keycode_string(code), map_screen.visible, _drive_speed, map_screen.route.size()])
 				await save.call("%s_surharita_%s" % [ph, "ic" if inside else "dis"])
+				var mine: Array = []
+				for pin in map_screen.PINS:
+					if str(pin[0]) in ["Arabam", "Sedan (Derya)", "Scooter", "Motosiklet", "Bisiklet", "Aracım"]:
+						mine.append(pin[0])
+				print("CARTEST harita arac isaretleri ", mine)
 				map_screen.visible = false
 			ui.stick = Vector2.ZERO
 			_drive_speed = 0.0
