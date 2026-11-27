@@ -71,6 +71,7 @@ var _body_mi: MeshInstance3D
 # Spor salonu hareketi (scripts/gym_interior.gd): "" | "curl" (dambil) | "situp" (mekik); kosu bandi force_speed ile
 var exercise := ""
 var _ex_t := 0.0
+var muscle := 0.0           # 0..1 spor salonundaki guc: gogus ve kollar biraz genisler (kemik olcegi)
 
 var _skel: Skeleton3D
 var _bones := {}
@@ -99,6 +100,8 @@ func _ready() -> void:
 		_apply_hair()
 	if beard_style != 0:
 		_apply_beard()
+	if muscle > 0.0:
+		_apply_build()
 	# Dinlenme durusunda kollar acik, dirsekler bukuk, bacaklar ayrik: hepsini duzelt
 	for side in ["Left", "Right"]:
 		var sx := 1.0 if side == "Left" else -1.0
@@ -204,6 +207,29 @@ func set_hair(style: int, col: Color) -> void:
 	hair_color = col
 	if _skel != null:
 		_apply_hair()
+
+
+## Spor: guc (0..100) arttikca gogus / omuz ve ust kollar kalinlasir.
+func set_build(guc: float) -> void:
+	muscle = clampf(guc / 100.0, 0.0, 1.0)
+	if _skel != null:
+		_apply_build()
+
+
+func _apply_build() -> void:
+	var u := muscle
+	for b in [["Spine2", Vector3(1.0 + 0.12 * u, 1.0, 1.0 + 0.16 * u)], ["LeftArm", Vector3(1.0 + 0.26 * u, 1.0, 1.0 + 0.26 * u)],
+			["RightArm", Vector3(1.0 + 0.26 * u, 1.0, 1.0 + 0.26 * u)]]:
+		if _bones.has(b[0]):
+			_skel.set_bone_pose_scale(_bones[b[0]], b[1])
+	# Cocuk kemikler (boyun, omuz, on kol) eski olcege doner: bas / eller buyumesin
+	var inv_c := Vector3(1.0 / (1.0 + 0.12 * u), 1.0, 1.0 / (1.0 + 0.16 * u))
+	for c in ["Neck", "LeftShoulder", "RightShoulder"]:
+		if _bones.has(c) and _skel.get_bone_parent(_bones[c]) == _bones.get("Spine2", -9):
+			_skel.set_bone_pose_scale(_bones[c], inv_c)
+	for side in ["Left", "Right"]:
+		if _bones.has(side + "ForeArm"):
+			_skel.set_bone_pose_scale(_bones[side + "ForeArm"], Vector3(1.0 / (1.0 + 0.14 * u), 1.0, 1.0 / (1.0 + 0.14 * u)))
 
 
 ## Berber: sakal modeli (renk saç rengiyle aynı).

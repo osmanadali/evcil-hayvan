@@ -111,7 +111,6 @@ func _build_barber() -> void:
 	add_child(cust)
 	chairs[0]["npc"] = cust
 	chairs[0]["seat"]["busy"] = true
-	_cape(cust, Vector3(3.0, 0.45, 1.55))
 	_npc_barber = _person(Vector2(3.0, 2.25), PI * 0.0, Color("2a2d33"), false)
 	# Oyuncunun berberi: orta koltugun yaninda bekler
 	_barber_home = Vector2(6.35, 2.3)
@@ -197,12 +196,6 @@ func _chair(c: Vector2) -> void:
 	Kit.box(self, Vector3(0.42, 0.03, 0.18), Vector3(c.x, 0.16, c.y - 0.5), chrome, Vector3(0.3, 0, 0))
 	Kit.box(self, Vector3(0.03, 0.28, 0.03), Vector3(c.x, 0.2, c.y - 0.34), chrome, Vector3(0.9, 0, 0))
 	_solid(c + Vector2(0, 0.1), Vector2(0.32, 0.32))
-
-
-func _cape(p: Node3D, at: Vector3) -> void:
-	# Musterinin uzerinde berber onlugu (cizgili)
-	var cape := Kit.cyl(self, 0.16, 0.36, 0.62, at + Vector3(0, 0.82, -0.02), Kit.mat("e8eef4", 0.7), 16)
-	cape.scale = Vector3(1.0, 1.0, 0.75)
 
 
 func _person(at: Vector2, face_y: float, shirt: Color, female: bool) -> Node3D:
@@ -485,3 +478,33 @@ func debug_cut(style: int, hex: String, beard: int) -> void:
 	pay()
 	await get_tree().create_timer(4.6).timeout
 	print("BERBER kayit hair=", m.state.d.get("hair"), " log=", m.state.d.get("berber_log", []).slice(0, 1), " para=", m.state.d["coins"])
+
+
+## --berber=dizi : sakal ve sac modellerini yan yana dizer, yakin cekim (goruntu testi).
+func debug_lineup() -> void:
+	await get_tree().create_timer(0.5).timeout
+	var PM := PersonModel
+	var row: Array = []
+	for i in 5:
+		var v := PM.new()
+		v.kind = "erkek"
+		v.tint = Color("34507a")
+		v.hair_style = [0, 1, 2, 3, 4][i]
+		v.hair_color = Color(["4a3324", "17120f", "8a5a35", "a8452a", "b9b6b0"][i])
+		v.beard_style = i
+		v.muscle = 0.0 if i < 3 else 1.0
+		v.position = Vector3(4.0 + i * 0.7, 0, 5.0)
+		v.rotation.y = PI
+		add_child(v)
+		row.append(v)
+	m._mode = "debug"
+	m.ui.visible = false
+	m.owner_node.visible = false
+	for k in m.agents:
+		m.agents[k].visible = false
+	var at: Node = m.get("cam")
+	var g := global_position
+	at.global_position = g + Vector3(5.4, 1.62, 6.9)
+	at.look_at(g + Vector3(5.4, 1.5, 5.0))
+	await get_tree().create_timer(2.0).timeout
+	print("BERBER dizi: sakal 0..4, kas 0,0,0,1,1")

@@ -1477,6 +1477,9 @@ func debug(what: String, arg: String) -> void:
 			state.d["coins"] = maxi(int(state.d["coins"]), 200)
 			m._place_owner(s3["pos"])
 			m._enter_shop(s3["spot"])
+			if pp.size() > 1 and pp[1] == "dizi":
+				m._shop.debug_lineup()
+				return
 			m._shop.debug_cut(int(pp[1]) if pp.size() > 1 else 1, pp[2] if pp.size() > 2 else "-", int(pp[3]) if pp.size() > 3 else 4)
 		"gym":
 			var s4 := shop_of("spor")

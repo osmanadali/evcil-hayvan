@@ -643,6 +643,7 @@ func _spawn_cast() -> void:
 		owner_model.hair_style = int(hr[0])
 		owner_model.hair_color = Color(hr[1]) if String(hr[1]) != "" else Color(0, 0, 0, 0)
 		owner_model.beard_style = int(hr[2]) if hr.size() > 2 else 0
+	owner_model.muscle = float(preload("res://scripts/gym_interior.gd").fit(state.d)["guc"]) / 100.0
 	_ride = null
 	_spawn_rides()
 	_spawn_buses()
