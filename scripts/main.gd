@@ -642,6 +642,8 @@ func _spawn_cast() -> void:
 	if hr.size() >= 2:
 		owner_model.hair_style = int(hr[0])
 		owner_model.hair_color = Color(hr[1]) if String(hr[1]) != "" else Color(0, 0, 0, 0)
+		owner_model.beard_style = int(hr[2]) if hr.size() > 2 else 0
+	owner_model.muscle = float(preload("res://scripts/gym_interior.gd").fit(state.d)["guc"]) / 100.0
 	_ride = null
 	_spawn_rides()
 	_spawn_buses()
@@ -1183,6 +1185,8 @@ func _enter_shop(sp: Dictionary) -> void:
 		_shop = preload("res://scripts/restaurant_interior.gd").new()
 		_shop.style = sp.get("style", "ev")
 		_shop.menu = eateries.menu_of(_shop.style)
+	elif sp.has("interior"):
+		_shop = load(sp["interior"]).new()       # berber, spor salonu (kendi baglam / komutlari var)
 	else:
 		_shop = ShopInterior.new()
 	_shop.kind = sp["kind"]
@@ -1412,6 +1416,10 @@ func _take_basket() -> void:
 
 func _put_in_basket(id: String) -> void:
 	if _basket_node == null:
+		return
+	var cap: int = preload("res://scripts/gym_interior.gd").carry_cap(state.d)     # spor salonunda guc arttikca artar
+	if _cart_count() >= cap:
+		ui.toast("Sepet çok ağır! En çok %d ürün taşıyabilirsin. Spor salonunda güç çalışırsan artar." % cap)
 		return
 	_cart[id] = int(_cart.get(id, 0)) + 1
 	var it := _item(id)
@@ -2328,6 +2336,9 @@ func _on_command(cmd: String) -> void:
 		return
 	if cmd.begins_with("esn_"):
 		esnaf.command(cmd)
+		return
+	if cmd.begins_with("in_") and _shop != null and _shop.has_method("command"):
+		_shop.command(cmd)
 		return
 	if cmd.begins_with("pa_") or cmd.begins_with("tr_"):
 		tplus.command(cmd)
@@ -4778,7 +4789,8 @@ func _process(dt: float) -> void:
 	_pet_cd -= dt
 	if _perf_on:
 		pt = _pm("on (fare/harita/gun/hava)", pt)
-	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy() and not life.busy() and not eateries.is_seated() and not seating.busy() and not esnaf.is_seated() and not social.busy():
+	if _play_ride.is_empty() and not street_food.is_seated() and not needs.busy() and not home_life.busy() and not life.busy() and not eateries.is_seated() and not seating.busy() and not esnaf.is_seated() and not social.busy() \
+			and not (_shop != null and ParkMap.home == _shop and _shop.has_method("busy") and _shop.busy()):
 		_update_owner(dt)
 	if _jump_h > 0.0 or _jump_v > 0.0:
 		_jump_v -= 18.0 * dt
@@ -5261,6 +5273,10 @@ func _update_context() -> void:
 	if _near_home_exit():
 		ui.set_context("Dışarı Çık", "home_out", "come")
 		return
+	if _shop != null and ParkMap.home == _shop and _shop.has_method("context"):
+		var ic: Array = _shop.context()
+		ui.set_context(ic[0] if ic.size() == 3 else "", ic[1] if ic.size() == 3 else "", ic[2] if ic.size() == 3 else "star")
+		return
 	if _shop != null and ParkMap.home == _shop and _shop.kind == "lokanta":
 		var ec: Array = eateries.context()
 		ui.set_context(ec[0], ec[1], ec[2])
@@ -5298,7 +5314,7 @@ func _update_context() -> void:
 				if sp["kind"] == "lokanta":
 					ui.set_context("%s · İçeri Gir" % sp["name"], "shop_in", "star")
 				else:
-					ui.set_context({"eczane": "Eczaneye Gir", "market": "Markete Gir", "veteriner": "Veterinere Gir"}.get(sp["kind"], "İçeri Gir"), "shop_in", "cart")
+					ui.set_context({"eczane": "Eczaneye Gir", "market": "Markete Gir", "veteriner": "Veterinere Gir"}.get(sp["kind"], sp.get("enter", "İçeri Gir")), "shop_in", "cart")
 				return
 	if _home != null and ParkMap.home == _home and _home.local2(o).distance_to(Vector2(7.0, 2.6)) < 1.1:
 		ui.set_context("Dolabı Aç", "wardrobe", "star")
@@ -5765,6 +5781,8 @@ func _debug_shot() -> void:
 			esnaf.debug("panel" if _args[ek] == "panel" else "shop", ek)
 	if _args.has("berber"):
 		esnaf.debug("berber", _args["berber"])
+	if _args.has("gym"):
+		esnaf.debug("gym", _args["gym"])
 	if _args.has("kahvehane"):
 		esnaf.debug("kahvehane", _args["kahvehane"])
 	if _args.has("dugun"):

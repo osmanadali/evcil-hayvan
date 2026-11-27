@@ -63,6 +63,15 @@ var hair_color := Color(0, 0, 0, 0)
 var _hair_meshes: Array = []
 var _hair_mats: Array = []
 var _hair_extra: Node3D
+# Sakal (berber, scripts/beard.gd): 0 yok, 1 kirli sakal, 2 biyik, 3 keci sakal, 4 tam sakal
+const BEARD_STYLES := ["Sakalsız", "Kirli Sakal", "Bıyık", "Keçi Sakal", "Tam Sakal"]
+var beard_style := 0
+var _beard: Node3D
+var _body_mi: MeshInstance3D
+# Spor salonu hareketi (scripts/gym_interior.gd): "" | "curl" (dambil) | "situp" (mekik); kosu bandi force_speed ile
+var exercise := ""
+var _ex_t := 0.0
+var muscle := 0.0           # 0..1 spor salonundaki guc: gogus ve kollar biraz genisler (kemik olcegi)
 
 var _skel: Skeleton3D
 var _bones := {}
@@ -89,6 +98,10 @@ func _ready() -> void:
 		_dress(mi)
 	if hair_style != 0 or hair_color.a > 0.0:
 		_apply_hair()
+	if beard_style != 0:
+		_apply_beard()
+	if muscle > 0.0:
+		_apply_build()
 	# Dinlenme durusunda kollar acik, dirsekler bukuk, bacaklar ayrik: hepsini duzelt
 	for side in ["Left", "Right"]:
 		var sx := 1.0 if side == "Left" else -1.0
@@ -151,6 +164,7 @@ func _dress(mi: MeshInstance3D) -> void:
 			bm.roughness = 0.2
 		elif part.begins_with("govde"):
 			bm.roughness = 0.62
+			_body_mi = mi
 		m = bm
 	mi.set_surface_override_material(0, m)
 	_keep.append(m)
@@ -195,10 +209,54 @@ func set_hair(style: int, col: Color) -> void:
 		_apply_hair()
 
 
+## Spor: guc (0..100) arttikca gogus / omuz ve ust kollar kalinlasir.
+func set_build(guc: float) -> void:
+	muscle = clampf(guc / 100.0, 0.0, 1.0)
+	if _skel != null:
+		_apply_build()
+
+
+func _apply_build() -> void:
+	var u := muscle
+	for b in [["Spine2", Vector3(1.0 + 0.12 * u, 1.0, 1.0 + 0.16 * u)], ["LeftArm", Vector3(1.0 + 0.26 * u, 1.0, 1.0 + 0.26 * u)],
+			["RightArm", Vector3(1.0 + 0.26 * u, 1.0, 1.0 + 0.26 * u)]]:
+		if _bones.has(b[0]):
+			_skel.set_bone_pose_scale(_bones[b[0]], b[1])
+	# Cocuk kemikler (boyun, omuz, on kol) eski olcege doner: bas / eller buyumesin
+	var inv_c := Vector3(1.0 / (1.0 + 0.12 * u), 1.0, 1.0 / (1.0 + 0.16 * u))
+	for c in ["Neck", "LeftShoulder", "RightShoulder"]:
+		if _bones.has(c) and _skel.get_bone_parent(_bones[c]) == _bones.get("Spine2", -9):
+			_skel.set_bone_pose_scale(_bones[c], inv_c)
+	for side in ["Left", "Right"]:
+		if _bones.has(side + "ForeArm"):
+			_skel.set_bone_pose_scale(_bones[side + "ForeArm"], Vector3(1.0 / (1.0 + 0.14 * u), 1.0, 1.0 / (1.0 + 0.14 * u)))
+
+
+## Berber: sakal modeli (renk saç rengiyle aynı).
+func set_beard(style: int) -> void:
+	beard_style = style
+	if _skel != null:
+		_apply_beard()
+
+
+func _apply_beard() -> void:
+	if is_instance_valid(_beard):
+		_beard.queue_free()
+	_beard = null
+	if beard_style <= 0 or _body_mi == null or not _bones.has("Head"):
+		return
+	var col: Color = hair_color if hair_color.a > 0.0 else ((_hair_mats[0] as BaseMaterial3D).albedo_color if not _hair_mats.is_empty() else Color("3a2a1e"))
+	_beard = preload("res://scripts/beard.gd").build(_skel, _bones["Head"], _body_mi, beard_style, col)
+	if _beard:
+		_keep.append((_beard.get_child(0) as MeshInstance3D).material_override)
+
+
 func _apply_hair() -> void:
 	for bm: BaseMaterial3D in _hair_mats:
 		if hair_color.a > 0.0:
 			bm.albedo_color = hair_color
+	if beard_style > 0:
+		_apply_beard()
 	if is_instance_valid(_hair_extra):
 		_hair_extra.queue_free()
 	_hair_extra = null
@@ -585,6 +643,9 @@ func _anim_pose() -> void:
 	else:
 		anim.play("Sprint", 0.25, clampf(speed / 6.0, 0.7, 1.4))
 	anim.apply()
+	if exercise != "":
+		_exercise_pose()
+		return
 	# Yuruyus / kosu kliplerinde kollar govdeden fazla acik: ust kollar govdeye yaklastirilir
 	var loco: bool = anim.current in ["Walk", "Jog_Fwd", "Sprint"] and not airborne
 	_arm_in = move_toward(_arm_in, 0.16 if loco else 0.0, get_process_delta_time() * 0.8)
@@ -612,6 +673,34 @@ func _anim_pose() -> void:
 		var tgt: Vector3 = _skel.global_transform.affine_inverse() * (hand_target as Vector3)
 		var hp := _skel.get_bone_global_pose(_bones["LeftHand"]).origin
 		_arm_ik("Left", hp.lerp(tgt, w2))
+
+
+## Spor salonu: klibin ustune kodla hareket (dambil kaldirma, mekik).
+func _exercise_pose() -> void:
+	_ex_t += get_process_delta_time()
+	var k := _scale_k()
+	match exercise:
+		"curl":
+			# Iki kol sirayla: el kalcadan omuza kalkar
+			for side in ["Left", "Right"]:
+				var sx := 1.0 if side == "Left" else -1.0
+				var ph := _ex_t * 2.6 + (0.0 if side == "Left" else PI)
+				var u := 0.5 - 0.5 * cos(ph)
+				var sh := _skel.get_bone_global_pose(_bones[side + "Arm"]).origin
+				var lo := sh + Vector3(sx * 0.06, -0.5, 0.06) * k
+				var hi := sh + Vector3(sx * 0.04, -0.13, 0.2) * k
+				_arm_ik(side, lo.lerp(hi, u))
+		"situp":
+			# Mekik sehpasinda: govde geriye yatar, geri kalkar; eller ensede
+			var u := 0.5 - 0.5 * cos(_ex_t * 2.2)
+			_swing("Spine", 0.55 * u)
+			_swing("Spine1", 0.25 * u)
+			_swing("Neck", -0.2 * u)
+			var hd := _skel.get_bone_global_pose(_bones["Head"]).origin
+			var back := _skel.get_bone_global_pose(_bones["Head"]).basis.orthonormalized() * Vector3(0, 0.06, -0.09) * k
+			for side in ["Left", "Right"]:
+				var sx := 1.0 if side == "Left" else -1.0
+				_arm_ik(side, hd + back + Vector3(sx * 0.1, 0, 0) * k)
 
 
 ## Kemigi iskelet uzayinda X ekseni etrafinda dondurur (+ = geriye).
