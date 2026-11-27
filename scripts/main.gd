@@ -133,6 +133,7 @@ var emlak: Node          # EvBul: kiralik / satilik evler (scripts/emlak.gd)
 var meslek: Node         # taksi, garson, bakici isleri ve gunluk kazanc (scripts/meslekler.gd)
 var home_life: Node      # evde yemek, mobilya ve temizlik (scripts/home_life.gd)
 var pview: Node          # yolcu bakisi: taksi / dolmus / otobuste koltuktan kamera + yolcu gostergesi (scripts/passenger_view.gd)
+var smoking: Node        # sigara: paket, cakmak, icme, duman (scripts/smoking.gd)
 var life: Node           # arac hayati: binme / inme hareketi, yan ayak, hayvan koltugu, gostergeler (scripts/vehicle_life.gd)
 var _weather_seen := ""
 var _weather_t := 0.0
@@ -198,6 +199,10 @@ func _ready() -> void:
 	needs.m = self
 	needs.state = state
 	add_child(needs)
+	smoking = preload("res://scripts/smoking.gd").new()
+	smoking.m = self
+	smoking.state = state
+	add_child(smoking)
 	flow = preload("res://scripts/traffic_flow.gd").new()
 	flow.m = self
 	add_child(flow)
@@ -922,6 +927,10 @@ func _input(e: InputEvent) -> void:
 					_exit_ride()
 			elif ui._context_cmd != "":
 				_on_command(ui._context_cmd)
+			elif smoking.active:
+				smoking.stop(true)
+		elif k.is_action_pressed("smoke"):
+			smoking.toggle()
 		elif k.is_action_pressed("pet_love"):
 			_on_command("pet")
 		elif k.is_action_pressed("pet_feed"):
@@ -1486,6 +1495,8 @@ func _use_item(name: String) -> void:
 		return
 	if social.use_item(name):
 		return
+	if smoking.use_item(name):
+		return
 	owner_model.act("eat", 2.4)
 	# Eldeki yiyecek/icecek: kisa sure elde gorunur
 	var it := Node3D.new()
@@ -1962,6 +1973,10 @@ func _open_phone() -> void:
 		["Kamera", "555b66", "camera", func(): _on_photo("enter"), true],
 		["Patigram", "d6336c", "paw", func(): patigram.phone_app()],
 		["Çanta", "a8774a", "bag", func(): ui.open_bag()],
+	]
+	if smoking.packs() > 0 or smoking.active:
+		apps.append(["Sigara (%d)" % smoking.packs(), "8a6a4a", "list", func(): smoking.phone_app()])
+	apps += [
 		["Hava", "3d8fd6", "sun" if weather.icon() == "sun" else "drop", func(): _open_weather()],
 	]
 	if not world.fuel_stations.is_empty():
@@ -4826,6 +4841,7 @@ func _process(dt: float) -> void:
 	_update_health(dt)
 	pet_health.update(dt)
 	needs.update(dt)
+	smoking.update(dt)
 	_update_play_ride(dt)
 	pview.update(dt)
 	life.update(dt)
@@ -5792,6 +5808,9 @@ func _debug_shot() -> void:
 	for ka in ["snowman", "mangal", "yilbasi", "konvoy"]:
 		if _args.has(ka):
 			seasons.debug(_args)
+	if _args.has("smoke"):
+		await smoking.debug(_args["smoke"])
+		await get_tree().create_timer(float(_args.get("smokewait", "3.0"))).timeout
 	if _args.has("tea"):
 		street_food.debug_sit()
 	if _args.has("cart"):
