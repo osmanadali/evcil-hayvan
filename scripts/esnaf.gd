@@ -342,7 +342,10 @@ func _berber(r: Node3D, HX: float, HZ: float, glass: Material, dark: Material) -
 	pole.add_child(spin)
 	for k in 6:
 		var col := "d22a2a" if k % 2 == 0 else "2a4fd2"
-		Kit.box(spin, Vector3(0.03, 1.2, 0.03), Vector3(cos(k * TAU / 6.0) * 0.092, 0, sin(k * TAU / 6.0) * 0.092), Kit.glow(col, 0.8), Vector3(0.0, -k * TAU / 6.0, 0.45))
+		# Sarmal serit: kisa parcalar, yukari ciktikca aci artar (direk yuzeyinde kalir)
+		for j in 12:
+			var a := k * TAU / 6.0 + j * 0.16
+			Kit.box(spin, Vector3(0.05, 0.11, 0.012), Vector3(cos(a) * 0.092, -0.55 + j * 0.1, sin(a) * 0.092), Kit.glow(col, 0.8), Vector3(0.0, -a + PI * 0.5, 0.0))
 	_poles.append(spin)
 	_staff(r, Vector3(0.0, 0, HZ - 0.9), "erkek", "2a2d33")
 

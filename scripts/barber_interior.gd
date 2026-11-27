@@ -166,7 +166,9 @@ func _build_barber() -> void:
 	Kit.cyl(pole, 0.09, 0.09, 0.9, Vector3.ZERO, Kit.glow("f4f4f4", 0.4), 12)
 	for k in 6:
 		var colh := "d22a2a" if k % 2 == 0 else "2a4fd2"
-		Kit.box(pole, Vector3(0.025, 0.9, 0.025), Vector3(cos(k * TAU / 6.0) * 0.08, 0, sin(k * TAU / 6.0) * 0.08), Kit.glow(colh, 0.7), Vector3(0.0, -k * TAU / 6.0, 0.45))
+		for j in 9:
+			var a := k * TAU / 6.0 + j * 0.17
+			Kit.box(pole, Vector3(0.045, 0.1, 0.012), Vector3(cos(a) * 0.08, -0.4 + j * 0.1, sin(a) * 0.08), Kit.glow(colh, 0.7), Vector3(0.0, -a + PI * 0.5, 0.0))
 	# Sicak isik koltuklarin ustunde
 	for x in [3.0, 5.5, 8.0]:
 		var sl := SpotLight3D.new()
