@@ -1487,6 +1487,16 @@ func debug(what: String, arg: String) -> void:
 				print("SPOR yok")
 				return
 			state.d["coins"] = maxi(int(state.d["coins"]), 300)
+			if arg == "harita":
+				m._place_owner(s4["pos"] + (s4["tw"] as Vector2) * 60.0)
+				m._set_nav(s4["pos"], s4["name"])
+				m._open_map()
+				var names: Array = []
+				for dd in m.map_screen.dynamic:
+					if String(dd[0]).contains("Spor") or String(dd[0]).contains("Berber"):
+						names.append(dd[0])
+				print("SPOR harita isaretleri: ", names)
+				return
 			if arg == "dis":
 				var tw4: Vector2 = s4["tw"]
 				m._place_owner(s4["pos"] + tw4 * 6.0 + Vector2(-tw4.y, tw4.x) * 2.0)

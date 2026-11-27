@@ -69,8 +69,8 @@ func _build_gym() -> void:
 		Kit.box(self, Vector3(0.02, H, D), Vector3(side, H * 0.5, D * 0.5), wall)
 		Kit.box(self, Vector3(0.03, 0.25, D), Vector3(side, 1.6, D * 0.5), Kit.mat(accent, 0.6))
 	Kit.box(self, Vector3(W, 0.25, 0.03), Vector3(W * 0.5, 1.6, 0.02), Kit.mat(accent, 0.6))
-	_sign("KONDİSYON", Vector3(W * 0.5 + 2.6, 2.5, 0.05), accent, Color.WHITE)
-	_poster(Vector3(7.6, 2.1, 0.04), 0.0, "BUGÜN DE\nGELDİN!")
+	_sign("KONDİSYON", Vector3(3.6, 2.55, 0.05), accent, Color.WHITE)
+	_poster(Vector3(8.4, 2.15, 0.04), 0.0, "BUGÜN DE\nGELDİN!")
 	_poster(Vector3(W - 0.04, 2.1, 3.2), -PI * 0.5, "GÜÇ\nDAYANIKLILIK")
 	# Uc kosu bandi (arka duvara donuk); ortadakinde bir uye kosuyor
 	for i in 3:
@@ -370,7 +370,7 @@ func start(i: int) -> void:
 		"kosu":
 			om.force_speed = 3.2
 			bar.setup("KOŞU BANDI", "Tempolu koşu… (dayanıklılık)")
-			m._cam_yaw = PI * 0.5 + 0.35
+			m._cam_yaw = 0.7
 		"agirlik":
 			om.exercise = "curl"
 			om._ex_t = 0.0
@@ -471,5 +471,11 @@ func debug(what: String) -> void:
 				await get_tree().create_timer(0.3).timeout
 				print("SPOR baglam=", context())
 				await start(i)
-				await get_tree().create_timer(SET_SECS + 0.5 if what == "hepsi" else 3.0).timeout
+				if what != "hepsi":
+					_ex["t"] = -60.0        # goruntu icin set bitmesin
+				await get_tree().create_timer(2.5).timeout
+				if DisplayServer.get_name() != "headless" and m._args.has("shot"):
+					m.get_viewport().get_texture().get_image().save_png(String(m._args["shot"]).replace(".png", "_%s.png" % k))
+					print("SPOR goruntu ", k)
+				await get_tree().create_timer(SET_SECS - 2.0 if what == "hepsi" else 0.5).timeout
 				break

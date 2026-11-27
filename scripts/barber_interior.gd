@@ -113,7 +113,7 @@ func _build_barber() -> void:
 	chairs[0]["seat"]["busy"] = true
 	_npc_barber = _person(Vector2(3.0, 2.25), PI * 0.0, Color("2a2d33"), false)
 	# Oyuncunun berberi: orta koltugun yaninda bekler
-	_barber_home = Vector2(6.35, 2.3)
+	_barber_home = Vector2(4.35, 2.5)
 	barber = _person(_barber_home, -PI * 0.25, Color("1f2a44"), false)
 	# Sag duvar: bekleme banki, sehpa, dergiler
 	var wood := Kit.mat("6b3d22", 0.6)
@@ -445,7 +445,7 @@ func _finish_cut() -> void:
 	st["berber_log"] = rec
 	if m.get("bank") and m.bank.has_method("_log"):
 		m.bank._log("Makas Berber · " + ", ".join(c["what"]), -int(c["price"]))
-	m.state.count("shop")
+	m.state.count("berber")
 	m.state.save_game()
 	_orig = _pick.duplicate()
 	m._sfx("mutlu", -8.0)
@@ -475,8 +475,12 @@ func debug_cut(style: int, hex: String, beard: int) -> void:
 		_try(2, beard)
 	print("BERBER onizleme=", _pick, " ucret=", _price())
 	await get_tree().create_timer(1.0).timeout
+	_shot("panel")
 	pay()
-	await get_tree().create_timer(4.6).timeout
+	await get_tree().create_timer(2.0).timeout
+	_shot("kesim")
+	await get_tree().create_timer(2.6).timeout
+	_shot("sonra")
 	print("BERBER kayit hair=", m.state.d.get("hair"), " log=", m.state.d.get("berber_log", []).slice(0, 1), " para=", m.state.d["coins"])
 
 
@@ -508,3 +512,9 @@ func debug_lineup() -> void:
 	at.look_at(g + Vector3(5.4, 1.5, 5.0))
 	await get_tree().create_timer(2.0).timeout
 	print("BERBER dizi: sakal 0..4, kas 0,0,0,1,1")
+
+
+func _shot(tag: String) -> void:
+	if DisplayServer.get_name() != "headless" and m._args.has("shot"):
+		m.get_viewport().get_texture().get_image().save_png(String(m._args["shot"]).replace(".png", "_%s.png" % tag))
+		print("BERBER goruntu ", tag)
