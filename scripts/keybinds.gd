@@ -30,7 +30,7 @@ const ACTIONS := [
 	["horn", "KORNA / ZİL", [KEY_B]],
 	["messages", "MESAJLAR", [KEY_K]],
 	["snowball", "KARTOPU", [KEY_Y]],
-	["smoke", "SİGARA YAK / SÖNDÜR", [KEY_B]],
+	["smoke", "SİGARA YAK / SÖNDÜR", [KEY_X]],
 ]
 const RESERVED := [KEY_ESCAPE, KEY_ALT]
 

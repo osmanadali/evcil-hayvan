@@ -3556,6 +3556,7 @@ func _car_test(which: String) -> void:
 	if _ride == null:
 		owner_node.position = target.position + Vector3(1.0, 0, 0)
 		_enter_ride_now(target, true)
+		owner_model.car_feet = car_feet(_ride)      # sessiz binis ayaklari bos birakir: gercek oyundaki gibi pedala koy
 	for ph in phases:
 		clock = 13.0 if ph == "gun" else 23.5
 		for i in 6:

@@ -1,9 +1,9 @@
 extends Node
 ## Sigara (yetiskin yasam simulasyonu). Uydurma markalar: "Kervan", "Yayla".
 ## - Marketten (bakkal / market rafinda, kasanin yaninda) "Sigara Paketi" (20 dal) ve "Çakmak" alinir; cantaya girer.
-## - B tusu (Ayarlar > Kontroller'de "SİGARA YAK / SÖNDÜR") ya da cantadan / telefondan "Sigara Paketi" ile yakilir.
+## - X tusu (korna B'de oldugu icin; Ayarlar > Kontroller'de "SİGARA YAK / SÖNDÜR") ya da cantadan / telefondan "Sigara Paketi" ile yakilir.
 ##   Karakter sol elini agzina goturur (person_model.mouth_w), uctaki kor nefeste parlar, duman cikar.
-##   Bir sigara ~40 sn surer; yururken de icilir. B ya da F (yakinda baska etkilesim yoksa) ile sondurulur.
+##   Bir sigara ~40 sn surer; yururken de icilir. X ya da F (yakinda baska etkilesim yoksa) ile sondurulur.
 ## - Etki: kisa sure enerji / keyif (+), uzun vadede "zarar" birikir: kosarken enerji daha hizli biter, oksuruk.
 ## - Kapali yerlerde (dukkan, lokanta, otel, metro, otobus, taksi, hayvan binmis arac) icilmez: uyari.
 ## - Kayit: state.d["smoke"] = {left: acik paketteki dal, total: icilen, harm: birikmis zarar}
