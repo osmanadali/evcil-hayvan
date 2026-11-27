@@ -80,7 +80,10 @@ func update(dt: float) -> void:
 		return
 	var d := me()
 	var running: bool = m._ride == null and m._bus_ride == null and m._taxi == null and m.owner_model.speed > 3.4
-	var e_drain := ENERGY_DECAY + (RUN_DECAY if running else 0.0)
+	# Spor salonunda kazanilan dayaniklilik kosunun yorgunlugunu azaltir (en cok %60, scripts/gym_interior.gd)
+	var fit: Dictionary = state.d.get("fit", {}) if typeof(state.d.get("fit")) == TYPE_DICTIONARY else {}
+	var run_k := 1.0 - 0.6 * clampf(float(fit.get("dayan", 0.0)) / 100.0, 0.0, 1.0)
+	var e_drain := ENERGY_DECAY + (RUN_DECAY * run_k if running else 0.0)
 	if float(d["hunger"]) <= 0.0:
 		e_drain += STARVE_DECAY
 	if m.street_food.is_seated():

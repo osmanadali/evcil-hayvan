@@ -3,7 +3,8 @@ extends Node
 ## - Firin: sicak ekmek, simit, pogaca, acma; kapidan buhar tuter. Ekmek tostta / koftede kullanilir.
 ## - Kasap: kiyma (kofte icin) ve kopege uygun iri cig kemik.
 ## - Manav: kaldirimda meyve-sebze kasalari; domates, biber, patates, salatalik, elma, muz.
-## - Berber: sac kesimi (model) ve boya (renk); oyuncunun sacini degistirir, kaydedilir.
+## - Berber: ici yurunebilir (scripts/barber_interior.gd): koltuga otur, sac modeli / rengi / sakal sec, ode.
+## - Spor salonu: ici yurunebilir (scripts/gym_interior.gd): kosu bandi, dambil, mekik; uyelik; guc / dayaniklilik.
 ## - Kahvehane: kaldirimdaki masada otur, kahveci cay getirir; rakiple tavla (zar yarisi) ya da okey oyna.
 ## - Cuma ogle: caminin onunde cemaat toplanir. Arada bir ana yoldan kornalarla dugun konvoyu gecer.
 ## Hepsi yan panelden kullanilir (F / dokunmatik dugme).
@@ -20,7 +21,11 @@ const SHOPS := [
 	["kahvehane", "Dostlar Kıraathanesi", "ÇAY · TAVLA · OKEY", "7a4a2a", "d8cbb0", "park"],
 	["kasap", "Kardeşler Kasabı", "ET · KIYMA · KEMİK", "b3262b", "f0ece4", "road"],
 	["berber", "Makas Berber Salonu", "SAÇ · SAKAL · BAKIM", "2f5fa8", "e8e4dc", "road"],
+	["spor", "Kondisyon Spor Salonu", "FİTNESS · AĞIRLIK · KOŞU", "d24a1f", "d9dcdf", "home"],
 ]
+# Ici yurunebilen esnaf (otomatik kayar kapi, shop_spots'a eklenir): tur -> [ic mekan betigi, kapi yazisi]
+const INTERIORS := {"berber": ["res://scripts/barber_interior.gd", "Berbere Gir"],
+	"spor": ["res://scripts/gym_interior.gd", "Spor Salonuna Gir"]}
 # kimlik -> [ad (canta), fiyat, yenebilir mi]
 const GOODS := {
 	"ekmek": ["Ekmek", 4, false], "simit": ["Simit", 5, true], "pogaca": ["Poğaça", 4, true], "acma": ["Açma", 5, true],
@@ -108,6 +113,13 @@ func build() -> void:
 		taken.append(lot[0])
 		var sp := _building(lot[0], lot[1], pl)
 		shops.append(sp)
+		if INTERIORS.has(pl[0]):
+			var tw: Vector2 = (lot[1] as Vector2).normalized()
+			var spot := {"name": pl[1], "kind": pl[0], "pos": sp["pos"], "accent": pl[3], "interior": INTERIORS[pl[0]][0],
+				"enter": INTERIORS[pl[0]][1], "dir": tw, "center": lot[0], "tw": tw}
+			w.auto_door(spot, (lot[0] as Vector2) + tw * 3.6, tw, 2.0)
+			w.shop_spots.append(spot)
+			sp["spot"] = spot
 		print("ESNAF ", pl[1], " @ ", (sp["pos"] as Vector2).round())
 	_find_mosques()
 	_horn = _make_horn()
@@ -181,6 +193,8 @@ func _building(c: Vector2, tw: Vector2, pl: Array) -> Dictionary:
 			_manav(r, HX, HZ)
 		"berber":
 			_berber(r, HX, HZ, glass, dark)
+		"spor":
+			_spor(r, HX, HZ, glass, dark)
 		"kahvehane":
 			_kahvehane(r, HX, HZ, glass, dark)
 	# Tente (cizgili)
@@ -331,6 +345,22 @@ func _berber(r: Node3D, HX: float, HZ: float, glass: Material, dark: Material) -
 		Kit.box(spin, Vector3(0.03, 1.2, 0.03), Vector3(cos(k * TAU / 6.0) * 0.092, 0, sin(k * TAU / 6.0) * 0.092), Kit.glow(col, 0.8), Vector3(0.0, -k * TAU / 6.0, 0.45))
 	_poles.append(spin)
 	_staff(r, Vector3(0.0, 0, HZ - 0.9), "erkek", "2a2d33")
+
+
+func _spor(r: Node3D, HX: float, HZ: float, glass: Material, dark: Material) -> void:
+	# Vitrinden gorunen kosu bantlari ve dambil rafi; camda buyuk yazi
+	var blk := Kit.mat("1d1f24", 0.5)
+	for x in [-2.2, 2.2]:
+		Kit.box(r, Vector3(0.7, 0.12, 1.4), Vector3(x, 0.16, HZ - 1.3), blk)
+		Kit.box(r, Vector3(0.06, 1.1, 0.06), Vector3(x - 0.3, 0.7, HZ - 1.9), blk)
+		Kit.box(r, Vector3(0.06, 1.1, 0.06), Vector3(x + 0.3, 0.7, HZ - 1.9), blk)
+		Kit.box(r, Vector3(0.7, 0.25, 0.12), Vector3(x, 1.25, HZ - 1.9), blk, Vector3(0.5, 0, 0))
+	Kit.box(r, Vector3(1.4, 0.06, 0.4), Vector3(0, 0.6, HZ - 1.6), Kit.mat("8a8f96", 0.3))
+	for k in 5:
+		Kit.cyl(r, 0.06, 0.06, 0.26, Vector3(-0.5 + k * 0.25, 0.7, HZ - 1.6), blk, 10, Vector3(0, 0, PI * 0.5))
+	_glass_front(r, HX, HZ, glass, dark)
+	m.world._text(r, "AÇIK 07:00 - 23:00", Vector3(0, 2.3, HZ + 0.02), Color("ffd8c8"), 0.12)
+	_staff(r, Vector3(-1.0, 0, HZ - 1.2), "kadin", "d24a1f")
 
 
 func _kahvehane(r: Node3D, HX: float, HZ: float, glass: Material, dark: Material) -> void:
@@ -493,7 +523,7 @@ func context() -> Array:
 	var o: Vector2 = m._owner_pos()
 	for i in shops.size():
 		var s: Dictionary = shops[i]
-		if o.distance_to(s["c"]) > 14.0:
+		if o.distance_to(s["c"]) > 14.0 or s.has("spot"):
 			continue
 		if s["kind"] == "kahvehane":
 			for j in seats.size():
@@ -530,8 +560,11 @@ func open_shop(i: int) -> void:
 	match s["kind"]:
 		"firin", "kasap", "manav":
 			_goods_panel(s)
-		"berber":
-			_barber_panel()
+		"berber", "spor":
+			if s.has("spot"):
+				m._enter_shop(s["spot"])
+			else:
+				_barber_panel()
 		"kahvehane":
 			var body: VBoxContainer = m.ui._open_panel("DOSTLAR KIRAATHANESİ", "Demli çay, tavla, okey · Cüzdan %d ₺" % int(state.d["coins"]))
 			m.ui._panel_item(body, "Çay İç · %d ₺" % TEA_PRICE, func():
@@ -1434,6 +1467,32 @@ func debug(what: String, arg: String) -> void:
 			if i >= 0:
 				m._place_owner(shops[i]["pos"])
 				open_shop(i)
+		"berber" when arg.begins_with("ic"):
+			# --berber=ic[:model:renk:sakal] (or. ic:1:17120f:4)
+			var pp := arg.split(":")
+			var s3 := shop_of("berber")
+			if s3.is_empty() or not s3.has("spot"):
+				print("BERBER yok")
+				return
+			state.d["coins"] = maxi(int(state.d["coins"]), 200)
+			m._place_owner(s3["pos"])
+			m._enter_shop(s3["spot"])
+			m._shop.debug_cut(int(pp[1]) if pp.size() > 1 else 1, pp[2] if pp.size() > 2 else "-", int(pp[3]) if pp.size() > 3 else 4)
+		"gym":
+			var s4 := shop_of("spor")
+			if s4.is_empty() or not s4.has("spot"):
+				print("SPOR yok")
+				return
+			state.d["coins"] = maxi(int(state.d["coins"]), 300)
+			if arg == "dis":
+				var tw4: Vector2 = s4["tw"]
+				m._place_owner(s4["pos"] + tw4 * 6.0 + Vector2(-tw4.y, tw4.x) * 2.0)
+				_face(s4["c"])
+				print("SPOR disarida @ ", (s4["pos"] as Vector2).round())
+				return
+			m._place_owner(s4["pos"])
+			m._enter_shop(s4["spot"])
+			m._shop.debug(arg)
 		"berber":
 			state.d["coins"] = maxi(int(state.d["coins"]), 100)
 			var hr: Array = [int(arg) if arg.is_valid_int() else 1, "3f6fd0" if arg == "mavi" else "17120f"]
