@@ -291,6 +291,8 @@ func open(player_pos: Vector2) -> void:
 	_update_route_ui()
 	_select(-1)
 	await get_tree().process_frame
+	if not visible or not is_inside_tree() or _view.size.x < 1.0 or _view.size.y < 1.0:
+		return       # bu arada kapatildi / yerlesim henuz yok: olcek 0 olup isaretler sonsuz buyumesin
 	_zoom_min = maxf(_view.size.x, _view.size.y) / MAP_PX
 	_zoom = _zoom_min * 2.6
 	_center_on(_me.position)
@@ -306,7 +308,7 @@ func _to_px(w: Vector2) -> Vector2:
 
 
 func _apply() -> void:
-	_zoom = clampf(_zoom, _zoom_min, _zoom_min * 9.0)
+	_zoom = maxf(clampf(_zoom, _zoom_min, _zoom_min * 9.0), 0.05)
 	_canvas.scale = Vector2.ONE * _zoom
 	var lo := _view.size - Vector2(MAP_PX, MAP_PX) * _zoom
 	_canvas.position = _canvas.position.clamp(lo, Vector2.ZERO)
