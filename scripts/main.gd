@@ -3611,6 +3611,45 @@ func _car_test(which: String) -> void:
 				await save.call("%s_harita_sonra_%s" % [ph, "ic" if inside else "dis"])
 			if _fps:
 				_toggle_fps()
+		if "korna" in parts:
+			for down in [true, false]:
+				var ev := InputEventKey.new()
+				ev.physical_keycode = Keybinds.codes_of("horn")[0]
+				ev.keycode = ev.physical_keycode
+				ev.pressed = down
+				Input.parse_input_event(ev)
+				for i in 3:
+					await tree.process_frame
+				print("CARTEST korna tus=%s basili=%s sayac=%d ses=%s caliyor=%s" % [OS.get_keycode_string(ev.physical_keycode), down, horn_count,
+					_horn_p != null and _horn_p.stream != null, _horn_p != null and _horn_p.playing])
+		if "surharita" in parts:
+			# Rota aciyken, hizla giderken (gaz basili) gercek tus olayi ile harita: dis ve ic kamera
+			_set_nav(map_screen.PINS[0][2], map_screen.PINS[0][0])
+			for inside in [false, true]:
+				if inside != _fps:
+					_toggle_fps()
+				for i in 30:
+					ui.stick = Vector2(0.15, -1.0)
+					await tree.process_frame
+				for code in [Keybinds.codes_of("map")[0], KEY_ESCAPE, Keybinds.codes_of("map")[0], Keybinds.codes_of("map")[0]]:
+					for down in [true, false]:
+						var ev := InputEventKey.new()
+						ev.physical_keycode = code
+						ev.keycode = code
+						ev.pressed = down
+						Input.parse_input_event(ev)
+						ui.stick = Vector2(0.15, -1.0)
+						await tree.process_frame
+					for i in 8:
+						ui.stick = Vector2(0.15, -1.0)
+						await tree.process_frame
+					print("CARTEST surharita %s %s tus=%s acik=%s hiz=%.1f rota=%d" % [ph, "ic" if inside else "dis", OS.get_keycode_string(code), map_screen.visible, _drive_speed, map_screen.route.size()])
+				await save.call("%s_surharita_%s" % [ph, "ic" if inside else "dis"])
+				map_screen.visible = false
+			ui.stick = Vector2.ZERO
+			_drive_speed = 0.0
+			if _fps:
+				_toggle_fps()
 	print("CARTEST bitti")
 
 # ---------------------------------------------------------------- korna / zil
@@ -4014,7 +4053,9 @@ func _open_map() -> void:
 		for eh in emlak.owned():
 			dyn.append(["%s · %s" % [eh["title"], eh["street"]], eh["out"], "2f9e4a", "home"])
 	for r in _rides:
-		var kind: String = r.get_meta("kind")
+		if not is_instance_valid(r) or not r.is_inside_tree():
+			continue
+		var kind: String = str(r.get_meta("kind", ""))
 		var label: String = {"araba": "Arabam", "scooter": "Scooter", "motosiklet": "Motosiklet", "bisiklet": "Bisiklet"}.get(kind, "Aracım")
 		if str(r.get_meta("rig_id", "")) == "sedan":
 			label = "Sedan (Derya)"

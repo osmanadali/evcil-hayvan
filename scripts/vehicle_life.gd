@@ -913,7 +913,15 @@ func _update_cabin() -> void:
 	var cp: Node3D = m._cockpit
 	if cp == null or not is_instance_valid(cp) or not cp.has_meta("gosterge"):
 		return
-	var live: bool = m._fps and m._ride != null and cp.visible
+	# Buyuk harita acikken kabin ekranlari (navigasyon, gosterge, aynalar) cizilmez: tam ekran haritanin altinda
+	# gorunmezler; ayni karede hem 2B harita hem bu ara goruntuler yenilenmesin (ekran karti yuku / surucu riski).
+	var map_open: bool = m.map_screen != null and m.map_screen.visible
+	var cvp := cp.get_node_or_null("CarPlayVP") as SubViewport
+	if cvp and m._ride != null:
+		var want := SubViewport.UPDATE_DISABLED if map_open else SubViewport.UPDATE_ALWAYS
+		if cvp.render_target_update_mode != want:
+			cvp.render_target_update_mode = want
+	var live: bool = m._fps and m._ride != null and cp.visible and not map_open
 	var gvp: SubViewport = cp.get_node("GostergeVP")
 	if not live:
 		if gvp.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
