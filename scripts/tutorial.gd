@@ -201,6 +201,15 @@ func _hide() -> void:
 	_t = -0.6      # kisa ara, sonraki kart
 
 
+## Buyuk harita acikken ipucu karti haritanin ustune binmesin.
+func _process(_dt: float) -> void:
+	if _card == null or _showing == "" or m == null or m.map_screen == null:
+		return
+	var want: bool = not m.map_screen.visible
+	if _card.visible != want:
+		_card.visible = want
+
+
 func _input(e: InputEvent) -> void:
 	if _showing != "" and _t > 2.5 and e is InputEventKey and e.pressed and not e.echo:
 		_hide()

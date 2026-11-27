@@ -5751,6 +5751,17 @@ func _debug_shot() -> void:
 					_place_owner(_shop.w2(Vector2(3.0, 3.15)))
 				if _args.has("doortest"):
 					await _door_test()
+				if _args.has("shopcam"):
+					# --shop=tur --shopcam: gorevliye onden-capraz bakis (yon denetimi); oyuncu kasanin onunde
+					_place_owner(_shop.w2(_shop.counter_local))
+					for ch in _shop.get_children():
+						if ch is PersonModel:
+							_mode = "debug"
+							ui.visible = false
+							cam.fov = 60.0
+							cam.global_position = ch.global_position + Vector3(-1.8, 1.9, 2.0)
+							cam.look_at(ch.global_position + Vector3(0.3, 1.1, 0.5))
+							break
 				break
 	if _args.has("follow"):
 		# Test: bir bisikletliyi / arabayi arkadan izle, sinyali zorla
